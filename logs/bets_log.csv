@@ -1,0 +1,7 @@
+Bet_ID,Round_Hash,User_ID,Username,Chat_ID,Chat_Name,Bet_Amount,Multiplier,Bet_Time,Bet_Status,Win_Amount,Result_Time,Payout_Status
+"1","2e131e77a20234772972571e7d115668","768451950","VladIs'Love⁴²","-1002367191814","Unknown Chat","1","x5","17.09.2025, 17:43:31","Placed","","","Pending"
+"2","2e131e77a20234772972571e7d115668","768451950","VladIs'Love⁴²","-1002367191814","Unknown Chat","1","x2","17.09.2025, 17:43:32","Placed","","","Pending"
+"321461","2e131e77a20234772972571e7d115668","768451950","VladIs'Love⁴²","-1002367191814","Chat_-1002367191814","1","x5","","Settled","0","17.09.2025, 17:44:02","Success"
+"321463","2e131e77a20234772972571e7d115668","768451950","VladIs'Love⁴²","-1002367191814","Chat_-1002367191814","1","x2","","Settled","2","17.09.2025, 17:44:02","Success"
+"3","3ecf76c869dcea609642183227928f1c","768451950","VladIs'Love⁴²","-1002367191814","Unknown Chat","1","x3","17.09.2025, 17:44:33","Placed","","","Pending"
+"321465","3ecf76c869dcea609642183227928f1c","768451950","VladIs'Love⁴²","-1002367191814","Chat_-1002367191814","1","x3","","Settled","3","17.09.2025, 17:45:04","Success"

@@ -1,0 +1,22 @@
+{
+  "globalRound": {
+    "hash": "1aca40f0ea9ac9985cbb0fc932069f5e",
+    "result": "x3",
+    "salt": "wu3gh1ufx9",
+    "endTime": 1767619625325,
+    "warnedAboutFiveSeconds": false,
+    "warnedAboutGameNotification": false,
+    "notifiedAboutGameButtons": false,
+    "processedChats": [],
+    "cellContents": null,
+    "finalMultipliers": null,
+    "gameButtonActive": false
+  },
+  "gameChoices": {},
+  "globalChoices": {},
+  "activeGameBets": {},
+  "globalUserChoices": {
+    "768451950": "left",
+    "1749300128": "right"
+  }
+}

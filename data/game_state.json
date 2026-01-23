@@ -1,0 +1,87 @@
+{
+  "globalRound": {
+    "processedChats": []
+  },
+  "lastBets": [
+    {
+      "userId": 768451950,
+      "username": "VladIs'Love⁴²",
+      "multiplier": "GAME",
+      "amount": 2000,
+      "chatId": -1002466260090,
+      "timestamp": 1749071353553
+    },
+    {
+      "userId": 768451950,
+      "username": "VladIs'Love⁴²",
+      "multiplier": "GAME",
+      "amount": 1000,
+      "chatId": -1002535868297,
+      "timestamp": 1749071373196
+    },
+    {
+      "userId": 768451950,
+      "username": "VladIs'Love⁴²",
+      "multiplier": "x5",
+      "amount": 1,
+      "chatId": -1002466260090,
+      "timestamp": 1749071527317
+    },
+    {
+      "userId": 768451950,
+      "username": "VladIs'Love⁴²",
+      "multiplier": "GAME",
+      "amount": 1,
+      "chatId": -1002466260090,
+      "timestamp": 1749071689533
+    },
+    {
+      "userId": 768451950,
+      "username": "VladIs'Love⁴²",
+      "multiplier": "GAME",
+      "amount": 1,
+      "chatId": -1002466260090,
+      "timestamp": 1749071708384
+    },
+    {
+      "userId": 768451950,
+      "username": "VladIs'Love⁴²",
+      "multiplier": "GAME",
+      "amount": 1,
+      "chatId": -1002466260090,
+      "timestamp": 1749071834418
+    },
+    {
+      "userId": 768451950,
+      "username": "VladIs'Love⁴²",
+      "multiplier": "GAME",
+      "amount": 1,
+      "chatId": -1002535868297,
+      "timestamp": 1749071844173
+    },
+    {
+      "userId": 768451950,
+      "username": "VladIs'Love⁴²",
+      "multiplier": "GAME",
+      "amount": 1,
+      "chatId": -1002535868297,
+      "timestamp": 1749071909396
+    },
+    {
+      "userId": 768451950,
+      "username": "VladIs'Love⁴²",
+      "multiplier": "GAME",
+      "amount": 1,
+      "chatId": -1002535868297,
+      "timestamp": 1749072002171
+    },
+    {
+      "userId": 768451950,
+      "username": "VladIs'Love⁴²",
+      "multiplier": "GAME",
+      "amount": 1,
+      "chatId": -1002535868297,
+      "timestamp": 1749072009125
+    }
+  ]
+}
