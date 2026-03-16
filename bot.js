@@ -89,8 +89,8 @@ const { kickUserHandler } = require('./admin/kickManagement');
 const { idHandler, profHandler, deleteHandler, changeIdHandler, giveHandler, freeIdsHandler, detailedTopHandler, topContainersHandler, takeHandler, topDfBalanceHandler, topCardBalanceHandler, topNpfSharesHandler,
   blockTransfersHandler, unblockTransfersHandler, resetHandler, subtractReferralsHandler, logAction, toggleTopVisibilityHandler,changeNicknameByNumericIdHandler, topReferrersHandler, topBossDamageHandler,
   unblockTopVisibilityHandler, giveEnergyHandler, takeEnergyHandler, sendMessageToUserHandler, checkPlayerWeaponsAndDamage, reduceBossHpHandler, updateSkinPriceHandler, checkMasterHandler,
-  topAttackPowerHandler, sendChatIdToUser, setCardLevelHandler, infoBalanceHandler, setBalanceHandler, isPartnerManager
- } = require('./handlers/technicalCommands');
+  topAttackPowerHandler, sendChatIdToUser, setCardLevelHandler, infoBalanceHandler, setBalanceHandler, isPartnerManager, giveTicketsHandler, takeTicketsHandler
+} = require('./handlers/technicalCommands');
 const { sendDonationNotification } = require('./handlers/donationNotifications'); // Импортируем новую функцию
 const { sendHandler } = require('./bank/bankTransfers');
 const { topUpHandler, withdrawHandler } = require('./bank/cardTopUp');
@@ -122,6 +122,8 @@ const { handleNpfTechInfo, handleForceUpdateCourse } = require('./bank/bankTechC
 const { candyShopMenu, buyPfWithCandy, buyFortuneTicket, buyGoldContainers } = require('./Events/Halloween/candyShop');
 const { showSecretGiftMenu, openSecretGift, closeSecretGiftMenu } = require('./Events/secretGift');
 const { handleTestCommand, handleTestButton, handleConfirmAction } = require('./handlers/testHandler');
+// Импорт модуля последовательного ввода
+const { sequentialMiddleware, startSequentialInput, handleCancel } = require('./handlers/sequentialInput');
 
 // Функция для отправки сообщения с кнопкой Mini App
 async function sendMiniAppMessage(ctx) {
@@ -256,6 +258,9 @@ bot.use(async (ctx, next) => {
     await ctx.reply('Произошла ошибка. Попробуйте через несколько секунд.');
   }
 });
+
+// Middleware для обработки последовательного ввода
+bot.use(sequentialMiddleware());
 
 // Глобальное хранилище состояний пользователей
 const userStates = {};
@@ -801,6 +806,11 @@ bot.start(async (ctx) => {
 });
 bot.command('help', helpHandler);
 
+// Команда для тестирования последовательного ввода
+bot.command('sequential', startSequentialInput);
+
+// Обработчик кнопки отмены последовательного ввода
+bot.action('sequential_cancel', handleCancel);
 
 // Универсальная функция для обработки многословных команд
 function processMultiWordCommand(ctx, commandsMap) {
@@ -838,8 +848,29 @@ const multiWordCommands = {
       return; // Завершаем выполнение без отправки ответа, если нет прав
     }
 
-    // СРАЗУ запускаем интерактивный процесс создания промокода
-    await createPromoHandler(ctx); // Это НОВАЯ версия из promoHandler.js
+    // Проверяем количество аргументов
+    if (parts.length !== 6) {
+      return ctx.reply(
+        'Использование: создать [количество_активаций] [название_промо] [тип_приза] [количество_приза] [статус_игрока]\n\n' +
+        'Доступные типы призов:\n' +
+        '• конт - GOLD-контейнер\n' +
+        '• пф - PF (баланс)\n' +
+        '• дф - DF (баланс)\n' +
+        '• нпф - NPF-акция\n\n' +
+        'ID статусов:\n' +
+        '• Администратор - 1\n' +
+        '• Тех админ - 2\n' +
+        '• Модератор - 3\n' +
+        '• DIAMOND - 4\n' +
+        '• PLATINUM - 5\n' +
+        '• GOLD - 6\n' +
+        '• Beto-tester - 7\n\n' +
+        'Если указать 0 в качестве минимального статуса, промокод станет доступен всем пользователям, независимо от их статуса.'
+      );
+    }
+
+    // Вызываем обработчик создания промокода
+    await createPromoHandler(ctx);
   } catch (error) {
     console.error('Ошибка при выполнении команды "создать":', error);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
@@ -1838,6 +1869,12 @@ if (!reportText) {
 },
 'кнопка': async (ctx) => {
   await handleTestCommand(ctx);
+},
+'выдать_билетики': async (ctx) => {
+  await giveTicketsHandler(ctx);
+},
+'забрать_билетики': async (ctx) => {
+  await takeTicketsHandler(ctx);
 },
 };
 
@@ -4879,7 +4916,7 @@ bot.launch()
     scheduleDailyBackup();
   })
   .catch((error) => {
-    console.error('❌ Ошибка при запуске бота:', error);
+    console.error('❌ Ошибка при запуске ботика:', error);
     console.error('❌ Stack:', error.stack); // Для дополнительной отладки
     process.exit(1); // Завершаем процесс с кодом 1 в случае ошибки
   });
