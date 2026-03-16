@@ -4808,6 +4808,72 @@ function takeSecretGift(userId, amount = 1) {
   }
 }
 
+// Функция для выдачи билетиков администратором (техническая)
+function giveTicketsAdmin(numericId, amount) {
+  try {
+    if (amount <= 0) {
+      return { success: false, message: 'Количество должно быть больше нуля.' };
+    }
+    
+    const user = getUserByNumericId(numericId);
+    if (!user) {
+      return { success: false, message: 'Пользователь не найден.' };
+    }
+
+    const stmt = db.prepare('UPDATE users SET tickets = tickets + ? WHERE id = ?');
+    const info = stmt.run(amount, user.id);
+
+    if (info.changes > 0) {
+      return { 
+        success: true, 
+        message: `Успешно выдано ${amount} билетиков пользователю ${user.username}.`,
+        newBalance: (user.tickets || 0) + amount
+      };
+    }
+    return { success: false, message: 'Ошибка при обновлении базы данных.' };
+  } catch (error) {
+    console.error('[DB] Ошибка при выдаче билетиков (admin):', error);
+    return { success: false, message: 'Произошла ошибка.' };
+  }
+}
+
+// Функция для изъятия билетиков администратором (техническая)
+function takeTicketsAdmin(numericId, amount) {
+  try {
+    if (amount <= 0) {
+      return { success: false, message: 'Количество должно быть больше нуля.' };
+    }
+
+    const user = getUserByNumericId(numericId);
+    if (!user) {
+      return { success: false, message: 'Пользователь не найден.' };
+    }
+
+    const currentTickets = user.tickets || 0;
+    if (currentTickets < amount) {
+      return { 
+        success: false, 
+        message: `Недостаточно билетиков. У пользователя сейчас ${currentTickets}.` 
+      };
+    }
+
+    const stmt = db.prepare('UPDATE users SET tickets = tickets - ? WHERE id = ?');
+    const info = stmt.run(amount, user.id);
+
+    if (info.changes > 0) {
+      return { 
+        success: true, 
+        message: `Успешно изъято ${amount} билетиков у пользователя ${user.username}.`,
+        newBalance: currentTickets - amount
+      };
+    }
+    return { success: false, message: 'Ошибка при обновлении базы данных.' };
+  } catch (error) {
+    console.error('[DB] Ошибка при изъятии билетиков (admin):', error);
+    return { success: false, message: 'Произошла ошибка.' };
+  }
+}
+
 
 // Экспортируем функции
 module.exports = {
@@ -5032,6 +5098,8 @@ module.exports = {
   awardPrizeToUser,
   getTickets,
   takeTickets,
+  giveTicketsAdmin,  // НОВОЕ
+  takeTicketsAdmin,  // НОВОЕ
   giveCandy,
   takeCandy,
   getSecretGifts,

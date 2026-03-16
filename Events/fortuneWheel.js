@@ -10,23 +10,27 @@ const {
   updateUserStatus,
   addPrefixToUser,
   getAllPrefixes,
-  addSecretGift,
   getSkinIdByName,
   addSkinToUser
 } = require('../db');
 const path = require('path');
+const fs = require('fs');
 
 // === ГЛОБАЛЬНОЕ ХРАНИЛИЩЕ ===
 const cooldowns = new Map();
 const activeSpins = new Set();
 
+// === КОНСТАНТЫ ===
+const SPIN_COOLDOWN_MS = 10_000; // 10 секунд кулдаун
+
 // === СООБЩЕНИЯ ПОД ПРЕФИКС ===
 const prefixMessages = {
   '🍀 FOTRUNA 🃏': `
-🎁 Вы получили эксклюзивный префикс: <b>🍀 FOTRUNA 🃏</b>
+🎁 <b>ЭКСКЛЮЗИВНЫЙ ПРЕФИКС!</b>
 
-Этот префикс доступен только тем, кто выиграл его в Колесе Фортуны!
+Вы получили уникальный префикс: <b>🍀 FOTRUNA 🃏</b>
 Он будет отображаться перед вашим именем в топах и профиле.
+Поздравляем с удачей!
 `.trim()
 };
 
@@ -42,14 +46,21 @@ const prizeImageMap = {
   containers: 'cont.jpg',
   prefix: 'prefix.jpg',
   card: 'skin.jpg',
-  secret: 'pumpkin.jpg' // ✅ Используем pumpkin.jpg для секретного приза (Хэллоуин)
+  secret: 'pumpkin.jpg'
 };
 
 function getImagePathForPrize(prize, imagesDir) {
   const imageName = typeof prizeImageMap[prize.type] === 'function'
     ? prizeImageMap[prize.type](prize)
     : prizeImageMap[prize.type] || 'priz.jpg';
-  return path.join(imagesDir, imageName);
+  
+  const fullPath = path.join(imagesDir, imageName);
+  
+  if (!fs.existsSync(fullPath)) {
+    console.warn(`[FORTUNE] Файл не найден: ${fullPath}, используем заглушку.`);
+    return path.join(imagesDir, 'priz.jpg');
+  }
+  return fullPath;
 }
 
 // === ПРИЗЫ ===
@@ -61,7 +72,7 @@ const PRIZES = [
   { title: 'Уникальная карта', weight: 5000, type: 'card', id: null },
   { title: '20 GOLD контейнеров', weight: 10, type: 'containers', amount: 20 },
   { title: 'Префикс "🍀 FOTRUNA 🃏"', weight: 2, type: 'prefix', name: '🍀 FOTRUNA 🃏' },
-  { title: 'СЕКРЕТНЫЙ ПРИЗ 🔒', weight: 10, type: 'secret', id: null }, // ⚠️ Вес изменён с 100000 на 10 для реалистичности
+  { title: 'СЕКРЕТНЫЙ ПРИЗ 🔒', weight: 10, type: 'secret', id: null },
 ];
 
 function selectWeightedPrize(prizes) {
@@ -74,20 +85,36 @@ function selectWeightedPrize(prizes) {
   return prizes[prizes.length - 1];
 }
 
-// === КЛАВИАТУРА ДЛЯ ПОВТОРНОГО ВРАЩЕНИЯ ===
-function getSpinAgainKeyboard() {
-  return Markup.inlineKeyboard([
-    [{ text: '🎡 Вращать снова', callback_data: 'spin_fortune_wheel' }]
-  ]);
+// === КЛАВИАТУРЫ ===
+// Клавиатура с кнопкой вращения (если есть билеты)
+function getFortuneKeyboard(hasTickets) {
+  const buttons = [];
+  
+  if (hasTickets) {
+    buttons.push([
+      { text: '🎡 Вращать', callback_data: 'spin_fortune_wheel' },
+      { text: '🎫 Обменник', callback_data: 'candy_exchange' }
+    ]);
+  } else {
+    // Если билетов нет, показываем только обменник
+    buttons.push([
+      { text: '🎫 Обменник (нет билетов)', callback_data: 'candy_exchange' }
+    ]);
+  }
+
+  return Markup.inlineKeyboard(buttons);
 }
 
-// === ОСНОВНАЯ КЛАВИАТУРА КОЛЕСА ===
-function getFortuneKeyboard() {
+// Клавиатура повторного вращения (только если есть билеты)
+function getSpinAgainKeyboard(hasTickets) {
+  if (!hasTickets) {
+    return Markup.inlineKeyboard([
+      [{ text: '❌ Нет билетов', callback_data: 'no_tickets_info' }]
+    ]);
+  }
+  
   return Markup.inlineKeyboard([
-    [
-      { text: '🎡 Вращать', callback_data: 'spin_fortune_wheel' },
-      { text: '🎫 Получить билетики', callback_data: 'candy_exchange' }
-    ]
+    [{ text: '🎡 Вращать снова', callback_data: 'spin_fortune_wheel' }]
   ]);
 }
 
@@ -107,8 +134,9 @@ async function fortuneWheelHandler(ctx) {
   const pfBalance = user.balance || 0;
   const cardBalance = user.card_balance || 0;
   const totalBalance = pfBalance + cardBalance;
+  const hasTickets = tickets > 0;
 
-  const text = `
+  let text = `
 🎡 <b>Колесо Фортуны</b>
 
 💰 Общий баланс: ${totalBalance.toLocaleString('ru-RU')} PF  
@@ -118,11 +146,19 @@ async function fortuneWheelHandler(ctx) {
 🎫 Tickets: ${tickets} шт.
 `.trim();
 
+  if (!hasTickets) {
+    text += '\n\n⚠️ <b>У вас нет билетов!</b>\nПосетите обменник, чтобы получить их.';
+  }
+
   const imagesDir = path.join(__dirname, 'Halloween', 'imjs_fortune');
   const defaultImagePath = path.join(imagesDir, 'default.jpg');
-  const keyboard = getFortuneKeyboard();
+  const keyboard = getFortuneKeyboard(hasTickets);
 
   try {
+    if (!fs.existsSync(defaultImagePath)) {
+      throw new Error('Фон не найден');
+    }
+
     if (ctx.callbackQuery) {
       await ctx.answerCbQuery();
       await ctx.editMessageMedia({
@@ -139,100 +175,108 @@ async function fortuneWheelHandler(ctx) {
       );
     }
   } catch (err) {
-    console.error('[FORTUNE] Ошибка отправки default.jpg:', err);
-    if (ctx.callbackQuery) {
-      await ctx.answerCbQuery();
-      await ctx.editMessageText(text, {
-        parse_mode: 'HTML',
-        reply_markup: keyboard.reply_markup
-      });
-    } else {
-      await ctx.replyWithHTML(text, keyboard);
-    }
+    console.error('[FORTUNE] Ошибка отправки меню:', err);
+    const fallbackMsg = ctx.callbackQuery 
+      ? ctx.editMessageText(text, { parse_mode: 'HTML', ...keyboard })
+      : ctx.replyWithHTML(text, keyboard);
+    
+    fallbackMsg.catch(e => console.error('[FORTUNE] Фоллбэк тоже не сработал:', e));
   }
 }
 
 // === ВРАЩЕНИЕ КОЛЕСА ===
 async function spinFortuneWheel(ctx) {
   const userId = ctx.from?.id?.toString();
-  const username = ctx.from?.username || 'Неизвестный';
   const numericId = getUserById(userId)?.numeric_id || '—';
+  const chatId = ctx.chat?.id;
 
-  // ✅ УДАЛЕНИЕ СООБЩЕНИЯ С КНОПКОЙ "ВРАЩАТЬ СНОВА", ЕСЛИ ОНО СУЩЕСТВУЕТ
-  if (ctx.callbackQuery && ctx.callbackQuery.message) {
-    try {
-      await ctx.deleteMessage(); // Удаляет сообщение с кнопкой
-    } catch (err) {
-      // Игнорируем, если сообщение уже удалено или недоступно
-    }
+  console.log(`[FORTUNE] Начало вращения для userId=${userId}, chatId=${chatId}`);
 
-    try {
-      await ctx.answerCbQuery();
-    } catch (err) {
-      // Игнорируем просроченные запросы
-    }
-  }
-
-  if (!userId) {
-    return ctx.reply('❌ Ошибка: пользователь не определён.');
-  }
-
+  // 1. Проверки
+  if (!userId) return ctx.reply('❌ Ошибка пользователя.');
+  
   if (activeSpins.has(userId)) {
-    return ctx.reply('✅ Вращение уже запущено! Дождитесь результата.');
+    return ctx.answerCbQuery('⏳ Вращение уже идет!', { show_alert: true });
   }
 
   const now = Date.now();
   const lastSpin = cooldowns.get(userId);
-  if (lastSpin && now - lastSpin < 15_000) {
-    const remaining = Math.ceil((15_000 - (now - lastSpin)) / 1000);
-    return ctx.reply(`⏳ Подождите ещё ${remaining} сек. перед следующим вращением.`);
+  // ИЗМЕНЕНО: Кулдаун 10 секунд
+  if (lastSpin && now - lastSpin < SPIN_COOLDOWN_MS) {
+    const remaining = Math.ceil((SPIN_COOLDOWN_MS - (now - lastSpin)) / 1000);
+    return ctx.answerCbQuery(`⏳ Ждите ещё ${remaining} сек.`, { show_alert: true });
   }
 
   const user = getUserById(userId);
-  if (!user) {
-    return ctx.reply('❌ Вы не зарегистрированы.');
-  }
+  if (!user) return ctx.reply('❌ Вы не зарегистрированы.');
 
   const tickets = getTickets(userId);
+  
+  // ИЗМЕНЕНО: Проверка билетов перед запуском
   if (tickets < 1) {
-    return ctx.reply('❌ Нужен хотя бы 1 🎫.');
+    // Если билетов нет, удаляем сообщение с кнопкой (если это callback) и пишем ошибку
+    if (ctx.callbackQuery && ctx.callbackQuery.message) {
+        try {
+            await ctx.editMessageText(
+                `🎡 <b>Колесо Фортуны</b>\n\n⚠️ <b>У вас закончились билеты!</b>\n\n🎫 Текущий баланс: 0 шт.\nПосетите обменник, чтобы пополнить запас.`,
+                { 
+                    parse_mode: 'HTML',
+                    reply_markup: getFortuneKeyboard(false).reply_markup 
+                }
+            );
+        } catch (e) { /* Игнорируем ошибки редактирования */ }
+    }
+    return ctx.answerCbQuery('❌ Нет билетов! Используйте обменник.', { show_alert: true });
   }
 
+  // 2. Списание билета
   const takeResult = takeTickets(userId, 1);
   if (!takeResult.success) {
-    return ctx.reply(`❌ Ошибка: ${takeResult.message}`);
+    return ctx.answerCbQuery(`❌ ${takeResult.message}`, { show_alert: true });
   }
 
   activeSpins.add(userId);
   cooldowns.set(userId, now);
 
+  // 3. Подготовка
   const imagesDir = path.join(__dirname, 'Halloween', 'imjs_fortune');
   const rotatingImagePath = path.join(imagesDir, 'rotating.jpg');
+  const startImage = fs.existsSync(rotatingImagePath) ? rotatingImagePath : path.join(imagesDir, 'default.jpg');
 
   let message;
   try {
     message = await ctx.replyWithPhoto(
-      { source: rotatingImagePath },
-      { caption: '🎡 <b>Колесо крутится...</b>', parse_mode: 'HTML' }
+      { source: startImage },
+      { caption: '🎡 <b>Колесо запускается...</b>', parse_mode: 'HTML' }
     );
+    console.log(`[FORTUNE] Сообщение анимации отправлено. MessageID: ${message.message_id}`);
   } catch (e) {
     activeSpins.delete(userId);
-    return ctx.reply('❌ Не удалось начать вращение. Попробуйте позже.');
+    console.error('[FORTUNE] Ошибка отправки начального сообщения:', e);
+    return ctx.reply('❌ Ошибка запуска колеса.');
   }
 
-  // === Анимация вращения ===
-  const steps = 6;
-  let baseDelay = 250;
+  // 4. Анимация
+  const steps = 8;
+  let delay = 100;
+  
   for (let i = 0; i < steps; i++) {
     if (!activeSpins.has(userId)) break;
 
+    if (i < 4) delay = 100;
+    else if (i < 6) delay = 300;
+    else delay = 600;
+
     const fakePrize = PRIZES[Math.floor(Math.random() * PRIZES.length)];
     const fakeImagePath = getImagePathForPrize(fakePrize, imagesDir);
-    const caption = `🎡 <b>Колесо крутится...</b>\n\n🔥 Сейчас выпадет:\n➡️ <code>${fakePrize.title}</code> ⬅️`;
+    
+    const caption = i === steps - 1 
+      ? '🎡 <b>Выпадает...</b>' 
+      : `🎡 <b>Колесо крутится...</b>\n\n🔥 Сейчас может выпасть:\n➡️ <code>${fakePrize.title}</code>`;
 
     try {
       await ctx.telegram.editMessageMedia(
-        ctx.chat.id,
+        chatId,
         message.message_id,
         null,
         {
@@ -243,13 +287,13 @@ async function spinFortuneWheel(ctx) {
         }
       );
     } catch (e) {
-      // ignore
+      // Игнорируем ошибки анимации
     }
-    const currentDelay = Math.max(50, baseDelay - i * 35);
-    await new Promise(resolve => setTimeout(resolve, currentDelay));
+    
+    await new Promise(resolve => setTimeout(resolve, delay));
   }
 
-  // === ВЫДАЧА РЕАЛЬНОГО ПРИЗА ===
+  // 5. ВЫДАЧА ПРИЗА
   const prize = selectWeightedPrize(PRIZES);
   let prizeMessage = '';
   let finalImagePath = null;
@@ -270,22 +314,19 @@ async function spinFortuneWheel(ctx) {
       const added = addPrefixToUser(userId, prefix.id);
       if (!added) throw new Error('Не удалось добавить префикс');
     } else if (prize.type === 'secret') {
-      // === ВЫДАЧА ХЭЛЛОУИНСКОГО СКИНА ===
       const skinId = getSkinIdByName('Тыквенный спас');
-      if (!skinId) {
-        throw new Error('Скин "Тыквенный спас" не найден в базе.');
-      }
+      if (!skinId) throw new Error('Скин "Тыквенный спас" не найден в базе.');
       const skinResult = addSkinToUser(userId, skinId);
-      if (!skinResult.success) {
-        throw new Error(skinResult.message);
-      }
-      // addSecretGift НЕ вызывается — заменён на скин
+      if (!skinResult.success) throw new Error(skinResult.message);
     }
 
     const updatedUser = getUserById(userId);
     const updatedTickets = getTickets(userId);
     const pfBalance = updatedUser?.balance || 0;
     const goldContainers = updatedUser?.container_type_3 || 0;
+    
+    // Проверяем наличие билетов после вращения для кнопки
+    const hasTicketsLeft = updatedTickets > 0;
 
     prizeMessage = `🎉 <b>ПОЗДРАВЛЯЕМ!</b>\n\n🎁 Вы выиграли: <b>${prize.title}</b>\n\n🎫 Ticket потрачен.`;
     prizeMessage += `\n\n🎫 <b>Tickets:</b> ${updatedTickets} шт.`;
@@ -297,71 +338,101 @@ async function spinFortuneWheel(ctx) {
     if (prize.type === 'secret') prizeMessage += `\n🎃 Вам выдан хэллоуинский скин: <b>«Тыквенный спас»</b>!`;
 
     finalImagePath = getImagePathForPrize(prize, imagesDir);
+
+    // 6. ФИНАЛЬНОЕ ОБНОВЛЕНИЕ
+    // Шаг 6.1: Обновляем сообщение с результатом
+    try {
+      await ctx.telegram.editMessageMedia(
+        chatId,
+        message.message_id,
+        null,
+        {
+          type: 'photo',
+          media: { source: finalImagePath },
+          caption: prizeMessage,
+          parse_mode: 'HTML'
+        }
+      );
+      console.log(`[FORTUNE] Результат отображен в сообщении ${message.message_id}`);
+    } catch (e) {
+      console.warn(`[FORTUNE] Не удалось обновить результат: ${e.message}`);
+      await ctx.replyWithPhoto({ source: finalImagePath }, { caption: prizeMessage, parse_mode: 'HTML' });
+    }
+
+    // Шаг 6.2: Отправляем КНОПКУ отдельным сообщением (с проверкой билетов)
+    try {
+      if (hasTicketsLeft) {
+        await ctx.reply(
+          '🔁 <b>Желаете испытать удачу ещё раз?</b>', 
+          { 
+            parse_mode: 'HTML',
+            ...getSpinAgainKeyboard(true) 
+          }
+        );
+      } else {
+        await ctx.reply(
+          '⚠️ <b>У вас закончились билеты!</b>\nПосетите обменник, чтобы получить новые.', 
+          { 
+            parse_mode: 'HTML',
+            ...getSpinAgainKeyboard(false) 
+          }
+        );
+      }
+      console.log(`[FORTUNE] Кнопка отправлена. Билетов осталось: ${updatedTickets}`);
+    } catch (e) {
+      console.error('[FORTUNE] Не удалось отправить кнопку повтора:', e);
+    }
+
   } catch (err) {
-    console.error(`[FORTUNE] Ошибка выдачи приза ${prize.type} пользователю ${userId}:`, err);
-    prizeMessage = `🎉 <b>ПОЗДРАВЛЯЕМ!</b>\n\n🎁 Вы выиграли: <b>${prize.title}</b>\n\n❌ Ошибка при выдаче приза.`;
+    console.error(`[FORTUNE] Ошибка выдачи приза ${prize.type}:`, err);
+    prizeMessage = `🎉 <b>ПОЗДРАВЛЯЕМ!</b>\n\n🎁 Вы выиграли: <b>${prize.title}</b>\n\n⚠️ <i>Ошибка выдачи. Обратитесь к админу.</i>`;
     finalImagePath = path.join(imagesDir, 'priz.jpg');
     success = false;
+    
+    // Даже при ошибке показываем актуальное состояние билетов
+    const currentTickets = getTickets(userId);
+    try {
+        await ctx.reply(
+            currentTickets > 0 
+                ? '🔁 <b>Желаете испытать удачу ещё раз?</b>' 
+                : '⚠️ <b>У вас закончились билеты!</b>', 
+            { 
+                parse_mode: 'HTML',
+                ...getSpinAgainKeyboard(currentTickets > 0) 
+            }
+        );
+    } catch (e) {}
   } finally {
     activeSpins.delete(userId);
   }
 
-  // === ОТПРАВКА РЕЗУЛЬТАТА БЕЗ КНОПОК ===
-  let resultMsg;
-  try {
-    resultMsg = await ctx.telegram.editMessageMedia(
-      ctx.chat.id,
-      message.message_id,
-      null,
-      {
-        type: 'photo',
-        media: { source: finalImagePath },
-        caption: prizeMessage,
-        parse_mode: 'HTML'
+  // 7. ДОП. УВЕДОМЛЕНИЯ В ЛС
+  if (success) {
+    try {
+      if (prize.type === 'prefix') {
+        const msg = prefixMessages[prize.name] || `🎉 Вам выдан префикс "${prize.name}".`;
+        await ctx.telegram.sendMessage(userId, msg, { parse_mode: 'HTML' });
       }
-    );
-  } catch (e) {
-    resultMsg = await ctx.replyWithPhoto(
-      { source: finalImagePath },
-      { caption: prizeMessage, parse_mode: 'HTML' }
-    );
-  }
-
-  // === ОТПРАВКА КНОПКИ "ВРАЩАТЬ СНОВА" ===
-  try {
-    await ctx.reply('🔁 Хотите вращать ещё раз?', getSpinAgainKeyboard());
-  } catch (e) {
-    console.warn(`[FORTUNE] Не удалось отправить кнопку повтора для ${userId}`);
-  }
-
-  // === ДОП. СООБЩЕНИЕ О ПРЕФИКСЕ ===
-  if (success && prize.type === 'prefix') {
-    const msg = prefixMessages[prize.name] || `🎉 Вам выдан префикс "${prize.name}".`;
-    try {
-      await ctx.telegram.sendMessage(userId, msg, { parse_mode: 'HTML' });
-    } catch (e) {
-      console.warn(`[FORTUNE] Не удалось отправить сообщение о префиксе пользователю ${userId}`);
-    }
-  }
-
-  // === ДОП. СООБЩЕНИЕ О ХЭЛЛОУИНСКОМ СКИНЕ ===
-  if (success && prize.type === 'secret') {
-    const skinImagePath = path.join(__dirname, 'Halloween', 'imjs_fortune', 'pumpkin.jpg');
-    try {
-      await ctx.telegram.sendPhoto(
-        userId,
-        { source: skinImagePath },
-        {
-          caption: '🎃 <b>Поздравляем!</b>\n\nВы выиграли эксклюзивный хэллоуинский скин:\n<b>«Тыквенный спас»</b>!\n\nОн уже добавлен в ваш инвентарь.',
-          parse_mode: 'HTML'
+      
+      if (prize.type === 'secret') {
+        const skinImagePath = path.join(__dirname, 'Halloween', 'imjs_fortune', 'pumpkin.jpg');
+        if (fs.existsSync(skinImagePath)) {
+          await ctx.telegram.sendPhoto(
+            userId,
+            { source: skinImagePath },
+            {
+              caption: '🎃 <b>ЭКСКЛЮЗИВ!</b>\n\nВы выиграли редкий хэллоуинский скин:\n<b>«Тыквенный спас»</b>!\n\nПроверьте его в разделе "Мои скины".',
+              parse_mode: 'HTML'
+            }
+          );
         }
-      );
+      }
     } catch (e) {
-      console.warn(`[FORTUNE] Не удалось отправить сообщение о скине "Тыквенный спас" пользователю ${userId}`);
+      // Игнорируем ошибки ЛС
     }
   }
 
-  console.log(`[FORTUNE] Вращение завершено: userId=${userId}, numericId=${numericId}, приз="${prize.title}"`);
+  console.log(`[FORTUNE] Итог: userId=${userId}, приз="${prize.title}", успех=${success}`);
 }
 
 module.exports = {

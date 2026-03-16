@@ -70,7 +70,14 @@ const { changeNicknameHandler } = require('./handlers/changeNickname');
 const { forbesHandler } = require('./handlers/top'); // Обработчик "форбс"
 const { referralLinkHandler, topReferralsHandler, referralsListHandler, handleMyReferrals, handleRefInfo, changeReferralBonus, setReferralBonusForAllUsers, handleBackToRefMenu, topSeasonalReferralsHandler, handleContestInfo } = require('./handlers/referralSystem'); // Реферальная ссылка
 const { showAdminPanel, handleListAdmins, handleAdminCommands, handleClosePanel, isTechAdmin } = require('./admin/adminPanel');
-const { createPromoHandler, listPromosHandler, deletePromoHandler, usePromoHandler, } = require('./handlers/promoHandler');
+const { 
+  startPromoCreationSession, 
+  handlePromoCreationMessage, 
+  handleCallback, 
+  listPromosHandler, 
+  deletePromoHandler, 
+  usePromoHandler 
+} = require('./handlers/promoHandler');
 const { listBannedPlayersHandler, startAutoUnban, isAdmin_ban } = require('./admin/blacklistManagement');
 const { buyContainerHandler, containersHandler, setupContainerHandlers, sendContainerInfoMessage } = require('./handlers/buyContainer');
 const { openContainerHandler } = require('./handlers/openContainer');
@@ -839,42 +846,9 @@ bot.action(/^promo_create_/, async (ctx) => {
 // Создание маппинга многословных команд
 const multiWordCommands = {
 // Создание промокода
-'создать': async (ctx, parts) => {
-  try {
-    // Проверка прав администратора или наличия статуса "Руководитель партнёрки"
-    const isAdminUser = await isAdmin(ctx);
-    const hasPartnerManagerStatus = await isPartnerManager(ctx.from.id);
-    if (!isAdminUser && !hasPartnerManagerStatus) {
-      return; // Завершаем выполнение без отправки ответа, если нет прав
-    }
-
-    // Проверяем количество аргументов
-    if (parts.length !== 6) {
-      return ctx.reply(
-        'Использование: создать [количество_активаций] [название_промо] [тип_приза] [количество_приза] [статус_игрока]\n\n' +
-        'Доступные типы призов:\n' +
-        '• конт - GOLD-контейнер\n' +
-        '• пф - PF (баланс)\n' +
-        '• дф - DF (баланс)\n' +
-        '• нпф - NPF-акция\n\n' +
-        'ID статусов:\n' +
-        '• Администратор - 1\n' +
-        '• Тех админ - 2\n' +
-        '• Модератор - 3\n' +
-        '• DIAMOND - 4\n' +
-        '• PLATINUM - 5\n' +
-        '• GOLD - 6\n' +
-        '• Beto-tester - 7\n\n' +
-        'Если указать 0 в качестве минимального статуса, промокод станет доступен всем пользователям, независимо от их статуса.'
-      );
-    }
-
-    // Вызываем обработчик создания промокода
-    await createPromoHandler(ctx);
-  } catch (error) {
-    console.error('Ошибка при выполнении команды "создать":', error);
-    await ctx.reply('Произошла ошибка. Попробуйте позже.');
-  }
+'создать': async (ctx) => {
+  // Запускаем пошаговый процесс вместо требования аргументов
+  await startPromoCreationSession(ctx);
 },
 'рег': async (ctx) => {
   await registerHandler(ctx);
@@ -2564,6 +2538,12 @@ bot.on('text', async (ctx) => {
       const lowerText = text.toLowerCase();
       const chatId = ctx.chat?.id;
       const chatType = ctx.chat?.type;
+      // ПРОВЕРКА: Если пользователь в процессе создания промокода
+      const { handlePromoCreationMessage } = require('./handlers/promoHandler');
+      const handledByPromoFlow = await handlePromoCreationMessage(ctx);
+      if (handledByPromoFlow) {
+        return; // Прерываем дальнейшую обработку, сообщение ушло в сессию
+      }
 
       // Проверяем, является ли текущий чат игровым чатом "Угадай число"
       const isGuessNumberChat = chatId === GUESS_NUMBER_CHAT_ID;
@@ -4853,7 +4833,11 @@ bot.action('spin_fortune_wheel', async (ctx) => {
 bot.action('test_button', handleTestButton);
 bot.action('confirm_action', handleConfirmAction);
 
-
+// Обработчик кнопок создания промокода
+bot.action(/^promo_/, async (ctx) => {
+  const { handleCallback } = require('./handlers/promoHandler');
+  await handleCallback(ctx);
+});
 
 
 // Глобальный обработчик ошибок

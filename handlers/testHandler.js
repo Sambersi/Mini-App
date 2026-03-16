@@ -1,19 +1,25 @@
 // handlers/testHandler.js
 const { Markup } = require('telegraf');
+const path = require('path');
+const fs = require('fs');
 
-const userClicked = new Set();
-const extraMessageMap = new Map(); // userId → messageId второго сообщения
+// Используем Map для хранения состояния: userId -> 'image' | 'text'
+const userState = new Map();
+
+// Путь к тестовой картинке (замените на свой файл)
+// Убедитесь, что файл существует по этому пути относительно папки проекта
+const TEST_IMAGE_PATH = path.join(__dirname, '../images', 'girl.jpg'); 
 
 async function handleTestCommand(ctx) {
   const userId = ctx.from.id;
 
   // Сброс состояния
-  userClicked.delete(userId);
-  extraMessageMap.delete(userId);
+  userState.delete(userId);
 
-  const messageText = `🔹 Тестовое сообщение.\nНажмите кнопку ниже.`;
+  const messageText = `🔹 Тестовое сообщение.\nНажмите кнопку ниже, чтобы увидеть картинку.`;
+  
   const keyboard = Markup.inlineKeyboard([
-    Markup.button.callback('🔄 Нажми меня', 'test_button')
+    Markup.button.callback('🔄 Показать картинку', 'test_button')
   ]);
 
   await ctx.reply(messageText, keyboard);
@@ -21,71 +27,93 @@ async function handleTestCommand(ctx) {
 
 async function handleTestButton(ctx) {
   const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  let messageText;
+  const currentState = userState.get(userId) || 'text';
+  
+  let newState;
+  let messageCaption;
   let buttonText;
-  let shouldSendOrEditExtra = false;
-  let isNewClick = false;
+  let needToSendImage = false;
+  let needToRemoveImage = false;
 
-  if (userClicked.has(userId)) {
-    // Возврат к исходному состоянию
-    messageText = `🔹 Тестовое сообщение.\nНажмите кнопку ниже.`;
-    buttonText = '🔄 Нажми меня';
-    userClicked.delete(userId);
-    shouldSendOrEditExtra = true; // редактируем доп. сообщение
+  if (currentState === 'text') {
+    // ПЕРЕХОД К КАРТИНКЕ
+    newState = 'image';
+    messageCaption = `✅ <b>Картинка загружена!</b>\n\nЭто сообщение теперь содержит изображение и кнопку подтверждения.`;
+    buttonText = '↩️ Вернуть текст';
+    needToSendImage = true;
   } else {
-    // Первое нажатие
-    messageText = `✅ Кнопка нажата!\nСостояние изменено.`;
-    buttonText = '↩️ Вернуть';
-    userClicked.add(userId);
-    isNewClick = true;
-    shouldSendOrEditExtra = true; // отправляем доп. сообщение
+    // ВОЗВРАТ К ТЕКСТУ
+    newState = 'text';
+    messageCaption = `🔹 Тестовое сообщение.\nНажмите кнопку ниже, чтобы увидеть картинку.`;
+    buttonText = '🔄 Показать картинку';
+    needToRemoveImage = true;
   }
 
-  // Редактируем исходное сообщение
-  await ctx.editMessageText(messageText, {
-    parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([
-      Markup.button.callback(buttonText, 'test_button')
-    ])
-  });
-
-  // Работа с дополнительным сообщением
-  if (shouldSendOrEditExtra) {
-    if (isNewClick) {
-      // Отправляем новое дополнительное сообщение (без кнопки)
-      const extraMsg = await ctx.reply(`📩 Это дополнительное сообщение.`);
-      extraMessageMap.set(userId, extraMsg.message_id);
-    } else {
-      // Редактируем существующее дополнительное сообщение — добавляем кнопку
-      const extraMsgId = extraMessageMap.get(userId);
-      if (extraMsgId) {
-        await ctx.telegram.editMessageText(
-          chatId,
-          extraMsgId,
-          undefined,
-          `📩 Это дополнительное сообщение. Кнопка добавлена!`,
-          {
-            parse_mode: 'HTML',
-            ...Markup.inlineKeyboard([
-              Markup.button.callback('✅ Подтвердить', 'confirm_action')
-            ])
-          }
-        );
-        // Опционально: удаляем из мапы, если больше не нужно
-        // extraMessageMap.delete(userId);
+  try {
+    if (needToSendImage) {
+      // Проверяем наличие файла
+      if (!fs.existsSync(TEST_IMAGE_PATH)) {
+        return ctx.answerCbQuery('❌ Ошибка: Файл картинки не найден на сервере!', { show_alert: true });
       }
+
+      // Используем editMessageMedia для замены текста на фото
+      await ctx.editMessageMedia(
+        {
+          type: 'photo',
+          media: { source: TEST_IMAGE_PATH },
+          caption: messageCaption,
+          parse_mode: 'HTML'
+        },
+        Markup.inlineKeyboard([
+          Markup.button.callback(buttonText, 'test_button'),
+          Markup.button.callback('✅ Подтвердить', 'confirm_action')
+        ])
+      );
+    } 
+    else if (needToRemoveImage) {
+      // Используем editMessageMedia для замены фото на текст (пустой медиа-группы не бывает, 
+      // но мы можем отправить "пустую" картинку-заглушку или просто изменить текст, если бы это был альбом.
+      // НО! Telegram НЕ позволяет заменить Фото на Текст через editMessageMedia напрямую.
+      // РАБОЧЕЕ РЕШЕНИЕ: Удалить сообщение и отправить новое, ИЛИ использовать трюк.
+      
+      // Самый надежный способ без удаления: 
+      // К сожалению, API Telegram строго запрещает менять тип медиа (Photo -> Text).
+      // Единственный плавный вариант без удаления сообщения — это заменить текущее фото на ДРУГОЕ фото (например, черный квадрат),
+      // либо удалить сообщение и отправить новое.
+      
+      // ВАРИАНТ А (Удаление и отправка нового - самый чистый):
+      await ctx.deleteMessage();
+      await ctx.reply(messageCaption, Markup.inlineKeyboard([
+        Markup.button.callback(buttonText, 'test_button')
+      ]));
+      
+      // Обновляем состояние (хотя сообщение уже новое, мапа нужна для логики внутри сессии, если нужно)
+      userState.set(userId, newState);
+      await ctx.answerCbQuery();
+      return;
+    }
+    
+    // Если мы отправили картинку, обновляем состояние
+    if (needToSendImage) {
+      userState.set(userId, newState);
+    }
+
+    await ctx.answerCbQuery();
+
+  } catch (error) {
+    console.error('Ошибка при редактировании медиа:', error);
+    // Обработка ошибки 400, если сообщение слишком старое для редактирования
+    if (error.description && error.description.includes('message can\'t be edited')) {
+      await ctx.answerCbQuery('⚠️ Сообщение слишком старое для редактирования. Используйте команду /кнопка заново.', { show_alert: true });
+    } else {
+      await ctx.answerCbQuery('❌ Произошла ошибка.', { show_alert: true });
     }
   }
-
-  await ctx.answerCbQuery();
 }
 
-// Опционально: обработчик для новой кнопки
 async function handleConfirmAction(ctx) {
-  await ctx.answerCbQuery('✅ Подтверждено!');
-  // Дополнительная логика по необходимости
+  await ctx.answerCbQuery('✅ Действие подтверждено!', { show_alert: true });
+  // Здесь можно добавить логику выдачи награды или перехода дальше
 }
 
 module.exports = {

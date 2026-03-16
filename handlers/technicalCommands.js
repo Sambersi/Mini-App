@@ -4,7 +4,8 @@ const { getUserById, giveItemToUser, getTopPlayersByCardBalance,
   getUserWeapons, getCurrentWeaponDurability, getTopPlayersByBossDamage, getCurrentBoss, updateBossState, getTopPlayersByAttackPower,
   unblockTransfersByNumericId, subtractReferrals, toggleUserVisibilityInTop, isUserHiddenInTop, getTopReferrers, getCurrentEnergy, updateUserEnergy, isHyperlinkDisabled,
   areTransfersBlockedByNumericId, resetAccount, getTopPlayersByDfBalance, getTopPlayersByNpfShares, takeItemFromUser, getTopPlayersByContainers, getCardDetails, getDetailedTopPlayers, getDoubleStats, getReferralsByReferrerId, getTargetUserId, getFreeReservedNumericIds, updateNumericId, getUserStatuses, getUserByNumericId,   deleteUserAccount,
-  getSkinById, updateSkinPrice, getPlayerBalanceInfoByNumericId, setPlayerBalanceByNumericId} = require('../db');
+  getSkinById, updateSkinPrice, getPlayerBalanceInfoByNumericId, setPlayerBalanceByNumericId,
+  giveTicketsAdmin, takeTicketsAdmin} = require('../db');
 const {
   getPlural
 } = require('../handlers/referralSystem');
@@ -1970,6 +1971,108 @@ async function setBalanceHandler(ctx) {
   }
 }
 
+// Обработчик команды: выдать билетики
+async function giveTicketsHandler(ctx) {
+  try {
+    // Проверка прав администратора
+    if (!(await isAdmin(ctx))) {
+      return ctx.reply('❌ У вас нет прав для использования этой команды.');
+    }
+
+    const args = ctx.message.text.split(/\s+/);
+    if (args.length !== 3) {
+      return ctx.reply(
+        '❌ Использование: /выдать_билетики [numeric_id] [количество]\n' +
+        'Пример: /выдать_билетики 42 10'
+      );
+    }
+
+    const numericId = parseInt(args[1], 10);
+    const amount = parseInt(args[2], 10);
+
+    if (isNaN(numericId) || isNaN(amount)) {
+      return ctx.reply('❌ Numeric ID и количество должны быть числами.');
+    }
+
+    const result = giveTicketsAdmin(numericId, amount);
+
+    if (result.success) {
+      const user = getUserByNumericId(numericId);
+      const userLink = createUserLink(user.id, user.username);
+      
+      await ctx.replyWithHTML(
+        `✅ <b>Билетики выданы!</b>\n\n` +
+        `👤 Игрок: ${userLink}\n` +
+        `🎫 Выдано: <b>${amount}</b>\n` +
+        `💰 Новый баланс: <b>${result.newBalance}</b>`
+      );
+      
+      // Уведомление игроку
+      await ctx.telegram.sendMessage(
+        user.id, 
+        `🎁 <b>Административная выдача!</b>\n\nВам выдано <b>${amount}</b> билетиков фортуны.`,
+        { parse_mode: 'HTML' }
+      ).catch(() => {}); // Игнорируем, если бот заблокирован
+    } else {
+      await ctx.reply(`❌ ${result.message}`);
+    }
+  } catch (error) {
+    console.error('[GIVE_TICKETS] Ошибка:', error);
+    await ctx.reply('❌ Произошла ошибка при выдаче билетиков.');
+  }
+}
+
+// Обработчик команды: забрать билетики
+async function takeTicketsHandler(ctx) {
+  try {
+    // Проверка прав администратора
+    if (!(await isAdmin(ctx))) {
+      return ctx.reply('❌ У вас нет прав для использования этой команды.');
+    }
+
+    const args = ctx.message.text.split(/\s+/);
+    if (args.length !== 3) {
+      return ctx.reply(
+        '❌ Использование: /забрать_билетики [numeric_id] [количество]\n' +
+        'Пример: /забрать_билетики 42 5'
+      );
+    }
+
+    const numericId = parseInt(args[1], 10);
+    const amount = parseInt(args[2], 10);
+
+    if (isNaN(numericId) || isNaN(amount)) {
+      return ctx.reply('❌ Numeric ID и количество должны быть числами.');
+    }
+
+    const result = takeTicketsAdmin(numericId, amount);
+
+    if (result.success) {
+      const user = getUserByNumericId(numericId);
+      const userLink = createUserLink(user.id, user.username);
+      
+      await ctx.replyWithHTML(
+        `➖ <b>Билетики изъяты!</b>\n\n` +
+        `👤 Игрок: ${userLink}\n` +
+        `🎫 Изъято: <b>${amount}</b>\n` +
+        `💰 Новый баланс: <b>${result.newBalance}</b>`
+      );
+
+      // Уведомление игроку
+      await ctx.telegram.sendMessage(
+        user.id, 
+        `⚠️ <b>Списание билетиков!</b>\n\nАдминистратор изъял у вас <b>${amount}</b> билетиков фортуны.\nТекущий баланс: ${result.newBalance}.`,
+        { parse_mode: 'HTML' }
+      ).catch(() => {});
+    } else {
+      await ctx.reply(`❌ ${result.message}`);
+    }
+  } catch (error) {
+    console.error('[TAKE_TICKETS] Ошибка:', error);
+    await ctx.reply('❌ Произошла ошибка при изъятии билетиков.');
+  }
+}
+
 module.exports = {
   idHandler,
   profHandler,
@@ -2004,5 +2107,7 @@ module.exports = {
   checkMasterHandler,
   infoBalanceHandler,
   setBalanceHandler,
-  isPartnerManager
+  isPartnerManager,
+  giveTicketsHandler,
+  takeTicketsHandler,
 };                   
