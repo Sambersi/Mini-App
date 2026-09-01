@@ -1,9 +1,9 @@
 {
   "globalRound": {
-    "hash": "012525a78749edebcf95eff00510b347",
-    "result": "x3",
-    "salt": "4y4j77kxmt4",
-    "endTime": 1773692004931,
+    "hash": "ec4066f6dd255e197d30ec3bd048249c",
+    "result": "x2",
+    "salt": "oriw2yam4m",
+    "endTime": 1773772984517,
     "warnedAboutFiveSeconds": false,
     "warnedAboutGameNotification": false,
     "notifiedAboutGameButtons": false,

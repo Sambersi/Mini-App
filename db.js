@@ -705,6 +705,19 @@ db.prepare(`
   )
 `).run();
 
+// Проверка и добавление колонки expires_at для временных промокодов
+try {
+  const cols = db.prepare("PRAGMA table_info(promos)").all();
+  if (!cols.some(c => c.name === 'expires_at')) {
+    db.prepare("ALTER TABLE promos ADD COLUMN expires_at INTEGER DEFAULT NULL").run();
+    console.log('✅ Колонка expires_at успешно добавлена в таблицу promos');
+  } else {
+    // Опционально: можно убрать логирование, если колонка уже есть
+    // console.log('ℹ️ Колонка expires_at уже существует в таблице promos');
+  }
+} catch (e) { 
+  console.error('❌ Ошибка при проверке/добавлении колонки expires_at:', e); 
+}
 
 // Создание таблицы promo_activations
 db.prepare(`
@@ -1875,23 +1888,46 @@ function getMuteList(chatId) {
   }
 }
 
+// В файле db.js найдите функцию activatePromo и замените её полностью:
+
 function activatePromo(promoId, userId) {
   try {
     const promo = getPromoById(promoId);
+    
     if (!promo) {
       return { success: false, message: 'Промокод не найден.' };
     }
-    if (promo.activations_left <= 0) {
+
+    const now = Math.floor(Date.now() / 1000);
+
+    // 1. ПРОВЕРКА ВРЕМЕНИ (для временных промокодов)
+    // Если есть expires_at и текущее время больше времени истечения
+    if (promo.expires_at && now > promo.expires_at) {
+      // Опционально: можно удалить промокод прямо здесь или оставить это фоновой задаче
+      // deletePromoById(promoId); 
+      return { success: false, message: 'Срок действия промокода истек.' };
+    }
+
+    // 2. ПРОВЕРКА АКТИВАЦИЙ (только если промокод НЕ временный)
+    // Временные промокоды имеют activations_left = -1
+    if (promo.activations_left !== -1 && promo.activations_left <= 0) {
       return { success: false, message: 'Активации промокода исчерпаны.' };
     }
 
-    // Уменьшаем количество активаций
-    const updateStmt = db.prepare('UPDATE promos SET activations_left = activations_left - 1 WHERE id = ?');
-    updateStmt.run(promoId);
+    // Уменьшаем количество активаций, ТОЛЬКО если это не временный промокод
+    if (promo.activations_left !== -1) {
+      const updateStmt = db.prepare('UPDATE promos SET activations_left = activations_left - 1 WHERE id = ?');
+      updateStmt.run(promoId);
+    }
 
     // Начисляем приз пользователю
     const result = updateUserField(userId, promo.prize_type, promo.prize_amount);
     if (!result.success) {
+      // Если начисление не удалось, возвращаем активацию обратно (если не временный)
+      if (promo.activations_left !== -1) {
+        const rollbackStmt = db.prepare('UPDATE promos SET activations_left = activations_left + 1 WHERE id = ?');
+        rollbackStmt.run(promoId);
+      }
       return { success: false, message: 'Не удалось начислить приз.' };
     }
 
@@ -4874,6 +4910,27 @@ function takeTicketsAdmin(numericId, amount) {
   }
 }
 
+// Получить все активные промокоды с истекшим временем
+function getExpiredPromos() {
+  const now = Math.floor(Date.now() / 1000);
+  const stmt = db.prepare('SELECT id, name FROM promos WHERE expires_at IS NOT NULL AND expires_at < ? AND activations_left = -1');
+  return stmt.all(now);
+}
+
+// Удалить промокод по ID (уже есть, но убедимся что экспортируется)
+// deletePromoById уже существует
+
+// Функция очистки (вызывать из бота)
+function cleanupExpiredPromos() {
+  const expired = getExpiredPromos();
+  let count = 0;
+  for (const promo of expired) {
+    deletePromoById(promo.id);
+    count++;
+    console.log(`[AUTO] Промокод "${promo.name}" удален по истечению времени.`);
+  }
+  return count;
+}
 
 // Экспортируем функции
 module.exports = {
@@ -5105,4 +5162,5 @@ module.exports = {
   getSecretGifts,
   addSecretGift,
   takeSecretGift,
+  getExpiredPromos, cleanupExpiredPromos,
 };

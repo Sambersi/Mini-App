@@ -1,0 +1,9 @@
+node_modules/
+.env
+database.sqlite
+logs/
+data/
+backups/
+user_cards/
+promo_images/
+temp/

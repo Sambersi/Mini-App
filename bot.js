@@ -819,6 +819,19 @@ bot.command('sequential', startSequentialInput);
 // Обработчик кнопки отмены последовательного ввода
 bot.action('sequential_cancel', handleCancel);
 
+// Запуск задачи очистки просроченных промокодов каждые 60 секунд
+setInterval(() => {
+  try {
+    const { cleanupExpiredPromos } = require('./db');
+    const deletedCount = cleanupExpiredPromos();
+    if (deletedCount > 0) {
+      console.log(`[AUTO] Удалено ${deletedCount} просроченных промокодов.`);
+    }
+  } catch (error) {
+    console.error('Ошибка при очистке промокодов:', error);
+  }
+}, 60000); // 60000 мс = 1 минута
+
 // Универсальная функция для обработки многословных команд
 function processMultiWordCommand(ctx, commandsMap) {
     const text = ctx.message.text.trim().toLowerCase();
