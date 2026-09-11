@@ -1,9 +1,12 @@
 const { 
   getUserByNumericId, 
+  getUserByAnyId,
+  getUserByUsername,
   updateUserBalanceByNumericId,
   getUserStatuses,
-  updateUserNotifications, // Функция для обновления настроек уведомлений
-  getUserNotificationSettings // Функция для получения настроек уведомлений
+  updateUserNotifications, 
+  getUserNotificationSettings,
+  logAdminItem // Импортируем новую функцию логирования
 } = require('../db');
 
 // Функция для проверки, является ли пользователь главным администратором
@@ -43,6 +46,25 @@ function parseAmountWithSuffix(amountInput) {
   return Math.floor(baseAmount);
 }
 
+// Функция для поиска пользователя по numeric_id, telegram_id или никнейму
+function resolveUser(identifier) {
+  if (!identifier) return null;
+  const cleanId = identifier.replace(/^@/, ''); // Убираем @, если есть
+  
+  let user = null;
+  // Если строка состоит только из цифр, ищем по ID (numeric_id или telegram_id)
+  if (/^\d+$/.test(cleanId)) {
+    user = getUserByAnyId(cleanId);
+  }
+  
+  // Если не нашли по ID или ввели никнейм, ищем по нику
+  if (!user) {
+    user = getUserByUsername(cleanId);
+  }
+  
+  return user;
+}
+
 // Создаем клавиатуру с кнопкой отключения уведомлений
 function createNotificationKeyboard(userId) {
   return {
@@ -51,36 +73,6 @@ function createNotificationKeyboard(userId) {
       callback_data: `disable_notifications:${userId}`
     }]]
   };
-}
-
-// Обработчик нажатия на кнопку отключения уведомлений
-async function handleNotificationButton(ctx) {
-  try {
-    const [action, userId] = ctx.callbackQuery.data.split(':');
-    if (action !== 'disable_notifications') return;
-
-    // Проверяем, является ли пользователь тем, кто нажал кнопку
-    if (ctx.from.id.toString() !== userId) {
-      return ctx.answerCbQuery('❌ Вы не можете изменять настройки других пользователей.');
-    }
-    
-    // Обновляем настройки уведомлений в базе данных
-    await updateUserNotifications(userId, false);
-    
-    // Удаляем кнопку и отправляем подтверждение
-    await ctx.editMessageReplyMarkup({});
-    await ctx.reply(`
-🔕 Вы успешно отключили уведомления о пополнениях и списаниях.
-
-❕Чтобы снова включить уведомления, используйте кнопку ниже(либо команду "уведы вкл"):
-    `.trim(), {
-      reply_markup: createEnableNotificationsKeyboard(),
-      parse_mode: 'Markdown'
-    });
-  } catch (error) {
-    console.error('Ошибка при отключении уведомлений:', error);
-    await ctx.reply('Произошла ошибка при отключении уведомлений.');
-  }
 }
 
 // Создаем клавиатуру с кнопкой включения уведомлений
@@ -99,20 +91,16 @@ async function handleNotificationButton(ctx) {
     const [action, userId] = ctx.callbackQuery.data.split(':');
     if (action !== 'disable_notifications') return;
 
-    // Проверяем, является ли пользователь тем, кто нажал кнопку
     if (ctx.from.id.toString() !== userId) {
       return ctx.answerCbQuery('❌ Вы не можете изменять настройки других пользователей.');
     }
     
-    // Обновляем настройки уведомлений в базе данных
     await updateUserNotifications(userId, false);
-    
-    // Удаляем кнопку и отправляем подтверждение
     await ctx.editMessageReplyMarkup({});
     await ctx.reply(`
-🔕Вы успешно отключили уведомления о пополнениях, списаниях и переводах.
+🔕 Вы успешно отключили уведомления о пополнениях, списаниях и переводах.
 
-❕ Чтобы снова включить уведомления, используйте кнопку ниже:
+❕ Чтобы снова включить уведомления, используйте кнопку ниже (либо команду "уведы вкл"):
     `.trim(), {
       reply_markup: createEnableNotificationsKeyboard(),
       parse_mode: 'Markdown'
@@ -122,23 +110,18 @@ async function handleNotificationButton(ctx) {
     await ctx.reply('Произошла ошибка при отключении уведомлений.');
   }
 }
+
 // Обработка команды "уведы выкл"
 async function disableNotificationsHandler(ctx) {
   try {
     const userId = ctx.from.id.toString();
-
-    // Проверяем текущие настройки уведомлений пользователя
     const notificationSettings = await getUserNotificationSettings(userId);
 
-    // Если уведомления уже отключены
     if (!notificationSettings?.enabled) {
       return ctx.reply('🔕 Уведомления уже отключены.');
     }
 
-    // Отключаем уведомления в базе данных
     await updateUserNotifications(userId, false);
-
-    // Отправляем подтверждение пользователю
     await ctx.reply(`
 🔕 Уведомления успешно отключены.
 
@@ -152,15 +135,12 @@ async function disableNotificationsHandler(ctx) {
     await ctx.reply('Произошла ошибка при отключении уведомлений.');
   }
 }
+
 // Обработчик нажатия на кнопку включения уведомлений
 async function handleEnableNotificationsButton(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    
-    // Включаем уведомления в базе данных
     await updateUserNotifications(userId, true);
-    
-    // Удаляем кнопку и отправляем подтверждение
     await ctx.editMessageReplyMarkup({});
     await ctx.reply('🔔 Уведомления успешно включены.');
   } catch (error) {
@@ -173,10 +153,7 @@ async function handleEnableNotificationsButton(ctx) {
 async function enableNotificationsHandler(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    
-    // Включаем уведомления в базе данных
     await updateUserNotifications(userId, true);
-    
     await ctx.reply('🔔 Уведомления успешно включены.');
   } catch (error) {
     console.error('Ошибка при включении уведомлений:', error);
@@ -187,16 +164,12 @@ async function enableNotificationsHandler(ctx) {
 // Модифицированная функция отправки уведомления пользователю
 async function sendUserNotification(ctx, userId, message) {
   try {
-    // Получаем настройки уведомлений пользователя
     const notificationSettings = await getUserNotificationSettings(userId);
-    
-    // Если уведомления отключены - прерываем выполнение
     if (!notificationSettings?.enabled) {
       console.log(`[INFO] Уведомление для пользователя ${userId} не отправлено (уведомления отключены)`);
       return;
     }
     
-    // Отправляем сообщение с кнопкой отключения уведомлений
     await ctx.telegram.sendMessage(userId, message, {
       reply_markup: createNotificationKeyboard(userId),
       parse_mode: 'HTML'
@@ -217,16 +190,12 @@ async function addBalanceHandler(ctx) {
     const parts = text.split(/\s+/);
 
     if (parts.length !== 4 || parts[0].toLowerCase() !== 'выдать') {
-      return ctx.reply('Использование: выдать [тип] [ID игрока] [сумма]');
+      return ctx.reply('Использование: выдать [тип] [ID/Ник] [сумма]');
     }
 
     const type = parts[1].toLowerCase();
-    const numericId = parseInt(parts[2], 10);
+    const identifier = parts[2];
     const amountInput = parts[3];
-
-    if (isNaN(numericId)) {
-      return ctx.reply('Некорректный числовой ID пользователя.');
-    }
 
     if (type !== 'пф') {
       return ctx.reply('Неподдерживаемый тип приза. Используйте "пф".');
@@ -247,17 +216,27 @@ async function addBalanceHandler(ctx) {
       return ctx.reply('У вас нет прав для использования этой команды.');
     }
 
-    const user = await getUserByNumericId(numericId);
+    const user = resolveUser(identifier);
     if (!user) {
-      return ctx.reply('Пользователь с указанным numeric_id не найден.');
+      return ctx.reply('Пользователь с указанным ID или никнеймом не найден.');
     }
 
-    const result = await updateUserBalanceByNumericId(numericId, amount);
+    const result = await updateUserBalanceByNumericId(user.numeric_id, amount);
     if (!result.success) {
+      // Логируем неудачу в БД
+      logAdminItem({
+        adminId: ctx.from.id,
+        targetUserId: user.id,
+        direction: 'give',
+        itemType: 'balance',
+        amount: amount,
+        comment: result.message || 'Ошибка обновления',
+        success: false
+      });
       return ctx.reply(result.message || 'Не удалось обновить баланс.');
     }
 
-    const updatedUser = await getUserByNumericId(numericId);
+    const updatedUser = await getUserByNumericId(user.numeric_id);
     if (!updatedUser) {
       return ctx.reply('Произошла ошибка при получении обновленного баланса.');
     }
@@ -279,10 +258,21 @@ async function addBalanceHandler(ctx) {
 💰 Ваш текущий баланс: ${newBalance.toLocaleString('ru-RU')} PF.
     `.trim();
 
-    await sendUserNotification(ctx, user.id, userMessage); // Передаем ctx
+    await sendUserNotification(ctx, user.id, userMessage); 
 
-    // Логирование выдачи администратором для указанных ID
-    const LOG_GIVE_CHAT_ID = process.env.LOG_GIVE_CHAT_ID; // Получаем ID чата для логов из переменных окружения
+    // Логирование в новую систему логов (finance_log)
+    logAdminItem({
+      adminId: ctx.from.id,
+      targetUserId: user.id,
+      direction: 'give',
+      itemType: 'balance',
+      amount: amount,
+      comment: 'Выдача PF',
+      success: true
+    });
+
+    // Логирование выдачи администратором для указанных ID (старый лог в чат)
+    const LOG_GIVE_CHAT_ID = process.env.LOG_GIVE_CHAT_ID; 
     const adminId = ctx.from.id.toString();
     const loggingAdminIds = ["6891998751", "1751938104", "1901352625"];
     
@@ -295,7 +285,6 @@ async function addBalanceHandler(ctx) {
 • Количество: <b>${amount.toLocaleString('ru-RU')}</b>
 `.trim();
 
-      // Отправляем лог в специальный чат
       ctx.telegram.sendMessage(LOG_GIVE_CHAT_ID, logMessage, { parse_mode: 'HTML' })
         .catch((error) => {
           console.error('Ошибка при отправке лога выдачи:', error);
@@ -318,16 +307,12 @@ async function removeBalanceHandler(ctx) {
     const parts = text.split(/\s+/);
 
     if (parts.length !== 4 || parts[0].toLowerCase() !== 'забрать') {
-      return ctx.reply('Использование: забрать [тип] [ID игрока] [сумма]');
+      return ctx.reply('Использование: забрать [тип] [ID/Ник] [сумма]');
     }
 
     const type = parts[1].toLowerCase();
-    const numericId = parseInt(parts[2], 10);
+    const identifier = parts[2];
     const amountInput = parts[3];
-
-    if (isNaN(numericId)) {
-      return ctx.reply('Некорректный числовой ID пользователя.');
-    }
 
     if (type !== 'пф') {
       return ctx.reply('Неподдерживаемый тип приза. Используйте "пф".');
@@ -348,21 +333,31 @@ async function removeBalanceHandler(ctx) {
       return ctx.reply('У вас нет прав для использования этой команды.');
     }
 
-    const user = await getUserByNumericId(numericId);
+    const user = resolveUser(identifier);
     if (!user) {
-      return ctx.reply('Пользователь с указанным numeric_id не найден.');
+      return ctx.reply('Пользователь с указанным ID или никнеймом не найден.');
     }
 
     if (user.balance < amount) {
       return ctx.reply('Недостаточно средств на балансе пользователя.');
     }
 
-    const result = await updateUserBalanceByNumericId(numericId, -amount);
+    const result = await updateUserBalanceByNumericId(user.numeric_id, -amount);
     if (!result.success) {
+      // Логируем неудачу в БД
+      logAdminItem({
+        adminId: ctx.from.id,
+        targetUserId: user.id,
+        direction: 'take',
+        itemType: 'balance',
+        amount: amount,
+        comment: result.message || 'Ошибка обновления',
+        success: false
+      });
       return ctx.reply(result.message || 'Не удалось обновить баланс.');
     }
 
-    const updatedUser = await getUserByNumericId(numericId);
+    const updatedUser = await getUserByNumericId(user.numeric_id);
     if (!updatedUser) {
       return ctx.reply('Произошла ошибка при получении обновленного баланса.');
     }
@@ -384,7 +379,18 @@ async function removeBalanceHandler(ctx) {
 💰 Ваш текущий баланс: ${newBalance.toLocaleString('ru-RU')} PF.
     `.trim();
 
-    await sendUserNotification(ctx, user.id, userMessage); // Передаем ctx
+    await sendUserNotification(ctx, user.id, userMessage); 
+
+    // Логирование в новую систему логов (finance_log)
+    logAdminItem({
+      adminId: ctx.from.id,
+      targetUserId: user.id,
+      direction: 'take',
+      itemType: 'balance',
+      amount: amount,
+      comment: 'Списание PF',
+      success: true
+    });
   } catch (error) {
     console.error('Ошибка при выполнении команды "забрать":', error);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');

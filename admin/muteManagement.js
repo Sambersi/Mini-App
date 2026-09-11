@@ -1,5 +1,5 @@
 const { addMute, removeMute, isUserMuted, getMuteList } = require('../db');
-const { getUserByNumericId, getUserStatuses } = require('../db');
+const { getUserByNumericId, getUserStatuses, logModeration } = require('../db');
 const { Telegraf } = require('telegraf');
 
 // Функция для проверки, является ли пользователь главным администратором
@@ -273,7 +273,7 @@ async function muteUserHandler(ctx) {
       // Если не удалось ограничить пользователя, удаляем запись из базы данных
       await removeMute(userToMute.id, chatId);
       
-      if (restrictError.response && restrictError.response.error_code === 400) {
+      if (restrictError.response && restrictError.response_code === 400) {
         if (restrictError.response.description.includes('not enough rights')) {
           return ctx.reply('❕ У бота недостаточно прав для ограничения этого пользователя. Возможно, пользователь является администратором.');
         } else if (restrictError.response.description.includes('user is an administrator')) {
@@ -285,6 +285,18 @@ async function muteUserHandler(ctx) {
       
       throw restrictError; // Перебрасываем ошибку, если она другого типа
     }
+
+    // === ЛОГ: мут в finance_log (только после успешного restrictChatMember) ===
+    logModeration({
+      adminId: senderId,
+      targetUserId: userToMute.id,
+      type: 'mute',
+      chatId: chatId,
+      chatTitle: ctx.chat?.title || null, 
+      reason: reason,
+      durationHours: muteHours,
+      success: 1,
+    });
 
     // Формируем сообщение администратору
     const username = userToMute.username || 'Неизвестный';
@@ -357,7 +369,7 @@ async function unmuteUserHandler(ctx) {
     }
 
     if (!ctx.message || !ctx.message.text || ctx.message.text.trim() === '') {
-      console.warn('❕ Получено некорректное сообщение без текста.');
+      console.warn('Получено некорректное сообщение без текста.');
       return ctx.reply('❕ Некорректное сообщение. Команда должна содержать текст.');
     }
 
@@ -434,6 +446,16 @@ async function unmuteUserHandler(ctx) {
       
       throw restrictError; // Перебрасываем ошибку, если она другого типа
     }
+
+    // === ЛОГ: размут в finance_log (только после успешного restrictChatMember) ===
+    logModeration({
+      adminId: senderId,
+      targetUserId: userToUnmute.id,
+      type: 'unmute',
+      chatId: chatId,
+      chatTitle: ctx.chat?.title || null, // <--- ДОБАВЛЕНО: Название чата
+      success: 1,
+    });
 
     // Формируем сообщение администратору
     const username = userToUnmute.username || 'Неизвестный';

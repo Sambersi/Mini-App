@@ -5,7 +5,7 @@ const { getUserById, giveItemToUser, getTopPlayersByCardBalance,
   unblockTransfersByNumericId, subtractReferrals, toggleUserVisibilityInTop, isUserHiddenInTop, getTopReferrers, getCurrentEnergy, updateUserEnergy, isHyperlinkDisabled,
   areTransfersBlockedByNumericId, resetAccount, getTopPlayersByDfBalance, getTopPlayersByNpfShares, takeItemFromUser, getTopPlayersByContainers, getCardDetails, getDetailedTopPlayers, getDoubleStats, getReferralsByReferrerId, getTargetUserId, getFreeReservedNumericIds, updateNumericId, getUserStatuses, getUserByNumericId,   deleteUserAccount,
   getSkinById, updateSkinPrice, getPlayerBalanceInfoByNumericId, setPlayerBalanceByNumericId,
-  giveTicketsAdmin, takeTicketsAdmin} = require('../db');
+  giveTicketsAdmin, takeTicketsAdmin, getUserLogs} = require('../db');
 const {
   getPlural
 } = require('../handlers/referralSystem');
@@ -2073,6 +2073,30 @@ async function takeTicketsHandler(ctx) {
   }
 }
 
+
+async function logsHandler(ctx) {
+    if (!(await isAdmin(ctx))) return ctx.reply('❌ Нет прав.');
+    
+    const args = ctx.message.text.split(/\s+/).slice(1);
+    if (args.length < 1) return ctx.reply('Использование: /logs [numeric_id] [filter]\nФильтры: all, messages, actions, double, dice');
+    
+    const numericId = parseInt(args[0], 10);
+    const filter = args[1] || 'all';
+    
+    const user = await getUserByNumericId(numericId);
+    if (!user) return ctx.reply('❌ Пользователь не найден.');
+    
+    const logsText = getUserLogs(user.id, filter, 30);
+    const message = `📜 <b>Логи игрока ${user.username} (ID: ${numericId})</b>\nФильтр: <code>${filter}</code>\n\n${logsText || 'Логов не найдено.'}`;
+    
+    // Разбиваем на части, если сообщение слишком длинное (Telegram лимит 4096)
+    const chunks = message.match(/[\s\S]{1,4000}/g) || [];
+    for (const chunk of chunks) {
+        await ctx.replyWithHTML(chunk);
+    }
+}
+
+
 module.exports = {
   idHandler,
   profHandler,
@@ -2110,4 +2134,6 @@ module.exports = {
   isPartnerManager,
   giveTicketsHandler,
   takeTicketsHandler,
+  logsHandler
+
 };                   

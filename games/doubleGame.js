@@ -304,7 +304,10 @@ handleBet = async (userId, username, multiplier, amount, chatId) => {
 
       // Сохраняем ставку в базу данных
       await saveBet(userId, chatId, username, multiplier, amount, this.globalRound.hash);
-
+      const { logDoubleGame } = require('../db');
+      // В handleBet (проигрыш/ставка):
+      logDoubleGame(userId, chatId, this.globalRound.hash, multiplier, amount, false, 0, Math.floor(Date.now() / 1000));
+     
       // Очищаем регистрацию ставки GAME после успешной обработки
       if (multiplier === 'GAME') {
           delete this.activeGameBets[userId];
@@ -544,6 +547,16 @@ endRound = async (bot) => {
                   winAmount = betGroup.amount * multiplierValue;
                 }
               }
+
+              // === ВСТАВКА ЛОГИРОВАНИЯ ===
+              try {
+                // Передаем isWin вместо true для корректного логирования как побед, так и поражений
+                logDoubleGame(userId, chatId, hash, multiplier, betGroup.amount, isWin, winAmount, Math.floor(Date.now() / 1000));
+              } catch (logErr) {
+                logToFile(`[ERROR] [endRound] Ошибка логирования double_game для userId=${userId}: ${logErr.message}`);
+              }
+              // ===========================
+
 
               for (const detail of betGroup.details) {
                  // --- Изменение 2: Добавлено логирование ошибок сохранения деталей ---

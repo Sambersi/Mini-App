@@ -12,6 +12,7 @@ const {
     areTransfersBlockedByNumericId,
     getCardLevel, // Импортируем для получения уровня
     getCardLimitByLevel, 
+    logFinance,
   } = require('../db');
   const { createUserLink } = require('../utils/userLink'); // Импортируем функцию для создания ссылок
   
@@ -178,6 +179,23 @@ async function performTransfer(ctx, sender, recipient, amountInput) {
           }
       });
 
+      // === НОВОЕ: Логирование в finance_log ===
+      logFinance({
+        type: 'transfer',
+        actorUserId: sender.id,           // Telegram ID отправителя
+        targetUserId: recipient.id,       // Telegram ID получателя
+        amount: transferAmount,
+        currency: 'PF_CARD',              // Перевод с карты
+        action: `Перевод ${transferAmount.toLocaleString('ru-RU')} PF игроку ${recipient.username || 'Неизвестный'}`,
+        payload: {
+            senderNumericId: sender.numeric_id,
+            recipientNumericId: recipient.numeric_id,
+            senderUsername: sender.username,
+            recipientUsername: recipient.username
+        }
+    });
+      // =======================================
+
       // Создаем гиперссылки для отправителя и получателя
       const senderLink = await createUserLink(sender.id);
       const recipientLink = await createUserLink(recipient.id);
@@ -205,7 +223,7 @@ async function performTransfer(ctx, sender, recipient, amountInput) {
 
       await sendUserNotification(ctx, recipient.id, userMessage);
 
-      // Логирование транзакций, если сумма больше или равна 10,000 PF
+      // Логирование транзакций в Telegram-чат (если сумма >= 50k), оставляем как есть для оперативности
       if (transferAmount >= 50000 && LOG_CHAT_T_ID) {
           const logMessage = `
 🔔 Новая транзакция:
@@ -221,6 +239,20 @@ async function performTransfer(ctx, sender, recipient, amountInput) {
       }
   } catch (error) {
       console.error('Ошибка при выполнении перевода:', error);
+      
+      // Логируем ошибку в finance_log (опционально, можно убрать если не нужно)
+      /*
+      logFinance({
+          type: 'transfer',
+          actorUserId: sender.id,
+          targetUserId: recipient.id,
+          amount: 0,
+          currency: 'PF_CARD',
+          action: `Ошибка перевода: ${error.message}`,
+          success: 0
+      });
+      */
+
       // Отправляем более конкретное сообщение об ошибке, если она произошла внутри транзакции
       if (error.message.includes('средств')) {
            ctx.reply(`❌ ${error.message}`);

@@ -72,6 +72,10 @@ const newColumns = [
   { name: 'empire_is_hidden', type: 'INTEGER DEFAULT 0' }, // Скрыть ли из топа империй
   { name: 'tickets', type: 'INTEGER DEFAULT 0' },  
   { name: 'secret_gifts', type: 'INTEGER DEFAULT 0' },
+  
+  { name: 'last_message_ts', type: 'INTEGER DEFAULT 0' }, // Время (мс) последнего сообщения в боте
+  { name: 'last_app_ts', type: 'INTEGER DEFAULT 0' }, // Время (мс) последнего пинга из Mini App
+  { name: 'total_messages', type: 'INTEGER DEFAULT 0' }, // Счётчик сообщений за всё время
   // { name: '', type: '' },
   // { name: '', type: '' }
 ];
@@ -4932,6 +4936,565 @@ function cleanupExpiredPromos() {
   return count;
 }
 
+// Создание таблицы для логирования сообщений
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS message_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      ts INTEGER NOT NULL,
+      chat_type TEXT NOT NULL,
+      chat_id TEXT NOT NULL,
+      chat_title TEXT DEFAULT NULL,
+      message_text TEXT NOT NULL,
+      is_command INTEGER DEFAULT 0
+  )
+  `).run();
+  
+  // Создание индексов для оптимизации выборок и очистки
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_message_log_user_ts ON message_log(user_id, ts DESC)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_message_log_ts ON message_log(ts)`).run();
+
+
+/**
+ * Логирует сообщение пользователя.
+ * @param {string|number} userId - Telegram ID пользователя.
+ * @param {string} chatType - Тип чата (private, group, supergroup).
+ * @param {string|number} chatId - ID чата.
+ * @param {string|null} chatTitle - Название чата (null для лички).
+ * @param {string} messageText - Текст сообщения.
+ * @param {boolean} isCommand - Флаг команды.
+ */
+function logMessage(userId, chatType, chatId, chatTitle, messageText, isCommand = false) {
+  try {
+      // Обрезаем текст до 1024 символов согласно ТЗ
+      const truncatedText = messageText ? messageText.substring(0, 1024) : '';
+      const ts = Date.now(); // Время в миллисекундах
+      
+      const stmt = db.prepare(`
+          INSERT INTO message_log (user_id, ts, chat_type, chat_id, chat_title, message_text, is_command)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      stmt.run(
+          userId.toString(), 
+          ts, 
+          chatType, 
+          chatId.toString(), 
+          chatTitle, 
+          truncatedText, 
+          isCommand ? 1 : 0
+      );
+  } catch (error) {
+      console.error('[DB] Ошибка при логировании сообщения:', error);
+  }
+}
+
+/**
+* Получает последние N сообщений пользователя (по умолчанию 200).
+* Использует индекс idx_message_log_user_ts.
+*/
+function getUserMessageLog(userId, limit = 200) {
+  try {
+      const stmt = db.prepare(`
+          SELECT * FROM message_log 
+          WHERE user_id = ? 
+          ORDER BY ts DESC 
+          LIMIT ?
+      `);
+      return stmt.all(userId.toString(), limit);
+  } catch (error) {
+      console.error('[DB] Ошибка при получении лога сообщений:', error);
+      return [];
+  }
+}
+
+/**
+* Удаляет записи старше указанного количества дней (по умолчанию 30).
+* Использует индекс idx_message_log_ts.
+*/
+function cleanupOldMessageLogs(days = 30) {
+  try {
+      const cutoffTs = Date.now() - (days * 24 * 60 * 60 * 1000);
+      const stmt = db.prepare(`DELETE FROM message_log WHERE ts < ?`);
+      const info = stmt.run(cutoffTs);
+      console.log(`[DB] Очищено ${info.changes} старых записей из message_log.`);
+      return { success: true, deletedCount: info.changes };
+  } catch (error) {
+      console.error('[DB] Ошибка при очистке message_log:', error);
+      return { success: false, error: error.message };
+  }
+}
+
+
+// === ТАБЛИЦА ФИНАНСОВЫХ И АДМИН-ОПЕРАЦИЙ ===
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS finance_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,                -- время операции, мс
+      type TEXT NOT NULL,                 -- 'transfer' | 'donation' | 'promo' |
+                                          -- 'admin_give' | 'admin_take' | 'admin_set' |
+                                          -- 'ban' | 'unban' | 'mute' | 'unmute' | 'kick' |
+                                          -- 'block_transfers' | 'unblock_transfers'
+      actor_user_id TEXT NOT NULL,        -- инициатор: игрок ИЛИ админ
+      target_user_id TEXT DEFAULT NULL,   -- на кого направлено действие
+      amount INTEGER DEFAULT NULL,        -- сумма (NULL для бан/мут/кик)
+      currency TEXT DEFAULT NULL,         -- PF / DF / TICKET / ENERGY / CONTAINER_1... (NULL для модерации)
+      ref TEXT DEFAULT NULL,              -- имя промо / charge_id / сырой itemType / комментарий
+      chat_id TEXT DEFAULT NULL, 
+      chat_title TEXT DEFAULT NULL,           -- чат для mute/unmute/kick
+      reason TEXT DEFAULT NULL,           -- причина бан/мут/кик
+      action TEXT DEFAULT NULL,           -- ГОТОВЫЙ текст действия для таблицы логов
+      payload TEXT DEFAULT NULL,          -- JSON-детали (duration, banned_until и т.д.)
+      success INTEGER DEFAULT 1           -- 1 успех / 0 отказ
+  )
+  `).run();
+  
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_finance_actor ON finance_log(actor_user_id, ts)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_finance_target ON finance_log(target_user_id, ts)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_finance_type ON finance_log(type, ts)`).run();
+ 
+ // Проверка и добавление колонки chat_title если её нет
+try {
+  const colsFin = db.prepare("PRAGMA table_info(finance_log)").all();
+  if (!colsFin.some(c => c.name === 'chat_title')) {
+    db.prepare("ALTER TABLE finance_log ADD COLUMN chat_title TEXT DEFAULT NULL").run();
+    console.log('✅ Колонка chat_title добавлена в finance_log');
+  }
+} catch (e) {
+  console.error('❌ Ошибка при добавлении колонки chat_title:', e);
+}
+ /**
+ * Универсальная запись в finance_log.
+ * amount/currency/chatId/reason/action могут быть null.
+ */
+ function logFinance(entry) {
+  try {
+    if (!entry.type || !entry.actorUserId) {
+      return { success: false, error: 'type и actorUserId обязательны' };
+    }
+    const payload = entry.payload == null
+      ? null
+      : (typeof entry.payload === 'string' ? entry.payload : JSON.stringify(entry.payload));
+    
+    // Добавляем chat_title и chat_type в запрос
+    const stmt = db.prepare(`INSERT INTO finance_log (ts, type, actor_user_id, target_user_id, amount, currency, ref, chat_id, chat_title, chat_type, reason, action, payload, success) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    
+    const info = stmt.run(
+      Date.now(),
+      entry.type,
+      entry.actorUserId.toString(),
+      entry.targetUserId ? entry.targetUserId.toString() : null,
+      entry.amount ?? null,
+      entry.currency || null,
+      entry.ref || null,
+      entry.chatId ? entry.chatId.toString() : null,
+      entry.chatTitle || null,       // <-- НОВОЕ
+      entry.chatType || null,        // <-- НОВОЕ
+      entry.reason || null,
+      entry.action || null,
+      payload,
+      entry.success === undefined ? 1 : (entry.success ? 1 : 0)
+    );
+    return { success: true, id: info.lastInsertRowid };
+  } catch (error) {
+    console.error('[DB] Ошибка при записи в finance_log:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Соответствие itemType из тех-команд → единица в колонке currency
+const ITEM_CURRENCY_MAP = {
+  balance: 'PF',
+  card_balance: 'PF_CARD',
+  df_balance: 'DF',
+  npf_shares: 'NPF',
+  container_type_1: 'CONTAINER_1',
+  container_type_2: 'CONTAINER_2',
+  container_type_3: 'CONTAINER_3',
+  tickets: 'TICKET',
+  energy: 'ENERGY',
+  candy: 'CANDY',
+  secret_gifts: 'GIFT',
+};
+
+/**
+* Лог выдачи / снятия / установки предметов и валют администратором.
+* @param {Object} o
+* @param {string|number} o.adminId - ID админа
+* @param {string|number} o.targetUserId - ID игрока
+* @param {'give'|'take'|'set'} o.direction
+* @param {string} o.itemType - balance / df_balance / tickets / energy / container_type_N ...
+* @param {number|null} o.amount - количество (для set — новое значение)
+* @param {string|null} [o.comment]
+* @param {boolean} [o.success]
+*/
+// Помощник: ник по ID для формулировок логов
+function resolveUsername(userId) {
+  if (!userId) return null;
+  try {
+    const row = db.prepare('SELECT username FROM users WHERE id = ?').get(userId.toString());
+    return row?.username || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function logAdminItem({ adminId, targetUserId, direction, itemType, amount = null, comment = null, success = true, adminName = null, targetName = null }) {
+  const currency = ITEM_CURRENCY_MAP[itemType] || String(itemType).toUpperCase();
+  const aName = adminName || resolveUsername(adminId) || `ID ${adminId}`;
+  const tName = targetName || resolveUsername(targetUserId) || `ID ${targetUserId}`;
+  const qty = amount != null ? amount.toLocaleString('ru-RU') : '';
+  let action;
+  if (direction === 'give') {
+    action = `${aName} выдал ${qty} ${currency} игроку ${tName}`;
+  } else if (direction === 'take') {
+    action = `${aName} забрал ${qty} ${currency} у игрока ${tName}`;
+  } else {
+    action = `${aName} установил баланс ${qty} ${currency} игроку ${tName}`;
+  }
+  if (comment) action += ` (${comment})`;
+  return logFinance({
+    type: direction === 'give' ? 'admin_give' : direction === 'take' ? 'admin_take' : 'admin_set',
+    actorUserId: adminId,
+    targetUserId,
+    amount,
+    currency,
+    ref: itemType,
+    action,
+    payload: { comment },
+    success,
+  });
+}
+
+/**
+* Лог модераторских действий: бан/разбан/мут/размут/кик/блок переводов.
+* @param {Object} o
+* @param {string|number} o.adminId
+* @param {string|number} o.targetUserId
+* @param {'ban'|'unban'|'mute'|'unmute'|'kick'|'block_transfers'|'unblock_transfers'} o.type
+* @param {string|number|null} [o.chatId] - чат (мут/кик)
+* @param {string|null} [o.reason]
+* @param {number|null} [o.durationHours]
+* @param {boolean} [o.success]
+*/
+function logModeration({ adminId, targetUserId, type, chatId = null, chatTitle = null, reason = null, durationHours = null, success = true, adminName = null, targetName = null }) {
+  const aName = adminName || resolveUsername(adminId) || `ID ${adminId}`;
+  const tName = targetName || resolveUsername(targetUserId) || `ID ${targetUserId}`;
+  const reasonSuffix = reason && reason !== 'Не указана' ? `: ${reason}` : '';
+  const durationSuffix = durationHours ? ` (${durationHours} ч)` : '';
+  const chatSuffix = chatTitle ? ` в чате «${chatTitle}»` : '';
+  const verbs = {
+    ban: `${aName} забанил ${tName}${reasonSuffix}${durationSuffix}`,
+    unban: `${aName} разбанил ${tName}`,
+    mute: `${aName} замутил ${tName}${reasonSuffix}${durationSuffix}${chatSuffix}`,
+    unmute: `${aName} размьютил ${tName}${chatSuffix}`,
+    kick: `${aName} кикнул ${tName} из чата${reasonSuffix}${chatSuffix}`,
+    block_transfers: `${aName} заблокировал переводы игроку ${tName}`,
+    unblock_transfers: `${aName} разблокировал переводы игроку ${tName}`,
+  };
+  const action = verbs[type] || `${aName}: ${type} → ${tName}`;
+  return logFinance({
+    type,
+    actorUserId: adminId,
+    targetUserId,
+    amount: null,
+    currency: null,
+    chatId,
+    reason,
+    action,
+    payload: { durationHours },
+    success,
+  });
+}
+
+
+// Категории типов для удобных фильтров в админке
+const FINANCE_LOG_CATEGORIES = {
+  finance: ['transfer', 'donation', 'promo'],
+  admin: ['admin_give', 'admin_take', 'admin_set'],
+  moderation: ['ban', 'unban', 'mute', 'unmute', 'kick', 'block_transfers', 'unblock_transfers'],
+};
+
+/**
+* Выборка с фильтрами: userId, role, type (строка), types (массив),
+* category ('finance'|'admin'|'moderation'), chatId, limit, offset.
+*/
+
+/** Очистка finance_log старше maxAgeDays (ретеншен — 365 дней). */
+function cleanupFinanceLog(maxAgeDays = 365) {
+  try {
+      const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+      const info = db.prepare('DELETE FROM finance_log WHERE ts < ?').run(cutoff);
+      if (info.changes > 0) console.log(`[DB] Очищено ${info.changes} старых записей finance_log.`);
+      return { success: true, deletedCount: info.changes };
+  } catch (error) {
+      console.error('[DB] Ошибка при очистке finance_log:', error);
+      return { success: false, error: error.message };
+  }
+}
+
+// === ТАБЛИЦА: паспорт раунда дабла (хранение 3 суток) ===
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS double_rounds (
+      round_id TEXT PRIMARY KEY,          -- hash раунда
+      start_ts INTEGER NOT NULL,          -- старт раунда, мс
+      end_ts INTEGER DEFAULT NULL,        -- финиш, мс; заполняется в endRound
+      result_multiplier TEXT DEFAULT NULL,-- итог: x2 / x3 / x5 / GAME
+      salt TEXT DEFAULT NULL,             -- соль для проверки честности
+      total_bank INTEGER DEFAULT 0,       -- сумма всех ставок раунда
+      bets_count INTEGER DEFAULT 0,       -- количество ставок
+      chats_count INTEGER DEFAULT 0       -- количество чатов-участников
+  )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_double_rounds_start ON double_rounds(start_ts)`).run();
+  
+  // === ТАБЛИЦА: журнал ставок дабла (хранение 30 дней) ===
+  db.prepare(`
+  CREATE TABLE IF NOT EXISTS double_bets_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,                -- время принятия ставки, мс
+      round_id TEXT NOT NULL,             -- связь с double_rounds.round_id
+      user_id TEXT NOT NULL,              -- кто ставил
+      username TEXT NOT NULL,             -- снапшот ника на момент ставки
+      chat_id TEXT NOT NULL,              -- чат, где сделана ставка
+      multiplier TEXT NOT NULL,           -- x2 / x3 / x5 / GAME
+      amount INTEGER NOT NULL,            -- сумма списания при принятии
+      status TEXT NOT NULL DEFAULT 'accepted', -- accepted / rejected
+      reject_reason TEXT DEFAULT NULL,    -- причина отказа
+      game_choice TEXT DEFAULT NULL,      -- left / right для GAME
+      is_win INTEGER DEFAULT NULL,        -- заполняется в endRound: 1 / 0
+      win_amount INTEGER DEFAULT NULL     -- сумма выплаты, заполняется в endRound
+  )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_double_bets_user ON double_bets_log(user_id, ts DESC)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_double_bets_round ON double_bets_log(round_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_double_bets_ts ON double_bets_log(ts)`).run();
+
+
+  // --- double_rounds ---
+function createDoubleRound(roundId, startTs = Date.now()) {
+  try {
+      db.prepare(`INSERT OR IGNORE INTO double_rounds (round_id, start_ts) VALUES (?, ?)`).run(roundId, startTs);
+      return { success: true };
+  } catch (error) {
+      console.error('[DB] Ошибка при создании раунда double_rounds:', error);
+      return { success: false, error: error.message };
+  }
+}
+
+function finishDoubleRound(roundId, { endTs = Date.now(), resultMultiplier = null, salt = null, totalBank = 0, betsCount = 0, chatsCount = 0 } = {}) {
+  try {
+      const info = db.prepare(`
+          UPDATE double_rounds
+          SET end_ts = ?, result_multiplier = ?, salt = ?, total_bank = ?, bets_count = ?, chats_count = ?
+          WHERE round_id = ?
+      `).run(endTs, resultMultiplier, salt, totalBank, betsCount, chatsCount, roundId);
+      return { success: info.changes > 0 };
+  } catch (error) {
+      console.error('[DB] Ошибка при завершении раунда double_rounds:', error);
+      return { success: false, error: error.message };
+  }
+}
+
+function getDoubleRoundByHash(roundId) {
+  return db.prepare('SELECT * FROM double_rounds WHERE round_id = ?').get(roundId);
+}
+
+
+// --- double_bets_log ---
+function logDoubleBet(entry) {
+  try {
+      const info = db.prepare(`
+          INSERT INTO double_bets_log
+          (ts, round_id, user_id, username, chat_id, multiplier, amount, status, reject_reason, game_choice)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+          entry.ts || Date.now(),
+          entry.roundId,
+          entry.userId.toString(),
+          entry.username || 'Неизвестный',
+          entry.chatId.toString(),
+          entry.multiplier,
+          entry.amount,
+          entry.status || 'accepted',
+          entry.rejectReason || null,
+          entry.gameChoice || null
+      );
+      return { success: true, id: info.lastInsertRowid };
+  } catch (error) {
+      console.error('[DB] Ошибка при записи в double_bets_log:', error);
+      return { success: false, error: error.message };
+  }
+}
+
+function updateDoubleBetOutcome(betId, isWin, winAmount = 0) {
+  try {
+      const info = db.prepare('UPDATE double_bets_log SET is_win = ?, win_amount = ? WHERE id = ?')
+          .run(isWin ? 1 : 0, winAmount, betId);
+      return { success: info.changes > 0 };
+  } catch (error) {
+      console.error('[DB] Ошибка при обновлении итога ставки:', error);
+      return { success: false, error: error.message };
+  }
+}
+
+function getDoubleBetsByRound(roundId) {
+  try {
+      return db.prepare('SELECT * FROM double_bets_log WHERE round_id = ? ORDER BY ts ASC').all(roundId);
+  } catch (error) {
+      console.error('[DB] Ошибка при выборке ставок раунда:', error);
+      return [];
+  }
+}
+
+// --- Чистка ---
+function cleanupDoubleRounds(maxAgeDays = 3) {
+  try {
+      const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+      const info = db.prepare('DELETE FROM double_rounds WHERE start_ts < ?').run(cutoff);
+      if (info.changes > 0) console.log(`[DB] Очищено double_rounds: ${info.changes}`);
+      return info.changes;
+  } catch (error) {
+      console.error('[DB] Ошибка при очистке double_rounds:', error);
+      return 0;
+  }
+}
+
+function cleanupDoubleBetsLog(maxAgeDays = 30) {
+  try {
+      const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+      const info = db.prepare('DELETE FROM double_bets_log WHERE ts < ?').run(cutoff);
+      if (info.changes > 0) console.log(`[DB] Очищено double_bets_log: ${info.changes}`);
+      return info.changes;
+  } catch (error) {
+      console.error('[DB] Ошибка при очистке double_bets_log:', error);
+      return 0;
+  }
+}
+
+// Общая джоба очистки всех логов (вызывается из bot.js по расписанию)
+function runLogsCleanup() {
+  try {
+      cleanupOldMessageLogs(30);   // message_log: 30 дней
+      cleanupFinanceLog(365);      // finance_log: 365 дней
+      cleanupDoubleRounds(3);      // double_rounds: 3 суток
+      cleanupDoubleBetsLog(30);    // double_bets_log: 30 дней
+      console.log('[DB] Плановая очистка логов завершена.');
+  } catch (error) {
+      console.error('[DB] Ошибка при плановой очистке логов:', error);
+  }
+}
+
+// === ВЫБОРКИ ЛОГОВ ДЛЯ АДМИН-ПАНЕЛИ MINI APP ===
+function resolveLogSearchIds(search) {
+  if (!search) return null;
+  const s = String(search).trim();
+  if (!s) return null;
+  const ids = [s];
+  const byNum = db.prepare('SELECT id FROM users WHERE numeric_id = ?').get(parseInt(s, 10) || -1);
+  if (byNum && !ids.includes(byNum.id)) ids.push(byNum.id);
+  return ids;
+}
+
+// Режим «общее»: finance_log + ники обеих сторон
+function getAdminLogsFinance({ sinceTs = 0, types = null, searchIds = null, limit = 30, offset = 0 } = {}) {
+  try {
+    const where = ['f.ts >= ?'];
+    const params = [sinceTs];
+    
+    if (types && types.length) {
+      where.push(`f.type IN (${types.map(() => '?').join(',')})`);
+      params.push(...types);
+    }
+    if (searchIds && searchIds.length) {
+      const ph = searchIds.map(() => '?').join(',');
+      where.push(`(CAST(f.actor_user_id AS TEXT) IN (${ph}) OR CAST(f.target_user_id AS TEXT) IN (${ph}))`);
+      params.push(...searchIds, ...searchIds);
+    }
+    
+    const whereSql = 'WHERE ' + where.join(' AND ');
+    
+    // ✅ ИСПРАВЛЕНО: убраны f.chat_type и f.chat_title, так как их нет в finance_log
+    const rows = db.prepare(`
+      SELECT 
+        f.id, f.ts, f.type, f.actor_user_id, f.target_user_id, 
+        f.amount, f.currency, f.ref, f.reason, f.action, f.payload, f.success,
+        a.username AS actor_name, a.numeric_id AS actor_num,
+        t.username AS target_name, t.numeric_id AS target_num
+      FROM finance_log f
+      LEFT JOIN users a ON CAST(a.id AS TEXT) = CAST(f.actor_user_id AS TEXT)
+      LEFT JOIN users t ON CAST(t.id AS TEXT) = CAST(f.target_user_id AS TEXT)
+      ${whereSql}
+      ORDER BY f.ts DESC LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+    
+    const total = db.prepare(`SELECT COUNT(*) AS c FROM finance_log f ${whereSql}`).get(...params).c;
+    
+    return { rows, total };
+  } catch (error) {
+    console.error('[DB] Ошибка выборки finance-логов:', error);
+    return { rows: [], total: 0 };
+  }
+}
+
+
+// Режим «дабл»: ставки + завершённые раунды (тоже с приведением к TEXT)
+function getAdminLogsDouble({ sinceTs = 0, searchIds = null, limit = 30, offset = 0 } = {}) {
+  try {
+    let bets;
+    if (searchIds && searchIds.length) {
+      const ph = searchIds.map(() => '?').join(',');
+      bets = db.prepare(`
+        SELECT b.*, u.numeric_id AS user_num
+        FROM double_bets_log b
+        LEFT JOIN users u ON CAST(u.id AS TEXT) = CAST(b.user_id AS TEXT)
+        WHERE b.ts >= ? AND CAST(b.user_id AS TEXT) IN (${ph})
+        ORDER BY b.ts DESC
+      `).all(sinceTs, ...searchIds);
+    } else {
+      bets = db.prepare(`
+        SELECT b.*, u.numeric_id AS user_num
+        FROM double_bets_log b
+        LEFT JOIN users u ON CAST(u.id AS TEXT) = CAST(b.user_id AS TEXT)
+        WHERE b.ts >= ?
+        ORDER BY b.ts DESC
+      `).all(sinceTs);
+    }
+    const rounds = (searchIds && searchIds.length) ? [] : db.prepare(`
+      SELECT * FROM double_rounds WHERE end_ts IS NOT NULL AND end_ts >= ? ORDER BY end_ts DESC
+    `).all(sinceTs);
+
+    const merged = [
+      ...bets.map(b => ({
+        id: b.id,
+        ts: b.ts,
+        userId: b.user_id,
+        userName: b.username || 'Неизвестный',
+        userNum: b.user_num,
+        targetId: String(b.round_id).slice(0, 8),
+        targetName: null,
+        action: b.status === 'rejected'
+          ? `Ставка отклонена: ${b.reject_reason || 'причина не указана'} (${b.amount} PF, ${b.multiplier})`
+          : `Ставка ${b.amount} PF на ${b.multiplier}${b.game_choice ? ' (' + b.game_choice + ')' : ''} → ${b.is_win === 1 ? 'выигрыш ' + b.win_amount : b.is_win === 0 ? 'проигрыш' : 'в игре'}`,
+      })),
+      ...rounds.map(r => ({
+        id: 'r' + r.round_id,
+        ts: r.end_ts,
+        userId: null,
+        userName: 'РАУНД',
+        userNum: null,
+        targetId: String(r.round_id).slice(0, 8),
+        targetName: null,
+        action: `Итог: ${r.result_multiplier || '—'}, банк ${r.total_bank || 0}, ставок ${r.bets_count || 0}, чатов ${r.chats_count || 0}`,
+      })),
+    ].sort((a, b) => b.ts - a.ts);
+
+    return { rows: merged.slice(offset, offset + limit), total: merged.length };
+  } catch (error) {
+    console.error('[DB] Ошибка выборки double-логов:', error);
+    return { rows: [], total: 0 };
+  }
+}
+
 // Экспортируем функции
 module.exports = {
   getUserById,
@@ -5163,4 +5726,26 @@ module.exports = {
   addSecretGift,
   takeSecretGift,
   getExpiredPromos, cleanupExpiredPromos,
+  logMessage,
+  getUserMessageLog,
+  cleanupOldMessageLogs,
+  logFinance,
+  cleanupFinanceLog,
+  createDoubleRound,
+  finishDoubleRound,
+  getDoubleRoundByHash,
+  logDoubleBet,
+  updateDoubleBetOutcome,
+  getDoubleBetsByRound,
+  cleanupDoubleRounds,
+  cleanupDoubleBetsLog,
+  runLogsCleanup, 
+  logAdminItem, 
+  logModeration, FINANCE_LOG_CATEGORIES,
+  resolveLogSearchIds, 
+  getAdminLogsFinance, 
+  getAdminLogsDouble,
+  logMessage,
+
+
 };

@@ -5,10 +5,11 @@ const {
   getUserByNumericId,
   getUserStatuses,
   getUserById, // Добавлено для получения информации о пользователе при кике
-  recordAdminKickAction,      // Новая функция для записи действий кика
-  getAdminKickActionsInRange, // Новая функция для получения истории киков
-  getLastAdminKickActionTime, // Новая функция для получения времени последнего кика
-  cleanupExpiredAdminKickActions // Новая функция для очистки старых записей
+  recordAdminKickAction,      // Функция для записи действий кика
+  getAdminKickActionsInRange, // Функция для получения истории киков
+  getLastAdminKickActionTime, // Функция для получения времени последнего кика
+  cleanupExpiredAdminKickActions, // Функция для очистки старых записей
+  logModeration // Единый аудит-лог с человеческой формулировкой
 } = require('../db'); // Убедитесь, что путь правильный
 
 // Импортируем нужные функции из blacklistManagement.js для согласованности логики
@@ -290,6 +291,17 @@ async function kickUserHandler(ctx) {
 
     // 4. Кикаем пользователя из чата (бан)
     await ctx.telegram.banChatMember(ctx.chat.id, userToKick.id);
+
+    // 4.1. Единый аудит-лог кика
+    logModeration({
+      adminId: senderId,
+      targetUserId: userToKick.id,
+      type: 'kick',
+      chatId,
+      chatTitle: ctx.chat?.title || null, // ← НАЗВАНИЕ ЧАТА
+      reason,
+      success: 1,
+    });
 
     // 5. Запись действия в лог (если это обычный админ или специальный админ)
     const statuses = await getUserStatuses(senderId);

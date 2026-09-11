@@ -36,7 +36,7 @@ const {
   getCurrentWeaponDurability,
   addWeaponToUser,
   getOwnedWeapons,
-  resetAllBonusTimes
+  logFinance,
 } = require('./db');
 
 
@@ -134,8 +134,14 @@ const { sequentialMiddleware, startSequentialInput, handleCancel } = require('./
 
 // Функция для отправки сообщения с кнопкой Mini App
 async function sendMiniAppMessage(ctx) {
+  const miniAppUrl = process.env.MINI_APP_URL;
+
+  if (!miniAppUrl) {
+    console.error('❌ Ошибка: MINI_APP_URL не задан в .env!');
+    return ctx.reply('⚙️ Ошибка конфигурации Mini App.');
+  }
+
   try {
-    // Отправляем сообщение с кнопкой открытия Mini App
     await ctx.reply('🎮 Открываю Mini App...', {
       reply_markup: {
         inline_keyboard: [
@@ -143,8 +149,7 @@ async function sendMiniAppMessage(ctx) {
             {
               text: 'Открыть приложение',
               web_app: {
-                // Используем порт 25071, который ты указал для сервера
-                url: 'http://95.163.234.85:25071',
+                url: miniAppUrl, // Берем ссылку из .env
               },
             },
           ],
@@ -153,15 +158,28 @@ async function sendMiniAppMessage(ctx) {
     });
   } catch (error) {
     console.error('Ошибка при отправке сообщения с Mini App:', error);
-    // Отправляем сообщение об ошибке пользователю
-    await ctx.reply('❌ Произошла ошибка при открытии приложения. Попробуйте позже.');
+    await ctx.reply('❌ Произошла ошибка при открытии приложения.');
   }
 }
 
 
 
 // Создаем экземпляр бота
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const { SocksProxyAgent } = require('socks-proxy-agent');
+
+// Настраиваем прокси-агент, указывая на твой локальный SOCKS5 порт из конфига
+// Если у тебя есть логин/пароль для прокси, формат будет: socks5://user:pass@127.0.0.1:10808
+const proxyUrl = 'socks5://127.0.0.1:10808'; 
+const agent = new SocksProxyAgent(proxyUrl);
+
+const bot = new Telegraf(process.env.BOT_TOKEN, {
+  telegram: {
+    // Передаем агент в настройки telegram-клиента
+    agent: agent,
+    // Увеличиваем таймауты, так как через прокси может быть медленнее
+    apiRoot: 'https://api.telegram.org', 
+  },
+});
 
 
 
@@ -174,6 +192,10 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
     console.error('Ошибка при автоматическом обновлении статусов:', error);
   }
 })();
+
+const { runLogsCleanup } = require('./db');
+runLogsCleanup();                            // один раз при старте
+setInterval(runLogsCleanup, 60 * 60 * 1000); // далее каждый час
 
 // Фоновая задача для мониторинга нагрузки
 setInterval(() => {
@@ -1760,48 +1782,48 @@ if (!reportText) {
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 },
-'империя': async (ctx) => {
-  await empireHandler(ctx); 
-},
-'give_business': async (ctx) => {
-  await giveBusinessHandler(ctx); 
-},
-  // Команда для полной информации об акциях (техническая)
-  'npf': async (ctx) => {
-    await handleNpfInfo(ctx);
-  },
-  'акции': async (ctx) => { // Алиас для /npf
-    await handleNpfInfo(ctx);
-  },
+// 'империя': async (ctx) => {
+//   await empireHandler(ctx); 
+// },
+// 'give_business': async (ctx) => {
+//   await giveBusinessHandler(ctx); 
+// },
+//   // Команда для полной информации об акциях (техническая)
+//   'npf': async (ctx) => {
+//     await handleNpfInfo(ctx);
+//   },
+//   'акции': async (ctx) => { // Алиас для /npf
+//     await handleNpfInfo(ctx);
+//   },
 
-  // Команда для покупки акций
-  'купить_акции': async (ctx) => {
-    await handleNpfBuyCommand(ctx); // Теперь вызывает функцию из npfShares.js
-  },
+//   // Команда для покупки акций
+//   'купить_акции': async (ctx) => {
+//     await handleNpfBuyCommand(ctx); // Теперь вызывает функцию из npfShares.js
+//   },
 
-  // Команда для продажи акций
-  'продать_акции': async (ctx) => {
-    await handleNpfSellCommand(ctx); // Теперь вызывает функцию из npfShares.js
-  },
+//   // Команда для продажи акций
+//   'продать_акции': async (ctx) => {
+//     await handleNpfSellCommand(ctx); // Теперь вызывает функцию из npfShares.js
+//   },
 
-  // Команда для просмотра графика (всё время)
-  'npf_график': async (ctx) => {
-    await handleShowChart(ctx);
-  },
-  'график': async (ctx) => { // Алиас для /npf_график
-    await handleShowChart(ctx);
-  },
+//   // Команда для просмотра графика (всё время)
+//   'npf_график': async (ctx) => {
+//     await handleShowChart(ctx);
+//   },
+//   'график': async (ctx) => { // Алиас для /npf_график
+//     await handleShowChart(ctx);
+//   },
 
-  // --- Технические команды для "Тех администратора ---
-  // Команда для получения детальной информации (только для тех админа)
-  'npf_tech_info': async (ctx) => {
-    await handleNpfTechInfo(ctx);
-  },
+//   // --- Технические команды для "Тех администратора ---
+//   // Команда для получения детальной информации (только для тех админа)
+//   'npf_tech_info': async (ctx) => {
+//     await handleNpfTechInfo(ctx);
+//   },
 
-  // Команда для принудительного обновления курса (только для тех админа)
-  'force_update_course': async (ctx) => {
-    await handleForceUpdateCourse(ctx);
-  },
+//   // Команда для принудительного обновления курса (только для тех админа)
+//   'force_update_course': async (ctx) => {
+//     await handleForceUpdateCourse(ctx);
+//   },
 'конфеты': async (ctx) => {
   const { candyHandler } = require('./Events/Halloween/candy');
   await candyHandler(ctx);
@@ -1863,6 +1885,9 @@ if (!reportText) {
 'забрать_билетики': async (ctx) => {
   await takeTicketsHandler(ctx);
 },
+// 'логи': async (ctx) => { await logsHandler(ctx); },
+// '/logs': async (ctx) => { await logsHandler(ctx); },
+
 };
 
 
@@ -2545,12 +2570,32 @@ bot.use(async (ctx, next) => {
 // Обработчик текстовых сообщений
 bot.on('text', async (ctx) => {
   try {
-      const userId = ctx.from.id.toString();
-      const currentTime = Date.now();
-      const text = ctx.message.text.trim();
-      const lowerText = text.toLowerCase();
+      const userId = ctx.from.id.toString();      
       const chatId = ctx.chat?.id;
       const chatType = ctx.chat?.type;
+      const currentTime = Date.now();
+      const text = ctx.message.text.trim();
+      const { logMessage } = require('./db');
+      logMessage(userId, chatId, text, Math.floor(Date.now() / 1000));
+      const lowerText = text.toLowerCase();
+    // ✅ ЛОГИРОВАНИЕ СООБЩЕНИЙ (вставить сюда)
+    if (ctx.message && ctx.message.text) {
+      await logFinance({
+        type: 'message',
+        actorUserId: ctx.from.id,
+        targetUserId: null,
+        amount: null,
+        currency: null,
+        ref: null,
+        chatId: chatId,
+        chatTitle: ctx.chat?.title,
+        chatType: chatType,
+        reason: null,
+        action: text.substring(0, 500),
+        payload: { is_command: text.startsWith('/') },
+        success: 1,
+      });
+    }
       // ПРОВЕРКА: Если пользователь в процессе создания промокода
       const { handlePromoCreationMessage } = require('./handlers/promoHandler');
       const handledByPromoFlow = await handlePromoCreationMessage(ctx);

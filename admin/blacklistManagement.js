@@ -10,7 +10,8 @@ const {
   getUserStatuses,
   recordAdminAction,     
   getAdminActionsInRange, 
-  getLastAdminActionTime, 
+  getLastAdminActionTime,
+  logFinance, 
   cleanupExpiredAdminActions 
 } = require('../db'); // Убедитесь, что путь правильный
 
@@ -307,7 +308,22 @@ async function banUserHandler(ctx) {
 
     // 10. Добавление в черный список
     await addToBlacklist(userToBan.id, reason, banUntil);
-
+    
+    // 10.1. Единый аудит-лог бана (для отображения в мини-аппе)
+    const actionText = `БАН${reason ? ': ' + reason : ''}${banHours ? ` (${banHours} ч)` : ' (навсегда)'}`;
+    logFinance({
+      type: 'ban',
+      actorUserId: senderId,
+      targetUserId: userToBan.id,
+      amount: null,
+      currency: null,
+      chatId: ctx.chat?.id ?? null,
+      reason,
+      action: actionText,
+      payload: { banHours: banHours ?? null, banUntil: banUntil ?? null },
+      success: 1,
+    });
+    
     // 11. Запись действия в лог (если это обычный админ или специальный админ)
     const senderStatuses = await getUserStatuses(senderId);
     const isSenderSpecialAdminForLogging = SPECIAL_ADMINS.includes(senderId);
@@ -428,7 +444,22 @@ async function unbanUserHandler(ctx) {
 
     // 7. Удаление из черного списка
     await removeFromBlacklist(userToUnban.id);
-
+    
+    // 7.1. Единый аудит-лог разбана (для отображения в мини-аппе)
+    const actionText = 'РАЗБАН';
+    logFinance({
+      type: 'unban',
+      actorUserId: senderId,
+      targetUserId: userToUnban.id,
+      amount: null,
+      currency: null,
+      chatId: ctx.chat?.id ?? null,
+      reason: null,
+      action: actionText,
+      payload: null,
+      success: 1,
+    });
+    
     // 8. Запись действия в лог (если это обычный админ или специальный админ)
     const senderStatuses = await getUserStatuses(senderId);
     const isSenderSpecialAdminForLogging = SPECIAL_ADMINS.includes(senderId);
@@ -466,12 +497,13 @@ async function unbanUserHandler(ctx) {
   }
 }
 
-// Обработка команды "чс" (без изменений в логике, кроме isAdmin_ban)
+// Обработка команды "чс" (с логированием для мини-аппа)
 async function listBannedPlayersHandler(ctx) {
   try {
+    const senderId = ctx.from.id.toString();
+    
     // Проверка прав и контекста
     if (!(await isAdmin_ban(ctx))) {
-      const senderId = ctx.from.id.toString();
       const statuses = await getUserStatuses(senderId).catch(() => []);
       const isRegularAdmin = statuses.includes('Администратор');
       const isTechOrMainAdmin = statuses.includes('Тех администратор') || isMainAdmin(senderId);
@@ -517,6 +549,21 @@ async function listBannedPlayersHandler(ctx) {
 
       response += `• ${userLink} | Числовой ID: ${numericId} | Причина: ${banned.reason || 'Не указана'} | До: ${banExpiresAt}\n`;
     }
+
+    // Добавляем логирование просмотра черного списка (для отображения в мини-аппе)
+    const actionText = `Просмотр ЧС (записей: ${blacklist.length})`;
+    logFinance({
+      type: 'view_blacklist',
+      actorUserId: senderId,
+      targetUserId: null,
+      amount: null,
+      currency: null,
+      chatId: ctx.chat?.id ?? null,
+      reason: null,
+      action: actionText,
+      payload: { recordsCount: blacklist.length },
+      success: 1,
+    });
 
     await ctx.reply(response, { parse_mode: 'HTML' });
   } catch (error) {

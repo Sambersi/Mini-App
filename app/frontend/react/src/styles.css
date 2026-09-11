@@ -1,0 +1,556 @@
+:root {
+  --bg: #17181d;
+  --panel: #20222a;
+  --line: rgba(255,255,255,.08);
+  --grad: linear-gradient(135deg, #4c6fff 0%, #7a4dff 100%);
+  --grad-soft: linear-gradient(135deg, rgba(76,111,255,.16), rgba(122,77,255,.16));
+  --text: #eceef2;
+  --muted: #98a0ae;
+  --accent: #34c759;
+  --radius: 16px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.material-symbols-rounded {
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* ===== КОНТЕЙНЕР ПРИЛОЖЕНИЯ ===== */
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.loading {
+  padding: 40px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* ===== КАРТОЧКИ ===== */
+.card {
+  background: var(--grad);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(76,111,255,.28);
+}
+.card.secondary {
+  background: var(--grad-soft);
+  border: 1px solid var(--line);
+  color: var(--text);
+  box-shadow: none;
+}
+.card-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 14px;
+}
+.card .row span:first-child { opacity: .75; }
+.row .val {
+  font-weight: 600;
+  text-align: right;
+}
+.text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(255,255,255,.85);
+  margin: 0 0 12px;
+}
+.card.secondary .text { color: var(--muted); }
+.text:last-child { margin-bottom: 0; }
+
+/* ===== КНОПКИ ===== */
+.btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  background: var(--grad);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .15s, opacity .2s;
+}
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.ghost {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,.4);
+}
+
+/* ===== СТРАНИЦЫ ===== */
+.page {
+  padding: calc(12px + env(safe-area-inset-top)) 16px 110px;
+  animation: pageIn .28s ease;
+}
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ===== ПРОФИЛЬ ===== */
+.avatar-big {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  margin: 4px auto 10px;
+  background: var(--grad);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  font-weight: 700;
+  box-shadow: 0 10px 26px rgba(96,92,255,.45);
+}
+.profile-head { text-align: center; }
+
+/* ===== ФОРТУНА С КАРТИНКАМИ ===== */
+.fortune-card { padding: 16px; }
+.fortune-image-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 14px;
+  background: #23252e;
+  box-shadow: 0 8px 22px rgba(0,0,0,.4);
+}
+.fortune-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform .15s ease;
+}
+.fortune-image.shaking {
+  animation: fortuneShake .25s ease-in-out infinite;
+}
+.fortune-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 6px rgba(0,0,0,.8);
+  background: linear-gradient(180deg, rgba(0,0,0,0) 60%, rgba(0,0,0,.5));
+  pointer-events: none;
+}
+.fortune-stats { margin-bottom: 10px; }
+.fortune-stats .row span:first-child { color: rgba(255,255,255,.75); }
+/* === БОРТА ПРИЛОЖЕНИЯ === */
+.app {
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+
+/* === КНОПКА-КОЛЕСО СБОКУ (только профиль) === */
+.fab-clip {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: max(0px, calc(50vw - 240px));
+  width: min(480px, 100vw);
+  overflow: hidden;          /* половина колеса уходит «за непрозрачную стену» */
+  pointer-events: none;
+  z-index: 40;
+}
+.fortune-fab {
+  position: absolute;
+  top: 42%;
+  left: 0;
+  width: 142px;          /* было 100px */
+  height: 142px;
+  margin-left: -71px;    /* половина круга за бортом (142 / 2) */
+  margin-top: -71px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  pointer-events: auto;
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgba(122, 77, 255, .6);
+}
+
+.fortune-fab img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  transform: scale(1.2); /* срезает ~8% краёв с каждой стороны (было 1.09 ≈ 4%) */
+  animation: fabSpin 14s linear infinite;
+}
+
+/* scale дублируем в кейфреймах, иначе анимация затрёт кроп */
+@keyframes fabSpin {
+  from { transform: scale(1.2) rotate(0deg); }
+  to   { transform: scale(1.2) rotate(360deg); }
+}
+
+/* === КРЕСТИК ЗАКРЫТИЯ — СПРАВА СВЕРХУ (везде) === */
+.page-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 6;
+}
+
+/* === СТРАНИЦА КОЛЕСА === */
+.fortune-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 92px);
+  padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+  overflow: hidden;
+  position: relative;
+}
+.fortune-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #101116;
+}
+.fortune-wheel-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.1);     /* обрезает ~5% краёв с каждой стороны */
+}
+.fortune-wheel-img.shaking { animation: fortuneShake .25s ease-in-out infinite; }
+@keyframes fortuneShake {
+  0%, 100% { transform: scale(1.1) translateX(0); }
+  25%      { transform: scale(1.1) translateX(-3px); }
+  75%      { transform: scale(1.1) translateX(3px); }
+}
+.fortune-caption {
+  min-height: 22px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 0;
+  color: #fff;
+}
+.fortune-actions {
+  margin-top: auto;          /* кнопка кручения прижата к самому низу */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.btn-mini {
+  align-self: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.06);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* === ВСПЛЫВАЮЩИЕ ВКЛАДКИ (оверлеи) === */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 14, .6);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 70;
+  animation: pageIn .2s ease;
+}
+.overlay-card {
+  position: relative;
+  width: min(340px, 88vw);
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 20px;
+}
+.overlay-title {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.overlay-list .row { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.overlay-list .row:last-child { border-bottom: none; }
+
+.prize-result {
+  min-height: 56px;
+  text-align: center;
+  margin-top: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.ticket-balance {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  margin: 8px 0 12px;
+}
+
+
+/* ===== СТАРОЕ КОЛЕСО (conic-gradient) — оставил, если пригодится ===== */
+.wheel-container {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  margin: 0 auto;
+}
+.wheel-pointer {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 14px solid transparent;
+  border-right: 14px solid transparent;
+  border-top: 24px solid #fff;
+  z-index: 5;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,.4));
+}
+.wheel {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: conic-gradient(
+    #4c6fff 0 45deg, #23252e 45deg 90deg,
+    #7a4dff 90deg 135deg, #23252e 135deg 180deg,
+    #22d3ee 180deg 225deg, #23252e 225deg 270deg,
+    #f472b6 270deg 315deg, #23252e 315deg 360deg
+  );
+  transition: transform 4s cubic-bezier(.15,.75,.15,1);
+  box-shadow: 0 0 0 4px rgba(255,255,255,.06), 0 0 30px rgba(122,77,255,.4);
+  position: relative;
+}
+.wheel::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  transform: translate(-50%,-50%);
+  border-radius: 50%;
+  background: var(--bg);
+  border: 3px solid #fff;
+}
+
+/* ===== НИЖНЯЯ ПАНЕЛЬ ===== */
+.nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--bg) 72%, rgba(23,24,29,0));
+  z-index: 10;
+}
+.nav-inner {
+  display: flex;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 6px;
+  box-shadow: 0 10px 26px rgba(0,0,0,.35);
+}
+.nav-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 10px 4px;
+  border: none;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .2s;
+  text-decoration: none;
+}
+.nav-btn.active {
+  background: var(--grad);
+  color: #fff;
+}
+.nav-label {
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+/* ===== АДМИН-БЕЙДЖ ===== */
+.admin-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #ff3b30, #ff9500);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 8px;
+  margin-left: 8px;
+  letter-spacing: .5px;
+}
+
+/* ===== АДАПТИВ ПОД УЗКИЕ ЭКРАНЫ ===== */
+@media (max-width: 350px) {
+  .page { padding-left: 12px; padding-right: 12px; }
+  .avatar-big { width: 78px; height: 78px; font-size: 30px; }
+  .nav-label { font-size: 9.5px; }
+  .fortune-fab { width: 46px; height: 46px; top: 40%; }
+}
+
+.fortune-image.pop { animation: popIn .45s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes popIn {
+  0%   { transform: scale(.85); opacity: .6; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.fortune-image-wrap.won { box-shadow: 0 0 30px rgba(52, 199, 89, .5); }
+.fortune-result-title {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  margin: 4px 0 12px;
+  color: #fff;
+  animation: pageIn .3s ease;
+}
+/* === ФОРТУНА: ЭКРАН БЕЗ ПРОКРУТКИ === */
+.page { position: relative; }
+
+.page-mode-title {
+  text-align: center;
+  font-size: 16px; font-weight: 700; letter-spacing: .4px;
+  margin: 4px 0 8px; color: var(--text);
+}
+
+.fortune-wheel-img.shaking { animation: fortuneShake .25s ease-in-out infinite; }
+.fortune-spin-btn { margin-bottom: 10px; }
+ 
+/* === НАСТРОЙКИ === */
+.select {
+  background: #23252e; color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 8px; font-size: 13px;
+}
+input[type="checkbox"] { width: 20px; height: 20px; accent-color: #7a4dff; }
+
+/* === СТРАНИЦА ЛОГОВ === */
+.logs-page { padding-bottom: 20px; }
+.logs-controls { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.logs-row { display: flex; gap: 8px; align-items: center; }
+.logs-seg { flex: 0 0 auto; width: 150px; margin-bottom: 0; }
+.logs-search { flex: 1; min-width: 0; }
+.logs-table-wrap { padding: 0; overflow: hidden; }
+.logs-head, .logs-rowline {
+  display: grid;
+  grid-template-columns: 1.05fr 0.85fr 1.5fr 0.9fr;
+  gap: 6px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  align-items: start;
+}
+.logs-head {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0;
+  background: var(--panel);
+  z-index: 2;
+}
+.logs-rowline { border-bottom: 1px solid var(--line); }
+.logs-rowline:nth-child(even) { background: rgba(255,255,255,.03); }
+.logs-rowline:last-child { border-bottom: none; }
+.logs-cell-name { font-weight: 600; font-size: 12px; }
+.logs-cell-sub { color: var(--muted); font-size: 10.5px; word-break: break-all; }
+.logs-cell-action { font-size: 11.5px; word-break: break-word; }
+.logs-empty { padding: 24px; text-align: center; color: var(--muted); font-size: 13px; }
+.logs-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 10px; color: var(--muted); font-size: 13px; }
+.logs-pager .btn-mini:disabled { opacity: .4; }
+
+/* === АДМИН-БЛОК В ПРОФИЛЕ === */
+.admin-card {
+  background: linear-gradient(135deg, #ff3b30 0%, #ff9500 100%);
+  box-shadow: 0 8px 22px rgba(255, 90, 48, .35);
+}
+.admin-card .card-title { color: #fff; }
+.admin-card .text { color: rgba(255, 255, 255, .9); }
+.admin-enter-btn {
+  background: rgba(255, 255, 255, .18) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, .4) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.admin-enter-btn:active { transform: scale(.97); }
+
+/* Стили для таблицы логов */
+.logs-cell-name {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px; /* Ограничение ширины, чтобы длинные ники не ломали верстку */
+}
+
+.logs-cell-sub {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.logs-cell-action {
+  font-size: 12px;
+  word-break: break-word;
+}

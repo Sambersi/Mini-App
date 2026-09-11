@@ -1,9 +1,39 @@
-node_modules/
-.env
+
 database.sqlite
-logs/
+
 data/
 backups/
 user_cards/
 promo_images/
 temp/
+
+# Зависимости
+node_modules/
+app/backend/node_modules/
+app/frontend/node_modules/
+app/frontend/react/node_modules/
+
+# Базы данных (ВАЖНО! Не пушить данные пользователей)
+*.sqlite
+*.sqlite-journal
+*.db
+
+# Секреты
+.env
+.env.local
+
+# Бинарники и утилиты
+*.exe
+cloudflared.exe
+ngrok.exe
+
+# Логи и кэш
+logs/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Сборка фронтенда (если пушишь только исходники)
+# app/frontend/out/ 
+# app/frontend/react/dist/
