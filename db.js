@@ -5059,6 +5059,20 @@ try {
     db.prepare("ALTER TABLE finance_log ADD COLUMN chat_title TEXT DEFAULT NULL").run();
     console.log('✅ Колонка chat_title добавлена в finance_log');
   }
+  // --- МИГРАЦИЯ: гарантируем колонки chat_title и chat_type в finance_log ---
+try {
+  const finCols = new Set(db.prepare("PRAGMA table_info(finance_log)").all().map(c => c.name));
+  if (!finCols.has('chat_title')) {
+    db.prepare("ALTER TABLE finance_log ADD COLUMN chat_title TEXT DEFAULT NULL").run();
+    console.log('✅ Колонка chat_title добавлена в finance_log');
+  }
+  if (!finCols.has('chat_type')) {
+    db.prepare("ALTER TABLE finance_log ADD COLUMN chat_type TEXT DEFAULT NULL").run();
+    console.log('✅ Колонка chat_type добавлена в finance_log');
+  }
+} catch (e) {
+  console.error('❌ Ошибка миграции finance_log:', e);
+}
 } catch (e) {
   console.error('❌ Ошибка при добавлении колонки chat_title:', e);
 }
@@ -5074,10 +5088,9 @@ try {
     const payload = entry.payload == null
       ? null
       : (typeof entry.payload === 'string' ? entry.payload : JSON.stringify(entry.payload));
-    
-    // Добавляем chat_title и chat_type в запрос
-    const stmt = db.prepare(`INSERT INTO finance_log (ts, type, actor_user_id, target_user_id, amount, currency, ref, chat_id, chat_title, chat_type, reason, action, payload, success) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    
+    const stmt = db.prepare(`INSERT INTO finance_log
+      (ts, type, actor_user_id, target_user_id, amount, currency, ref, chat_id, chat_title, chat_type, reason, action, payload, success)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const info = stmt.run(
       Date.now(),
       entry.type,
@@ -5087,8 +5100,8 @@ try {
       entry.currency || null,
       entry.ref || null,
       entry.chatId ? entry.chatId.toString() : null,
-      entry.chatTitle || null,       // <-- НОВОЕ
-      entry.chatType || null,        // <-- НОВОЕ
+      entry.chatTitle || null,
+      entry.chatType || null,
       entry.reason || null,
       entry.action || null,
       payload,
@@ -5232,6 +5245,10 @@ function cleanupFinanceLog(maxAgeDays = 365) {
   }
 }
 
+// =====================================================================
+// === ТАБЛИЦЫ И ЛОГИКА ДЛЯ ДАБЛА (double_rounds, double_bets_log) ===
+// =====================================================================
+
 // === ТАБЛИЦА: паспорт раунда дабла (хранение 3 суток) ===
 db.prepare(`
   CREATE TABLE IF NOT EXISTS double_rounds (
@@ -5242,13 +5259,15 @@ db.prepare(`
       salt TEXT DEFAULT NULL,             -- соль для проверки честности
       total_bank INTEGER DEFAULT 0,       -- сумма всех ставок раунда
       bets_count INTEGER DEFAULT 0,       -- количество ставок
-      chats_count INTEGER DEFAULT 0       -- количество чатов-участников
+      chats_count INTEGER DEFAULT 0,      -- количество чатов-участников
+      participants_count INTEGER DEFAULT 0,-- количество уникальных игроков
+      status TEXT DEFAULT 'active'        -- active / finished / canceled
   )
-  `).run();
-  db.prepare(`CREATE INDEX IF NOT EXISTS idx_double_rounds_start ON double_rounds(start_ts)`).run();
-  
-  // === ТАБЛИЦА: журнал ставок дабла (хранение 30 дней) ===
-  db.prepare(`
+`).run();
+db.prepare(`CREATE INDEX IF NOT EXISTS idx_double_rounds_start ON double_rounds(start_ts)`).run();
+
+// === ТАБЛИЦА: журнал ставок дабла (хранение 30 дней) ===
+db.prepare(`
   CREATE TABLE IF NOT EXISTS double_bets_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ts INTEGER NOT NULL,                -- время принятия ставки, мс
@@ -5256,131 +5275,308 @@ db.prepare(`
       user_id TEXT NOT NULL,              -- кто ставил
       username TEXT NOT NULL,             -- снапшот ника на момент ставки
       chat_id TEXT NOT NULL,              -- чат, где сделана ставка
+      chat_title TEXT DEFAULT NULL,       -- название чата
       multiplier TEXT NOT NULL,           -- x2 / x3 / x5 / GAME
       amount INTEGER NOT NULL,            -- сумма списания при принятии
       status TEXT NOT NULL DEFAULT 'accepted', -- accepted / rejected
       reject_reason TEXT DEFAULT NULL,    -- причина отказа
       game_choice TEXT DEFAULT NULL,      -- left / right для GAME
       is_win INTEGER DEFAULT NULL,        -- заполняется в endRound: 1 / 0
-      win_amount INTEGER DEFAULT NULL     -- сумма выплаты, заполняется в endRound
+      win_amount INTEGER DEFAULT NULL,    -- сумма выплаты, заполняется в endRound
+      payout_status TEXT DEFAULT 'pending' -- pending / paid / lost / failed
   )
-  `).run();
-  db.prepare(`CREATE INDEX IF NOT EXISTS idx_double_bets_user ON double_bets_log(user_id, ts DESC)`).run();
-  db.prepare(`CREATE INDEX IF NOT EXISTS idx_double_bets_round ON double_bets_log(round_id)`).run();
-  db.prepare(`CREATE INDEX IF NOT EXISTS idx_double_bets_ts ON double_bets_log(ts)`).run();
+`).run();
+db.prepare(`CREATE INDEX IF NOT EXISTS idx_double_bets_user ON double_bets_log(user_id, ts DESC)`).run();
+db.prepare(`CREATE INDEX IF NOT EXISTS idx_double_bets_round ON double_bets_log(round_id)`).run();
+db.prepare(`CREATE INDEX IF NOT EXISTS idx_double_bets_ts ON double_bets_log(ts)`).run();
+
+// === МИГРАЦИИ: колонки double-логов (на случай старых баз) ===
+try {
+  const roundCols = db.prepare("PRAGMA table_info(double_rounds)").all();
+  [ { name: 'participants_count', type: 'INTEGER DEFAULT 0' },
+    { name: 'status', type: "TEXT DEFAULT 'active'" } ].forEach(c => {
+    if (!roundCols.some(x => x.name === c.name)) db.prepare(`ALTER TABLE double_rounds ADD COLUMN ${c.name} ${c.type}`).run();
+  });
+  const betCols = db.prepare("PRAGMA table_info(double_bets_log)").all();
+  [ { name: 'payout_status', type: "TEXT DEFAULT 'pending'" },
+    { name: 'chat_title', type: 'TEXT DEFAULT NULL' } ].forEach(c => {
+    if (!betCols.some(x => x.name === c.name)) db.prepare(`ALTER TABLE double_bets_log ADD COLUMN ${c.name} ${c.type}`).run();
+  });
+} catch (e) { console.error('[DB] Ошибка миграции double-логов:', e); }
 
 
-  // --- double_rounds ---
+// --- ФУНКЦИИ: double_rounds ---
+
+// Создание нового раунда
 function createDoubleRound(roundId, startTs = Date.now()) {
   try {
-      db.prepare(`INSERT OR IGNORE INTO double_rounds (round_id, start_ts) VALUES (?, ?)`).run(roundId, startTs);
-      return { success: true };
+    db.prepare(`INSERT OR IGNORE INTO double_rounds (round_id, start_ts, status) VALUES (?, ?, 'active')`).run(roundId, startTs);
+    return { success: true };
   } catch (error) {
-      console.error('[DB] Ошибка при создании раунда double_rounds:', error);
-      return { success: false, error: error.message };
+    console.error('[DB] Ошибка при создании раунда double_rounds:', error);
+    return { success: false, error: error.message };
   }
 }
 
-function finishDoubleRound(roundId, { endTs = Date.now(), resultMultiplier = null, salt = null, totalBank = 0, betsCount = 0, chatsCount = 0 } = {}) {
+// Завершение раунда (автоматически агрегирует банк, ставки и игроков из журнала)
+function finishDoubleRoundLog(roundId, { endTs = Date.now(), resultMultiplier = null, salt = null, status = 'finished' } = {}) {
   try {
-      const info = db.prepare(`
-          UPDATE double_rounds
-          SET end_ts = ?, result_multiplier = ?, salt = ?, total_bank = ?, bets_count = ?, chats_count = ?
-          WHERE round_id = ?
-      `).run(endTs, resultMultiplier, salt, totalBank, betsCount, chatsCount, roundId);
-      return { success: info.changes > 0 };
+    const agg = db.prepare(`SELECT COUNT(*) AS bets, COUNT(DISTINCT user_id) AS players, COUNT(DISTINCT chat_id) AS chats, COALESCE(SUM(amount), 0) AS bank
+                            FROM double_bets_log WHERE round_id = ? AND status = 'accepted'`).get(roundId);
+    const info = db.prepare(`
+      UPDATE double_rounds
+      SET end_ts = ?, result_multiplier = ?, salt = ?, total_bank = ?, bets_count = ?, chats_count = ?, participants_count = ?, status = ?
+      WHERE round_id = ?
+    `).run(endTs, resultMultiplier, salt, agg.bank, agg.bets, agg.chats, agg.players, status, roundId);
+    return { success: info.changes > 0, agg };
   } catch (error) {
-      console.error('[DB] Ошибка при завершении раунда double_rounds:', error);
-      return { success: false, error: error.message };
+    console.error('[DB] Ошибка при завершении раунда double_rounds:', error);
+    return { success: false, error: error.message };
   }
 }
+
 
 function getDoubleRoundByHash(roundId) {
   return db.prepare('SELECT * FROM double_rounds WHERE round_id = ?').get(roundId);
 }
 
 
-// --- double_bets_log ---
+// --- ФУНКЦИИ: double_bets_log ---
+
+// Запись новой ставки
 function logDoubleBet(entry) {
   try {
-      const info = db.prepare(`
-          INSERT INTO double_bets_log
-          (ts, round_id, user_id, username, chat_id, multiplier, amount, status, reject_reason, game_choice)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-          entry.ts || Date.now(),
-          entry.roundId,
-          entry.userId.toString(),
-          entry.username || 'Неизвестный',
-          entry.chatId.toString(),
-          entry.multiplier,
-          entry.amount,
-          entry.status || 'accepted',
-          entry.rejectReason || null,
-          entry.gameChoice || null
-      );
-      return { success: true, id: info.lastInsertRowid };
+    const info = db.prepare(`
+      INSERT INTO double_bets_log 
+      (ts, round_id, user_id, username, chat_id, chat_title, multiplier, amount, status, reject_reason, game_choice) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      entry.ts || Date.now(),
+      entry.roundId,
+      entry.userId.toString(),
+      entry.username || 'Неизвестный',
+      entry.chatId != null ? entry.chatId.toString() : null,
+      entry.chatTitle || null,
+      entry.multiplier,
+      entry.amount,
+      entry.status || 'accepted',
+      entry.rejectReason || null,
+      entry.gameChoice || null
+    );
+    return { success: true, id: info.lastInsertRowid };
   } catch (error) {
-      console.error('[DB] Ошибка при записи в double_bets_log:', error);
-      return { success: false, error: error.message };
+    console.error('[DB] Ошибка при записи в double_bets_log:', error);
+    return { success: false, error: error.message };
   }
 }
 
+// Обновление исхода конкретной ставки по ID (если нужно точечно)
 function updateDoubleBetOutcome(betId, isWin, winAmount = 0) {
   try {
-      const info = db.prepare('UPDATE double_bets_log SET is_win = ?, win_amount = ? WHERE id = ?')
-          .run(isWin ? 1 : 0, winAmount, betId);
-      return { success: info.changes > 0 };
+    const info = db.prepare(`
+      UPDATE double_bets_log 
+      SET is_win = ?, win_amount = ?, payout_status = ? 
+      WHERE id = ?
+    `).run(isWin ? 1 : 0, winAmount, isWin ? 'paid' : 'lost', betId);
+    return { success: info.changes > 0 };
   } catch (error) {
-      console.error('[DB] Ошибка при обновлении итога ставки:', error);
-      return { success: false, error: error.message };
+    console.error('[DB] Ошибка при обновлении итога ставки:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Пометить ставки группы (раунд+игрок+чат+множитель) оплаченными/проигрышными
+function updateDoubleBetPayoutByGroup(roundId, userId, chatId, multiplier, isWin, multiplierValue) {
+  try {
+    return db.prepare(`
+      UPDATE double_bets_log
+      SET is_win = ?, win_amount = CASE WHEN ? = 1 THEN amount * ? ELSE 0 END, payout_status = ?
+      WHERE round_id = ? AND user_id = ? AND chat_id = ? AND multiplier = ? AND status = 'accepted' AND payout_status = 'pending'
+    `).run(isWin ? 1 : 0, isWin ? 1 : 0, multiplierValue, isWin ? 'paid' : 'lost', roundId, userId.toString(), chatId.toString(), multiplier).changes;
+  } catch (error) {
+    console.error('[DB] Ошибка при групповом обновлении выплат:', error);
+    return 0;
+  }
+}
+
+// Пометить ставку как провальную (ошибка выплаты)
+function markDoubleBetPayoutFailed(roundId, userId, chatId, multiplier) {
+  try {
+    return db.prepare(`
+      UPDATE double_bets_log SET payout_status = 'failed'
+      WHERE round_id = ? AND user_id = ? AND chat_id = ? AND multiplier = ? AND status = 'accepted' AND payout_status = 'pending'
+    `).run(roundId, userId.toString(), chatId.toString(), multiplier).changes;
+  } catch (error) {
+    console.error('[DB] Ошибка при пометке failed:', error);
+    return 0;
+  }
+}
+
+// Пометить все ставки раунда как провальные (при отмене раунда)
+function markRoundBetsFailed(roundId) {
+  try {
+    return db.prepare(`UPDATE double_bets_log SET payout_status = 'failed', status = 'rejected', reject_reason = 'Раунд отменен'
+                       WHERE round_id = ? AND status = 'accepted' AND payout_status = 'pending'`).run(roundId).changes;
+  } catch (error) {
+    console.error('[DB] Ошибка при отмене ставок раунда:', error);
+    return 0;
+  }
+}
+
+function updateDoubleBetGameChoice(betId, gameChoice) {
+  try {
+    const info = db.prepare('UPDATE double_bets_log SET game_choice = ? WHERE id = ?').run(gameChoice, betId);
+    return { success: info.changes > 0 };
+  } catch (error) {
+    console.error('[DB] Ошибка при обновлении game_choice:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+
+// Обновить выбор ячейки (left/right) для GAME
+function updateGameChoicesForRoundUser(roundId, userId, chatId, choice) {
+  try {
+    return db.prepare(`
+      UPDATE double_bets_log SET game_choice = ?
+      WHERE round_id = ? AND user_id = ? AND chat_id = ? AND multiplier = 'GAME' AND status = 'accepted'
+    `).run(choice, roundId, userId.toString(), chatId.toString()).changes;
+  } catch (error) {
+    console.error('[DB] Ошибка при обновлении game_choice:', error);
+    return 0;
   }
 }
 
 function getDoubleBetsByRound(roundId) {
   try {
-      return db.prepare('SELECT * FROM double_bets_log WHERE round_id = ? ORDER BY ts ASC').all(roundId);
+    return db.prepare('SELECT * FROM double_bets_log WHERE round_id = ? ORDER BY ts ASC').all(roundId);
   } catch (error) {
-      console.error('[DB] Ошибка при выборке ставок раунда:', error);
-      return [];
+    console.error('[DB] Ошибка при выборке ставок раунда:', error);
+    return [];
   }
 }
 
-// --- Чистка ---
+
+// --- ВЫБОРКИ ДЛЯ АДМИН-ПАНЕЛИ MINI APP (ДАБЛ) ---
+
+// ВИД «РАУНДЫ»: фильтр по времени + поиск по подстроке хеша
+function getAdminDoubleRoundsView({ sinceTs = 0, hash = null, limit = 30, offset = 0 } = {}) {
+  try {
+    const where = ['start_ts >= ?'];
+    const params = [sinceTs];
+    if (hash) {
+      const safe = String(hash).replace(/[%_]/g, ''); // убираем LIKE-спецсимволы
+      if (safe) {
+        where.push('round_id LIKE ?');
+        params.push('%' + safe + '%');
+      }
+    }
+    const whereSql = 'WHERE ' + where.join(' AND ');
+    const total = db.prepare(`SELECT COUNT(*) AS c FROM double_rounds ${whereSql}`).get(...params).c;
+    const rows = db.prepare(`SELECT * FROM double_rounds ${whereSql} ORDER BY start_ts DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
+    return { rows, total };
+  } catch (e) {
+    console.error('[DB] Ошибка выборки раундов:', e);
+    return { rows: [], total: 0 };
+  }
+}
+
+// ВИД «СТАВКИ»: строка = (раунд + игрок + чат); поиск по игроку ИЛИ по хешу раунда
+function getAdminDoubleBetsView({ sinceTs = 0, searchIds = null, hash = null, limit = 30, offset = 0 } = {}) {
+  try {
+    // Условие поиска: игрок (TG/numeric ID) ИЛИ хеш раунда
+    let searchSql = '';
+    const searchParams = [];
+    const hasIds = searchIds && searchIds.length > 0;
+    const safeHash = hash ? String(hash).replace(/[%_]/g, '') : '';
+    const useHash = safeHash.length >= 8 && /^[0-9a-f]+$/i.test(safeHash);
+    if (hasIds || useHash) {
+      const parts = [];
+      if (hasIds) {
+        const ph = searchIds.map(() => '?').join(',');
+        parts.push(`(b.user_id IN (${ph}) OR u.numeric_id IN (${ph}))`);
+        searchParams.push(...searchIds, ...searchIds);
+      }
+      if (useHash) {
+        parts.push('r.round_id LIKE ?');
+        searchParams.push('%' + safeHash + '%');
+      }
+      searchSql = ' AND (' + parts.join(' OR ') + ')';
+    }
+
+    const query = `SELECT b.round_id, b.user_id, b.chat_id, MIN(b.ts) as ts,
+       u.username as user_name, u.numeric_id as user_num,
+       r.start_ts as round_start_ts, r.end_ts as round_end_ts,
+       r.result_multiplier, r.salt, r.status as round_status,
+       MAX(b.chat_title) as chat_title
+     FROM double_bets_log b
+     JOIN double_rounds r ON r.round_id = b.round_id
+     LEFT JOIN users u ON u.id = b.user_id
+     WHERE r.start_ts >= ?${searchSql}
+     GROUP BY b.round_id, b.user_id, b.chat_id
+     ORDER BY ts DESC LIMIT ? OFFSET ?`;
+    const groups = db.prepare(query).all(sinceTs, ...searchParams, limit, offset);
+
+    const countQuery = `SELECT COUNT(*) as c FROM (
+       SELECT 1 FROM double_bets_log b
+       JOIN double_rounds r ON r.round_id = b.round_id
+       LEFT JOIN users u ON u.id = b.user_id
+       WHERE r.start_ts >= ?${searchSql}
+       GROUP BY b.round_id, b.user_id, b.chat_id)`;
+    const totalResult = db.prepare(countQuery).get(sinceTs, ...searchParams);
+    const total = totalResult ? totalResult.c : 0;
+
+    const betsStmt = db.prepare(`
+      SELECT multiplier, amount, is_win, win_amount, game_choice, payout_status
+      FROM double_bets_log
+      WHERE round_id = ? AND user_id = ? AND chat_id = ?
+      ORDER BY ts ASC
+    `);
+    const rows = groups.map(g => ({ ...g, bets: betsStmt.all(g.round_id, g.user_id, g.chat_id) }));
+    return { rows, total };
+  } catch (e) {
+    console.error('[DB] Ошибка выборки ставок дабла:', e);
+    return { rows: [], total: 0 };
+  }
+}
+
+
+// --- ЧИСТКА ЛОГОВ ---
+
 function cleanupDoubleRounds(maxAgeDays = 3) {
   try {
-      const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
-      const info = db.prepare('DELETE FROM double_rounds WHERE start_ts < ?').run(cutoff);
-      if (info.changes > 0) console.log(`[DB] Очищено double_rounds: ${info.changes}`);
-      return info.changes;
+    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    const info = db.prepare('DELETE FROM double_rounds WHERE start_ts < ?').run(cutoff);
+    if (info.changes > 0) console.log(`[DB] Очищено double_rounds: ${info.changes}`);
+    return info.changes;
   } catch (error) {
-      console.error('[DB] Ошибка при очистке double_rounds:', error);
-      return 0;
+    console.error('[DB] Ошибка при очистке double_rounds:', error);
+    return 0;
   }
 }
 
 function cleanupDoubleBetsLog(maxAgeDays = 30) {
   try {
-      const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
-      const info = db.prepare('DELETE FROM double_bets_log WHERE ts < ?').run(cutoff);
-      if (info.changes > 0) console.log(`[DB] Очищено double_bets_log: ${info.changes}`);
-      return info.changes;
+    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    const info = db.prepare('DELETE FROM double_bets_log WHERE ts < ?').run(cutoff);
+    if (info.changes > 0) console.log(`[DB] Очищено double_bets_log: ${info.changes}`);
+    return info.changes;
   } catch (error) {
-      console.error('[DB] Ошибка при очистке double_bets_log:', error);
-      return 0;
+    console.error('[DB] Ошибка при очистке double_bets_log:', error);
+    return 0;
   }
 }
 
 // Общая джоба очистки всех логов (вызывается из bot.js по расписанию)
 function runLogsCleanup() {
   try {
-      cleanupOldMessageLogs(30);   // message_log: 30 дней
-      cleanupFinanceLog(365);      // finance_log: 365 дней
-      cleanupDoubleRounds(3);      // double_rounds: 3 суток
-      cleanupDoubleBetsLog(30);    // double_bets_log: 30 дней
-      console.log('[DB] Плановая очистка логов завершена.');
+    if (typeof cleanupOldMessageLogs === 'function') cleanupOldMessageLogs(30);   // message_log: 30 дней
+    if (typeof cleanupFinanceLog === 'function') cleanupFinanceLog(365);          // finance_log: 365 дней
+    cleanupDoubleRounds(3);      // double_rounds: 3 суток
+    cleanupDoubleBetsLog(30);    // double_bets_log: 30 дней
+    console.log('[DB] Плановая очистка логов завершена.');
   } catch (error) {
-      console.error('[DB] Ошибка при плановой очистке логов:', error);
+    console.error('[DB] Ошибка при плановой очистке логов:', error);
   }
 }
 
@@ -5400,7 +5596,8 @@ function getAdminLogsFinance({ sinceTs = 0, types = null, searchIds = null, limi
   try {
     const where = ['f.ts >= ?'];
     const params = [sinceTs];
-    
+    // Защита от пустых строк-мусора: оставляем только записи с содержимым
+    where.push(`((f.action IS NOT NULL AND f.action != '') OR f.amount IS NOT NULL OR f.target_user_id IS NOT NULL OR f.actor_user_id IS NOT NULL)`);
     if (types && types.length) {
       where.push(`f.type IN (${types.map(() => '?').join(',')})`);
       params.push(...types);
@@ -5410,14 +5607,12 @@ function getAdminLogsFinance({ sinceTs = 0, types = null, searchIds = null, limi
       where.push(`(CAST(f.actor_user_id AS TEXT) IN (${ph}) OR CAST(f.target_user_id AS TEXT) IN (${ph}))`);
       params.push(...searchIds, ...searchIds);
     }
-    
     const whereSql = 'WHERE ' + where.join(' AND ');
-    
-    // ✅ ИСПРАВЛЕНО: убраны f.chat_type и f.chat_title, так как их нет в finance_log
     const rows = db.prepare(`
-      SELECT 
-        f.id, f.ts, f.type, f.actor_user_id, f.target_user_id, 
+      SELECT
+        f.id, f.ts, f.type, f.actor_user_id, f.target_user_id,
         f.amount, f.currency, f.ref, f.reason, f.action, f.payload, f.success,
+        f.chat_id, f.chat_title, f.chat_type,
         a.username AS actor_name, a.numeric_id AS actor_num,
         t.username AS target_name, t.numeric_id AS target_num
       FROM finance_log f
@@ -5426,9 +5621,7 @@ function getAdminLogsFinance({ sinceTs = 0, types = null, searchIds = null, limi
       ${whereSql}
       ORDER BY f.ts DESC LIMIT ? OFFSET ?
     `).all(...params, limit, offset);
-    
     const total = db.prepare(`SELECT COUNT(*) AS c FROM finance_log f ${whereSql}`).get(...params).c;
-    
     return { rows, total };
   } catch (error) {
     console.error('[DB] Ошибка выборки finance-логов:', error);
@@ -5437,31 +5630,19 @@ function getAdminLogsFinance({ sinceTs = 0, types = null, searchIds = null, limi
 }
 
 
-// Режим «дабл»: ставки + завершённые раунды (тоже с приведением к TEXT)
+// Режим «дабл»: ставки + раунды (и активные, и завершенные)
 function getAdminLogsDouble({ sinceTs = 0, searchIds = null, limit = 30, offset = 0 } = {}) {
   try {
     let bets;
     if (searchIds && searchIds.length) {
       const ph = searchIds.map(() => '?').join(',');
-      bets = db.prepare(`
-        SELECT b.*, u.numeric_id AS user_num
-        FROM double_bets_log b
-        LEFT JOIN users u ON CAST(u.id AS TEXT) = CAST(b.user_id AS TEXT)
-        WHERE b.ts >= ? AND CAST(b.user_id AS TEXT) IN (${ph})
-        ORDER BY b.ts DESC
-      `).all(sinceTs, ...searchIds);
+      bets = db.prepare(`SELECT b.*, u.numeric_id AS user_num FROM double_bets_log b LEFT JOIN users u ON CAST(u.id AS TEXT) = CAST(b.user_id AS TEXT) WHERE b.ts >= ? AND CAST(b.user_id AS TEXT) IN (${ph}) ORDER BY b.ts DESC`).all(sinceTs, ...searchIds);
     } else {
-      bets = db.prepare(`
-        SELECT b.*, u.numeric_id AS user_num
-        FROM double_bets_log b
-        LEFT JOIN users u ON CAST(u.id AS TEXT) = CAST(b.user_id AS TEXT)
-        WHERE b.ts >= ?
-        ORDER BY b.ts DESC
-      `).all(sinceTs);
+      bets = db.prepare(`SELECT b.*, u.numeric_id AS user_num FROM double_bets_log b LEFT JOIN users u ON CAST(u.id AS TEXT) = CAST(b.user_id AS TEXT) WHERE b.ts >= ? ORDER BY b.ts DESC`).all(sinceTs);
     }
-    const rounds = (searchIds && searchIds.length) ? [] : db.prepare(`
-      SELECT * FROM double_rounds WHERE end_ts IS NOT NULL AND end_ts >= ? ORDER BY end_ts DESC
-    `).all(sinceTs);
+
+    // --- ИСПРАВЛЕНИЕ: Убрали "end_ts IS NOT NULL", теперь видим и активные раунды ---
+    const rounds = (searchIds && searchIds.length) ? [] : db.prepare(`SELECT * FROM double_rounds WHERE start_ts >= ? ORDER BY start_ts DESC`).all(sinceTs);
 
     const merged = [
       ...bets.map(b => ({
@@ -5478,13 +5659,15 @@ function getAdminLogsDouble({ sinceTs = 0, searchIds = null, limit = 30, offset 
       })),
       ...rounds.map(r => ({
         id: 'r' + r.round_id,
-        ts: r.end_ts,
+        ts: r.start_ts, // Сортируем по времени старта
         userId: null,
-        userName: 'РАУНД',
+        userName: r.status === 'active' ? ' РАУНД ИДЕТ' : 'РАУНД',
         userNum: null,
         targetId: String(r.round_id).slice(0, 8),
         targetName: null,
-        action: `Итог: ${r.result_multiplier || '—'}, банк ${r.total_bank || 0}, ставок ${r.bets_count || 0}, чатов ${r.chats_count || 0}`,
+        action: r.status === 'active' 
+            ? `Идет игра... Банк: ${r.total_bank || 0}, ставок: ${r.bets_count || 0}`
+            : `Итог: ${r.result_multiplier || '—'}, банк ${r.total_bank || 0}, ставок ${r.bets_count || 0}`,
       })),
     ].sort((a, b) => b.ts - a.ts);
 
@@ -5492,6 +5675,31 @@ function getAdminLogsDouble({ sinceTs = 0, searchIds = null, limit = 30, offset 
   } catch (error) {
     console.error('[DB] Ошибка выборки double-логов:', error);
     return { rows: [], total: 0 };
+  }
+}
+
+// Детали раунда для Mini App: участники, чаты, список ставок
+function getDoubleRoundDetails(roundId) {
+  try {
+    const round = db.prepare('SELECT * FROM double_rounds WHERE round_id = ?').get(roundId);
+    if (!round) return { success: false, error: 'Раунд не найден' };
+    const bets = db.prepare(`SELECT b.id, b.ts, b.user_id, b.username, b.chat_id, b.chat_title, b.multiplier, b.amount, b.game_choice, b.is_win, b.win_amount, b.payout_status, u.numeric_id AS user_num
+                             FROM double_bets_log b LEFT JOIN users u ON u.id = b.user_id
+                             WHERE b.round_id = ? AND b.status = 'accepted' ORDER BY b.ts ASC`).all(roundId);
+    const pMap = new Map();
+    const cMap = new Map();
+    for (const b of bets) {
+      if (!pMap.has(b.user_id)) pMap.set(b.user_id, { user_id: b.user_id, username: b.username, user_num: b.user_num, bets: 0, bank: 0, won: 0 });
+      const p = pMap.get(b.user_id);
+      p.bets += 1; p.bank += b.amount; if (b.is_win === 1) p.won += (b.win_amount || 0);
+      if (!cMap.has(b.chat_id)) cMap.set(b.chat_id, { chat_id: b.chat_id, chat_title: b.chat_title, bets: 0, bank: 0 });
+      const c = cMap.get(b.chat_id);
+      c.bets += 1; c.bank += b.amount;
+    }
+    return { success: true, round, participants: [...pMap.values()], chats: [...cMap.values()], bets };
+  } catch (e) {
+    console.error('[DB] Ошибка деталей раунда:', e);
+    return { success: false, error: e.message };
   }
 }
 
@@ -5732,7 +5940,6 @@ module.exports = {
   logFinance,
   cleanupFinanceLog,
   createDoubleRound,
-  finishDoubleRound,
   getDoubleRoundByHash,
   logDoubleBet,
   updateDoubleBetOutcome,
@@ -5746,6 +5953,8 @@ module.exports = {
   getAdminLogsFinance, 
   getAdminLogsDouble,
   logMessage,
+  updateDoubleBetPayoutByGroup, markDoubleBetPayoutFailed, markRoundBetsFailed, updateGameChoicesForRoundUser, finishDoubleRoundLog, getAdminDoubleRoundsView, getAdminDoubleBetsView,
+  getDoubleRoundDetails,
 
 
 };

@@ -1,5 +1,4 @@
-//app\backend\index.js
-
+// app/backend/index.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -14,8 +13,11 @@ const {
   getUserById, 
   awardPrizeToUser,
   getAdminLogsFinance, 
-  getAdminLogsDouble, 
-  resolveLogSearchIds 
+  resolveLogSearchIds,
+  // Импортируем новые функции для раздельного просмотра дабла
+  getAdminDoubleRoundsView, 
+  getAdminDoubleBetsView,
+  getDoubleRoundDetails
 } = require('../../db');
 
 // === 2. Настройка путей и инициализация БД ===
@@ -158,7 +160,7 @@ app.post('/api/fortune/spin', (req, res) => {
   }
 });
 
-// === Админские логи (перенесено из "хвоста") ===
+// === Админские логи ===
 const LOG_RANGE_MS = { day: 86400000, week: 604800000, month: 2592000000, all: 0 };
 const LOGS_PAGE_SIZE = 30;
 
@@ -171,6 +173,7 @@ function parseLogsQuery(req) {
     };
 }
 
+// Логи финансов и админ-действий
 app.get('/api/admin/logs/finance', (req, res) => {
     try {
         const { sinceTs, searchIds, page } = parseLogsQuery(req);
@@ -178,18 +181,58 @@ app.get('/api/admin/logs/finance', (req, res) => {
         const { rows, total } = getAdminLogsFinance({ sinceTs, types, searchIds, limit: LOGS_PAGE_SIZE, offset: (page - 1) * LOGS_PAGE_SIZE });
         res.json({ rows, total, page, pages: Math.max(1, Math.ceil(total / LOGS_PAGE_SIZE)) });
     } catch (e) { 
+        console.error('[BACKEND] Error finance logs:', e);
         res.status(500).json({ error: e.message }); 
     }
 });
 
+// Логи Дабла (Раунды или Ставки) + поиск по хешу раунда
 app.get('/api/admin/logs/double', (req, res) => {
-    try {
-        const { sinceTs, searchIds, page } = parseLogsQuery(req);
-        const { rows, total } = getAdminLogsDouble({ sinceTs, searchIds, limit: LOGS_PAGE_SIZE, offset: (page - 1) * LOGS_PAGE_SIZE });
-        res.json({ rows, total, page, pages: Math.max(1, Math.ceil(total / LOGS_PAGE_SIZE)) });
-    } catch (e) { 
-        res.status(500).json({ error: e.message }); 
+  try {
+    const { sinceTs, searchIds, page } = parseLogsQuery(req);
+    const view = req.query.view === 'bets' ? 'bets' : 'rounds';
+    const searchRaw = String(req.query.search || '').trim();
+    let result;
+    if (view === 'bets') {
+      // В ставках поиск: игрок (searchIds) ИЛИ хеш (внутри функции db)
+      result = getAdminDoubleBetsView({
+        sinceTs,
+        searchIds,
+        hash: searchRaw || null,
+        limit: LOGS_PAGE_SIZE,
+        offset: (page - 1) * LOGS_PAGE_SIZE,
+      });
+    } else {
+      // В раундах поиск — только по подстроке хеша
+      result = getAdminDoubleRoundsView({
+        sinceTs,
+        hash: searchRaw || null,
+        limit: LOGS_PAGE_SIZE,
+        offset: (page - 1) * LOGS_PAGE_SIZE,
+      });
     }
+    res.json({
+      rows: result.rows,
+      total: result.total,
+      page,
+      pages: Math.max(1, Math.ceil(result.total / LOGS_PAGE_SIZE)),
+    });
+  } catch (e) {
+    console.error('[BACKEND] Error double logs:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Детали конкретного раунда (участники / чаты / ставки) для всплывающего окна
+app.get('/api/admin/logs/double/round/:roundId', (req, res) => {
+  try {
+    const details = getDoubleRoundDetails(req.params.roundId);
+    if (!details.success) return res.status(404).json({ error: details.error });
+    res.json(details);
+  } catch (e) {
+    console.error('[BACKEND] Round details error:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // === 5. Статика и роутинг фронтенда ===
@@ -212,7 +255,7 @@ if (fs.existsSync(frontendOutPath)) {
   });
 }
 
-// === Запуск сервера с обработкой занятости порта ===
+// === 6. Запуск сервера с обработкой занятости порта ===
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[BACKEND] Сервер запущен на порту ${PORT}`);
 });
@@ -220,8 +263,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`[BACKEND] Порт ${PORT} занят! Попытка убить процесс...`);
-    // На Windows можно попробовать автоматически найти и убить процесс
     const { exec } = require('child_process');
+    // Команда для Windows для убийства процесса на порту
     exec(`for /f "tokens=5" %a in ('netstat -aon ^| find ":${PORT}" ^| find "LISTENING"') do taskkill /F /PID %a`, 
       (error, stdout) => {
         if (!error && stdout.trim()) {
@@ -252,3 +295,20 @@ setInterval(() => {
     console.error('[KEEP-ALIVE] Ошибка пинга самого себя:', err.message);
   });
 }, 15000);
+
+// Эндпоинт для визуализации физики (если используется)
+app.get('/api/physics/users', (req, res) => {
+  try {
+    const stmt = db.prepare(`
+      SELECT id, numeric_id, username, balance 
+      FROM users 
+      ORDER BY balance DESC 
+      LIMIT 2000
+    `);
+    const users = stmt.all();
+    res.json(users);
+  } catch (err) {
+    console.error('[BACKEND] Ошибка физики:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});

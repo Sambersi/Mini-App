@@ -27,7 +27,6 @@ const {
   getReferrerId,
   getUserStatuses,
   getBetsByRoundId,
-  saveBet,
   getWeaponById,
   setActiveWeapon,
   getAttackState,
@@ -37,6 +36,7 @@ const {
   addWeaponToUser,
   getOwnedWeapons,
   logFinance,
+  saveBet,
 } = require('./db');
 
 
@@ -2576,7 +2576,7 @@ bot.on('text', async (ctx) => {
       const currentTime = Date.now();
       const text = ctx.message.text.trim();
       const { logMessage } = require('./db');
-      logMessage(userId, chatId, text, Math.floor(Date.now() / 1000));
+      logMessage(userId, chatType, chatId, ctx.chat?.title || null, text, text.startsWith('/'));
       const lowerText = text.toLowerCase();
     // ✅ ЛОГИРОВАНИЕ СООБЩЕНИЙ (вставить сюда)
     if (ctx.message && ctx.message.text) {

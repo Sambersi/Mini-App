@@ -9,6 +9,7 @@ import Help from './pages/Help.jsx';
 import Nav from './components/Nav.jsx';
 import { fetchUser, fetchAdminCheck } from './utils/api.js';
 
+
 const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const TG = window.Telegram?.WebApp;
 
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/fortune" element={<Fortune user={user} tgUser={tgUser} />} />
         <Route path="/donate" element={<Donate />} />
         <Route path="/help" element={<Help />} />
+
         <Route
           path="/admin"
           element={isAdmin ? <AdminPanel user={user} /> : <Navigate to="/profile" replace />}

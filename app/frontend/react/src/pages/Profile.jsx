@@ -65,13 +65,30 @@ export default function Profile({ user, tgUser, isAdmin }) {
         <div className="card admin-card">
           <div className="card-title">Администрирование</div>
           <p className="text">Управление ботом, игроками, финансами и логами.</p>
-          <button
-            className="btn admin-enter-btn"
-            onClick={() => navigate('/admin')}
-          >
-            <span className="material-symbols-rounded" style={{ marginRight: 8 }}>admin_panel_settings</span>
-            Войти в админ-панель
-          </button>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <button
+              className="btn admin-enter-btn"
+              onClick={() => navigate('/admin')}
+            >
+              <span className="material-symbols-rounded" style={{ marginRight: 8 }}>admin_panel_settings</span>
+              Админ-панель
+            </button>
+
+            {/* НОВАЯ КНОПКА */}
+            <button
+              className="btn ghost"
+              style={{ 
+                background: 'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)', 
+                border: 'none',
+                color: '#fff'
+              }}
+              onClick={() => navigate('/physics')}
+            >
+              <span className="material-symbols-rounded" style={{ marginRight: 8 }}>bubble_chart</span>
+              Физика частиц
+            </button>
+          </div>
         </div>
       )}
     </div>

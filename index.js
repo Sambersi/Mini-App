@@ -9,7 +9,9 @@ const ignoreFlags = [
   '--ignore', 'database.sqlite*', 
   '--ignore', '*.log', 
   '--ignore', 'node_modules/', 
-  '--ignore', 'app/frontend/'
+  '--ignore', 'app/frontend/',
+  '--ignore', 'data/',  // <-- ДОБАВЬ ЭТУ СТРОКУ
+  '--ignore', 'logs/'   // <-- И ЭТУ ТОЖЕ
 ];
 
 // === Запуск бота ===
