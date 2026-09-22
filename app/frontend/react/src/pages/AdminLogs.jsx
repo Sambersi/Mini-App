@@ -1,14 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchAdminLogs, fetchRoundDetails } from '../utils/api.js';
-
-const RANGES = [
-  { value: 'day', label: 'за сутки' },
-  { value: 'week', label: 'за неделю' },
-  { value: 'month', label: 'за месяц' },
-  { value: 'all', label: 'все' },
-];
-
+// Константы для фильтров
 const FIN_TYPES = [
   { value: '', label: 'все типы' },
   { value: 'transfer', label: 'переводы' },
@@ -21,14 +14,20 @@ const FIN_TYPES = [
   { value: 'block_transfers,unblock_transfers', label: 'блокировки переводов' },
   { value: 'message', label: 'сообщения' },
 ];
-
+// Форматирование времени
 const fmtTime = (ts) => (typeof ts === 'number' ? new Date(ts).toLocaleString('ru-RU', {
   day: '2-digit', month: '2-digit', year: '2-digit',
   hour: '2-digit', minute: '2-digit', second: '2-digit',
 }) : '—');
 const fmtDate = (ts) => (typeof ts === 'number' ? new Date(ts).toLocaleDateString('ru-RU') : '—');
-const fmtTimeShort = (ts) => (typeof ts === 'number' ? new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '—');
-
+const fmtTimeShort = (ts) => (typeof ts === 'number' ? new Date(ts).toLocaleTimeString('ru-RU', {
+  hour: '2-digit', minute: '2-digit'
+}) : '—');
+// Значение даты-времени для input datetime-local (локальное)
+const toLocalInputValue = (d) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 // Жёсткая санация: отбрасываем строки-призраки, дубликаты и пустые строки
 function sanitizeRows(rows, mode, view) {
   const seen = new Set();
@@ -46,6 +45,7 @@ function sanitizeRows(rows, mode, view) {
       if (seen.has(k)) continue;
       seen.add(k);
     } else {
+      // Finance mode
       if (r.id == null) continue;
       const hasContent =
         (typeof r.action === 'string' && r.action.trim() !== '') ||
@@ -62,8 +62,7 @@ function sanitizeRows(rows, mode, view) {
   }
   return out;
 }
-
-// Цвет ставки: из БД, а при отсутствии is_win — сопоставлением с множителем раунда
+// Визуализация ставки
 function betVisual(bet, roundMultiplier, roundStatus) {
   if (bet.is_win === 1) return 'win';
   if (bet.is_win === 0) return 'loss';
@@ -72,7 +71,6 @@ function betVisual(bet, roundMultiplier, roundStatus) {
   }
   return 'pend';
 }
-
 // Статус выплаты группы ставок
 function groupPayout(bets, roundStatus) {
   if (!bets || bets.length === 0) return 'pending';
@@ -85,103 +83,131 @@ function groupPayout(bets, roundStatus) {
   }
   return 'pending';
 }
-
-// Ключ контекста: для какого режима+вида пригодны данные
+// Ключ контекста для проверки актуальности данных
 function ctxKey(mode, doubleView) {
   return mode === 'double' ? 'double:' + doubleView : 'finance';
 }
-
 const EMPTY_DATA = { rows: [], total: 0, pages: 1, page: 1, ctx: null };
-
 export default function AdminLogs({ adminId }) {
   const navigate = useNavigate();
-  const [mode, setMode] = useState('finance');
-  const [doubleView, setDoubleView] = useState('rounds');
-  const [range, setRange] = useState('day');
+  // Основные состояния
+  const [mode, setMode] = useState('finance'); // 'finance' | 'double'
+  const [doubleView, setDoubleView] = useState('rounds'); // 'rounds' | 'bets'
   const [types, setTypes] = useState('');
   const [search, setSearch] = useState('');
   const [searchApplied, setSearchApplied] = useState('');
   const [page, setPage] = useState(1);
+  // Состояния для выбора даты/времени
+  const [targetDate, setTargetDate] = useState(''); // Строка YYYY-MM-DDTHH:mm (что отображаем)
+  const [jumpTs, setJumpTs] = useState(null); // Одноразовый переход к ближайшей странице
+  const [pickerOpen, setPickerOpen] = useState(false); // Окно выбора даты/времени
+  const [draftDate, setDraftDate] = useState(''); // Черновик внутри окна выбора
+  // Данные и загрузка
   const [data, setData] = useState(EMPTY_DATA);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [modal, setModal] = useState(null); // { roundId, loading, error, details }
+  const [modal, setModal] = useState(null);
   const reqId = useRef(0);
-
   // Текущие значения фильтров — для проверки ответа в момент прилёта
   const currentRef = useRef({});
-  currentRef.current = { mode, doubleView, range, types, searchApplied, page };
-
+  currentRef.current = { mode, doubleView, types, searchApplied, page, jumpTs };
+  // Открытие окна выбора даты/времени
+  const openPicker = () => {
+    setDraftDate(targetDate || toLocalInputValue(new Date()));
+    setPickerOpen(true);
+  };
+  // Применение выбранной даты: одноразовый переход к ближайшей странице
+  const applyDate = (val) => {
+    if (!val) return;
+    const ts = new Date(val).getTime();
+    if (Number.isNaN(ts)) return;
+    setTargetDate(val);
+    setJumpTs(ts);
+    setPage(1);
+    setPickerOpen(false);
+  };
+  // Сброс к последним записям
+  const resetToLatest = () => {
+    setTargetDate('');
+    setJumpTs(null);
+    setPage(1);
+    setPickerOpen(false);
+  };
+  // Основная функция загрузки данных
   const load = useCallback(async () => {
     const my = ++reqId.current;
-    const req = { mode, doubleView, range, types, searchApplied, page };
+    const req = { mode, doubleView, types, searchApplied, page, jumpTs };
     setLoading(true);
     try {
       const res = await fetchAdminLogs(req.mode, {
         callerId: adminId,
-        range: req.range,
+        targetTs: req.jumpTs, // Передаем timestamp или null
         types: req.mode === 'finance' && req.types ? req.types.split(',') : null,
         search: req.searchApplied,
         page: req.page,
         view: req.mode === 'double' ? req.doubleView : null,
       });
       if (my !== reqId.current) return;
-      // Жёстко: ответ применим только если фильтры не изменились, пока он летел
+      // Жёсткая проверка: ответ применим только если фильтры не изменились
       const cur = currentRef.current;
       if (
         cur.mode !== req.mode ||
         cur.doubleView !== req.doubleView ||
-        cur.range !== req.range ||
         cur.types !== req.types ||
         cur.searchApplied !== req.searchApplied ||
-        cur.page !== req.page
+        cur.page !== req.page ||
+        cur.jumpTs !== req.jumpTs
       ) return;
       setData({
         rows: sanitizeRows(res.rows, req.mode, req.mode === 'double' ? req.doubleView : 'finance'),
         total: res.total,
-        pages: res.pages,
+        pages: res.pages, // Важно: берем pages из ответа бэкенда
         page: res.page,
         ctx: ctxKey(req.mode, req.doubleView),
       });
       setError(null);
+      // Если был одноразовый переход ко времени: гасим его и синхронизируем номер страницы
+      if (req.jumpTs != null) {
+        setJumpTs(null);
+        if (typeof res.page === 'number' && res.page !== req.page) setPage(res.page);
+      }
     } catch (e) {
       if (my !== reqId.current) return;
       setError(e.message);
     } finally {
       if (my === reqId.current) setLoading(false);
     }
-  }, [mode, doubleView, range, types, searchApplied, page, adminId]);
-
+  }, [mode, doubleView, types, searchApplied, page, adminId, jumpTs]);
   useEffect(() => { load(); }, [load]);
+  // Автообновление каждые 20 секунд (только в режиме «последние записи», чтобы не дергать историю)
   useEffect(() => {
+    if (targetDate || jumpTs) return;
     const t = setInterval(load, 20000);
     return () => clearInterval(t);
-  }, [load]);
-
-  // Смена режима: мгновенно инвалидируем таблицу, чтобы чужой шаблон не рисовал старые строки
+  }, [load, targetDate, jumpTs]);
+  // Переключатели режимов
   const switchMode = (m) => {
     if (m === mode) return;
     setMode(m);
     setPage(1);
     setData(EMPTY_DATA);
   };
-
-  // Смена вида дабла (раунды/ставки): то же самое
   const switchView = (v) => {
     if (v === doubleView) return;
     setDoubleView(v);
     setPage(1);
     setData(EMPTY_DATA);
   };
-
-  const applySearch = () => { setPage(1); setSearchApplied(search.trim()); };
-
-  // Данные пригодны к показу только если совпадает контекст
+  const applySearch = () => {
+    setPage(1);
+    setSearchApplied(search.trim());
+  };
+  // Проверка актуальности данных для рендера
   const rowsMatch = data.ctx === ctxKey(mode, doubleView);
-  const rows = rowsMatch ? sanitizeRows(data.rows, mode, mode === 'double' ? doubleView : 'finance') : [];
+  const rows = rowsMatch ? data.rows : [];
   const pages = rowsMatch ? data.pages : 1;
   const colsClass = mode === 'finance' ? 'cols-4' : 'cols-5';
-
+  // Детали раунда
   const openRoundDetails = async (roundId) => {
     setModal({ roundId, loading: true, error: null, details: null });
     try {
@@ -191,13 +217,11 @@ export default function AdminLogs({ adminId }) {
       setModal({ roundId, loading: false, error: e.message, details: null });
     }
   };
-
   const copyHash = (hash) => {
     try {
       if (navigator.clipboard) navigator.clipboard.writeText(hash);
     } catch (e) { /* ignore */ }
   };
-
   return (
     <div className="page logs-page">
       <button className="page-close" onClick={() => navigate('/admin')} aria-label="Закрыть">
@@ -205,6 +229,7 @@ export default function AdminLogs({ adminId }) {
       </button>
       <div className="page-mode-title">Логи</div>
       <div className="logs-controls">
+        {/* Row 1: Mode Switch & Search */}
         <div className="logs-row">
           <div className="seg logs-seg">
             <button className={'seg-btn' + (mode === 'double' ? ' active' : '')} onClick={() => switchMode('double')}>дабл</button>
@@ -212,36 +237,53 @@ export default function AdminLogs({ adminId }) {
           </div>
           <input
             className="input logs-search"
-            placeholder={mode === 'double' ? (doubleView === 'rounds' ? 'поиск по хешу раунда...' : 'ID игрока или хеш раунда...') : 'поиск по ID или нику...'}
+            placeholder={mode === 'double' ? (doubleView === 'rounds' ? 'поиск по хешу...' : 'ID игрока...') : 'поиск по ID...'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') applySearch(); }}
           />
           <button className="btn-mini" onClick={applySearch}>Найти</button>
         </div>
+        {/* Row 2: Date Picker & Filters */}
         <div className="logs-row">
-          <select className="select" value={range} onChange={(e) => { setRange(e.target.value); setPage(1); }}>
-            {RANGES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-          </select>
+          {/* Кнопка открытия окна выбора даты/времени */}
+          <button
+            type="button"
+            className="btn-mini"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}
+            onClick={openPicker}
+          >
+            {targetDate
+              ? '📅 ' + new Date(targetDate).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+              : '📅 Выбрать время'}
+          </button>
+          {/* Кнопка сброса к последним записям (только если выбрана дата) */}
+          {targetDate && (
+            <button type="button" className="btn-mini ghost" onClick={resetToLatest} style={{ whiteSpace: 'nowrap' }}>
+              ⏱ Последние
+            </button>
+          )}
+          {/* Фильтр типов (только для финансов) */}
           {mode === 'finance' && (
             <select className="select" value={types} onChange={(e) => { setTypes(e.target.value); setPage(1); }}>
               {FIN_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           )}
+          {/* Переключатель Раунды/Ставки (только для дабла) */}
           {mode === 'double' && (
             <select className="select" value={doubleView} onChange={(e) => switchView(e.target.value)}>
               <option value="rounds">Раунды</option>
-              <option value="bets">Ставки игроков</option>
+              <option value="bets">Ставки</option>
             </select>
           )}
         </div>
       </div>
       {error && (
-        <div className="card secondary"><div className="text">Ошибка загрузки: {error}</div></div>
+        <div className="card secondary"><div className="text">Ошибка: {error}</div></div>
       )}
       <div className="logs-table-wrap card secondary" key={`${mode}-${doubleView}`}>
         <div className="logs-scroll">
-          {/* ШАПКА — первый элемент скролл-контейнера, липнет сверху */}
+          {/* Headers */}
           {mode === 'finance' && (
             <div className={'logs-head ' + colsClass}>
               <div>Пользователь</div>
@@ -283,7 +325,7 @@ export default function AdminLogs({ adminId }) {
                     {r.chat_type ? (
                       <>
                         <div className="logs-cell-name">
-                          {r.chat_type === 'private' ? 'Личка' : r.chat_type === 'supergroup' ? 'Супергруппа' : r.chat_type === 'group' ? 'Группа' : r.chat_type}
+                          {r.chat_type === 'private' ? 'Личка' : r.chat_type === 'supergroup' ? 'Супергруппа' : r.chat_type}
                         </div>
                         {r.chat_title && <div className="logs-cell-sub">{r.chat_title}</div>}
                       </>
@@ -334,7 +376,7 @@ export default function AdminLogs({ adminId }) {
                 </div>
               );
             }
-            // ставки
+            // Bets View
             const bets = Array.isArray(r.bets) ? r.bets : [];
             const payout = groupPayout(bets, r.round_status);
             const totalWin = bets.reduce((s, b) => s + (b.is_win === 1 ? (b.win_amount || 0) : 0), 0);
@@ -355,11 +397,11 @@ export default function AdminLogs({ adminId }) {
                   <div>{r.chat_id}</div>
                 </div>
                 <div>
-                  {bets.map((b) => {
+                  {bets.map((b, idx) => {
                     const v = betVisual(b, r.result_multiplier, r.round_status);
                     const cls = v === 'win' ? 'bet-win' : v === 'loss' ? 'bet-loss' : 'bet-pend';
                     return (
-                      <div key={b.ts + '_' + b.multiplier + '_' + b.amount} className={cls}>
+                      <div key={idx} className={cls}>
                         {b.amount} на {b.multiplier}{b.game_choice ? ` (${b.game_choice})` : ''}{v === 'win' && b.win_amount ? ` → +${b.win_amount}` : ''}
                       </div>
                     );
@@ -377,12 +419,33 @@ export default function AdminLogs({ adminId }) {
           })}
         </div>
       </div>
+      {/* Pagination */}
       <div className="logs-pager">
         <button className="btn-mini" disabled={page <= 1} onClick={() => setPage(page - 1)}>←</button>
         <span>стр. {page} из {pages}{loading && rowsMatch ? ' (обновление…)' : ''}</span>
         <button className="btn-mini" disabled={page >= pages} onClick={() => setPage(page + 1)}>→</button>
       </div>
-      {/* Модалка деталей раунда */}
+      {/* Окно выбора даты и времени (с кнопкой закрытия) */}
+      {pickerOpen && (
+        <div className="overlay" onClick={() => setPickerOpen(false)}>
+          <div className="overlay-card" onClick={(e) => e.stopPropagation()}>
+            <div className="overlay-title">📅 Выбор даты и времени</div>
+            <input
+              type="datetime-local"
+              className="select"
+              style={{ width: '100%', padding: '10px 8px', fontSize: 14 }}
+              value={draftDate}
+              onChange={(e) => setDraftDate(e.target.value)}
+            />
+            <div className="logs-row" style={{ marginTop: 12 }}>
+              <button className="btn-mini" style={{ flex: 1 }} onClick={() => applyDate(draftDate)}>Применить</button>
+              <button className="btn-mini" style={{ flex: 1 }} onClick={resetToLatest}>Сброс</button>
+            </div>
+            <button className="btn-mini" style={{ marginTop: 8, width: '100%' }} onClick={() => setPickerOpen(false)}>✕ Закрыть</button>
+          </div>
+        </div>
+      )}
+      {/* Modal Round Details */}
       {modal && (
         <div className="overlay" onClick={() => setModal(null)}>
           <div className="overlay-card" onClick={(e) => e.stopPropagation()}>

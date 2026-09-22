@@ -5,25 +5,22 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const sqlite3 = require('better-sqlite3');
-
 // === 1. Импорт функций из базы данных (объединено в одном месте) ===
-const { 
-  getTickets, 
-  takeTickets, 
-  getUserById, 
+const {
+  getTickets,
+  takeTickets,
+  getUserById,
   awardPrizeToUser,
-  getAdminLogsFinance, 
+  getAdminLogsFinance,
   resolveLogSearchIds,
   // Импортируем новые функции для раздельного просмотра дабла
-  getAdminDoubleRoundsView, 
+  getAdminDoubleRoundsView,
   getAdminDoubleBetsView,
   getDoubleRoundDetails
 } = require('../../db');
-
 // === 2. Настройка путей и инициализация БД ===
 const dbPath = path.join(__dirname, '../../database.sqlite');
 console.log(`[BACKEND] Путь к базе данных: ${dbPath}`);
-
 let db;
 try {
   db = new sqlite3(dbPath);
@@ -32,21 +29,16 @@ try {
   console.error('[BACKEND] Ошибка подключения к базе данных:', err.message);
   process.exit(1);
 }
-
 const frontendOutPath = path.join(__dirname, '../frontend/out');
 if (!fs.existsSync(frontendOutPath)) {
   console.warn(`[BACKEND] Папка фронтенда не найдена: ${frontendOutPath}`);
 }
-
 // === 3. Инициализация Express ===
 const app = express();
 const PORT = process.env.PORT || 25071;
-
 app.use(cors());
 app.use(express.json());
-
 // === 4. API маршруты ===
-
 // Получить данные пользователя по Telegram ID
 app.get('/api/user/:id', (req, res) => {
   const userId = req.params.id.toString();
@@ -62,12 +54,10 @@ app.get('/api/user/:id', (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-
 // Здоровье сервера
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
-
 // Счётчик онлайна (демо-формула)
 app.get('/api/online', (req, res) => {
   const hour = new Date().getHours();
@@ -75,38 +65,30 @@ app.get('/api/online', (req, res) => {
   const jitter = Math.floor(Math.random() * 15);
   res.json({ online: base + jitter });
 });
-
 // === Мониторинг туннеля ===
 let lastRequestTime = Date.now();
-
 app.use((req, res, next) => {
   lastRequestTime = Date.now();
   next();
 });
-
 app.get('/api/tunnel-status', (req, res) => {
   const now = Date.now();
   const diffSeconds = Math.floor((now - lastRequestTime) / 1000);
-  
   let status = '🟢 ONLINE';
   if (diffSeconds > 60) status = '🟡 IDLE (Нет запросов > 1 мин)';
   if (diffSeconds > 180) status = '🔴 OFFLINE (Нет запросов > 3 мин)';
-
   res.json({
     status: status,
     lastActivitySecondsAgo: diffSeconds,
     serverTime: new Date().toISOString()
   });
 });
-
 // Белый список админов из .env
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
-
 // Проверка админа (ВРЕМЕННО ДОСТУПНО ВСЕМ)
 app.get('/api/admin/check/:userId', (req, res) => {
-  res.json({ isAdmin: true }); 
+  res.json({ isAdmin: true });
 });
-
 // Количество билетов
 app.get('/api/fortune/tickets/:userId', (req, res) => {
   try {
@@ -117,7 +99,6 @@ app.get('/api/fortune/tickets/:userId', (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 // Вращение колеса фортуны
 const PRIZES = [
   { title: '1 000 000 PF', weight: 50, type: 'pf', amount: 1000000 },
@@ -129,83 +110,187 @@ const PRIZES = [
   { title: 'Префикс 🍀', weight: 2, type: 'prefix' },
   { title: 'СЕКРЕТНЫЙ ПРИЗ', weight: 10, type: 'secret' },
 ];
-
 function selectWeightedPrize() {
   const total = PRIZES.reduce((s, p) => s + p.weight, 0);
   let r = Math.random() * total;
-  for (const p of PRIZES) { 
-    r -= p.weight; 
-    if (r <= 0) return p; 
+  for (const p of PRIZES) {
+    r -= p.weight;
+    if (r <= 0) return p;
   }
   return PRIZES[0];
 }
-
 app.post('/api/fortune/spin', (req, res) => {
   const userId = req.body.userId?.toString();
   if (!userId) return res.status(400).json({ error: 'userId required' });
-
   try {
     const tickets = getTickets(userId);
     if (tickets < 1) return res.status(402).json({ error: 'No tickets' });
-
     const takeResult = takeTickets(userId, 1);
     if (!takeResult.success) return res.status(500).json({ error: takeResult.message });
-
     const prize = selectWeightedPrize();
     awardPrizeToUser(userId, prize);
-
     res.json({ prize: { title: prize.title, type: prize.type }, ticketsLeft: tickets - 1 });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
-
 // === Админские логи ===
-const LOG_RANGE_MS = { day: 86400000, week: 604800000, month: 2592000000, all: 0 };
-const LOGS_PAGE_SIZE = 30;
+const LOGS_PAGE_SIZE = 42;
 
+// Разбор query-параметров логов: страница, поиск и момент времени (targetTs)
 function parseLogsQuery(req) {
-    const rangeMs = LOG_RANGE_MS[req.query.range] ?? LOG_RANGE_MS.day;
-    return {
-        sinceTs: Date.now() - rangeMs,
-        searchIds: resolveLogSearchIds(req.query.search || ''),
-        page: Math.max(1, parseInt(req.query.page, 10) || 1),
-    };
+  const rawTs = parseInt(req.query.targetTs, 10);
+  return {
+    targetTs: Number.isNaN(rawTs) ? null : rawTs,
+    searchIds: resolveLogSearchIds(String(req.query.search || '')),
+    page: Math.max(1, parseInt(req.query.page, 10) || 1),
+  };
 }
 
-// Логи финансов и админ-действий
-app.get('/api/admin/logs/finance', (req, res) => {
-    try {
-        const { sinceTs, searchIds, page } = parseLogsQuery(req);
-        const types = req.query.types ? String(req.query.types).split(',').filter(Boolean) : null;
-        const { rows, total } = getAdminLogsFinance({ sinceTs, types, searchIds, limit: LOGS_PAGE_SIZE, offset: (page - 1) * LOGS_PAGE_SIZE });
-        res.json({ rows, total, page, pages: Math.max(1, Math.ceil(total / LOGS_PAGE_SIZE)) });
-    } catch (e) { 
-        console.error('[BACKEND] Error finance logs:', e);
-        res.status(500).json({ error: e.message }); 
+// Ограничиваем offset допустимыми пределами (чтобы не уходить за последнюю страницу)
+function clampOffset(offset, total, limit) {
+  return Math.max(0, Math.min(offset, Math.max(0, total - limit)));
+}
+
+// --- РЕЖИМ «ОБЩЕЕ»: finance_log с никами обеих сторон, честная пагинация + переход ко времени ---
+function getFinancePage({ targetTs = null, types = null, searchIds = null, limit = 50, offset = 0 }) {
+  const where = [];
+  const params = [];
+  where.push(`((f.action IS NOT NULL AND f.action != '') OR f.amount IS NOT NULL OR f.target_user_id IS NOT NULL OR f.actor_user_id IS NOT NULL)`);
+  if (types && types.length) {
+    where.push(`f.type IN (${types.map(() => '?').join(',')})`);
+    params.push(...types);
+  }
+  if (searchIds && searchIds.length) {
+    const ph = searchIds.map(() => '?').join(',');
+    where.push(`(CAST(f.actor_user_id AS TEXT) IN (${ph}) OR CAST(f.target_user_id AS TEXT) IN (${ph}))`);
+    params.push(...searchIds, ...searchIds);
+  }
+  const whereSql = 'WHERE ' + where.join(' AND ');
+  // Общее количество записей под фильтры (для честного числа страниц)
+  const total = db.prepare(`SELECT COUNT(*) AS c FROM finance_log f ${whereSql}`).get(...params).c;
+  let off = offset;
+  if (targetTs != null) {
+    // Сколько записей НОВЕЕ выбранного момента -> номер ближайшей страницы
+    const newer = db.prepare(`SELECT COUNT(*) AS c FROM finance_log f ${whereSql} AND f.ts > ?`).get(...params, targetTs).c;
+    off = clampOffset(Math.floor(newer / limit) * limit, total, limit);
+  }
+  const selectCols = `f.id, f.ts, f.type, f.actor_user_id, f.target_user_id, f.amount, f.currency, f.ref, f.reason, f.action, f.payload, f.success, f.chat_id, f.chat_title, f.chat_type, a.username AS actor_name, a.numeric_id AS actor_num, t.username AS target_name, t.numeric_id AS target_num`;
+  const joins = `FROM finance_log f LEFT JOIN users a ON CAST(a.id AS TEXT) = CAST(f.actor_user_id AS TEXT) LEFT JOIN users t ON CAST(t.id AS TEXT) = CAST(f.target_user_id AS TEXT)`;
+  const rows = db.prepare(`SELECT ${selectCols} ${joins} ${whereSql} ORDER BY f.ts DESC LIMIT ? OFFSET ?`).all(...params, limit, off);
+  return { rows, total, offset: off };
+}
+
+// --- РЕЖИМ «ДАБЛ → РАУНДЫ»: double_rounds, пагинация + переход ко времени + поиск по хешу ---
+function getRoundsPage({ targetTs = null, hash = null, limit = 50, offset = 0 }) {
+  const where = [];
+  const params = [];
+  if (hash) {
+    const safe = String(hash).replace(/[%_]/g, '');
+    if (safe) { where.push('round_id LIKE ?'); params.push('%' + safe + '%'); }
+  }
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const total = db.prepare(`SELECT COUNT(*) AS c FROM double_rounds ${whereSql}`).get(...params).c;
+  let off = offset;
+  if (targetTs != null) {
+    const cond = whereSql ? 'AND' : 'WHERE';
+    const newer = db.prepare(`SELECT COUNT(*) AS c FROM double_rounds ${whereSql} ${cond} start_ts > ?`).get(...params, targetTs).c;
+    off = clampOffset(Math.floor(newer / limit) * limit, total, limit);
+  }
+  const rows = db.prepare(`SELECT * FROM double_rounds ${whereSql} ORDER BY start_ts DESC LIMIT ? OFFSET ?`).all(...params, limit, off);
+  return { rows, total, offset: off };
+}
+
+// --- РЕЖИМ «ДАБЛ → СТАВКИ»: строка = группа (раунд+игрок+чат), пагинация + переход ко времени ---
+function getBetsPage({ targetTs = null, searchIds = null, hash = null, limit = 50, offset = 0 }) {
+  let searchSql = '';
+  const searchParams = [];
+  const hasIds = searchIds && searchIds.length > 0;
+  const safeHash = hash ? String(hash).replace(/[%_]/g, '') : '';
+  const useHash = safeHash.length >= 8 && /^[0-9a-f]+$/i.test(safeHash);
+  if (hasIds || useHash) {
+    const parts = [];
+    if (hasIds) {
+      const ph = searchIds.map(() => '?').join(',');
+      parts.push(`(b.user_id IN (${ph}) OR u.numeric_id IN (${ph}))`);
+      searchParams.push(...searchIds, ...searchIds);
     }
+    if (useHash) {
+      parts.push('r.round_id LIKE ?');
+      searchParams.push('%' + safeHash + '%');
+    }
+    searchSql = ' AND (' + parts.join(' OR ') + ')';
+  }
+  const baseFrom = `FROM double_bets_log b
+    JOIN double_rounds r ON r.round_id = b.round_id
+    LEFT JOIN users u ON u.id = b.user_id`;
+  const groupCols = `b.round_id, b.user_id, b.chat_id`;
+  // Общее количество групп (для честного числа страниц)
+  const total = db.prepare(`SELECT COUNT(*) AS c FROM (SELECT 1 ${baseFrom} WHERE 1=1${searchSql} GROUP BY ${groupCols})`).get(...searchParams).c;
+  let off = offset;
+  if (targetTs != null) {
+    const newer = db.prepare(`SELECT COUNT(*) AS c FROM (SELECT 1 ${baseFrom} WHERE 1=1${searchSql} GROUP BY ${groupCols} HAVING MIN(b.ts) > ?)`).get(...searchParams, targetTs).c;
+    off = clampOffset(Math.floor(newer / limit) * limit, total, limit);
+  }
+  const selectCols = `b.round_id, b.user_id, b.chat_id, MIN(b.ts) as ts,
+    u.username as user_name, u.numeric_id as user_num,
+    r.start_ts as round_start_ts, r.end_ts as round_end_ts,
+    r.result_multiplier, r.salt, r.status as round_status,
+    MAX(b.chat_title) as chat_title`;
+  const groups = db.prepare(`SELECT ${selectCols} ${baseFrom}
+    WHERE 1=1${searchSql}
+    GROUP BY ${groupCols}
+    ORDER BY ts DESC LIMIT ? OFFSET ?`).all(...searchParams, limit, off);
+  const betsStmt = db.prepare(`
+    SELECT multiplier, amount, is_win, win_amount, game_choice, payout_status
+    FROM double_bets_log
+    WHERE round_id = ? AND user_id = ? AND chat_id = ?
+    ORDER BY ts ASC
+  `);
+  const rows = groups.map(g => ({ ...g, bets: betsStmt.all(g.round_id, g.user_id, g.chat_id) }));
+  return { rows, total, offset: off };
+}
+
+app.get('/api/admin/logs/finance', (req, res) => {
+  try {
+    const { targetTs, searchIds, page } = parseLogsQuery(req);
+    const types = req.query.types ? String(req.query.types).split(',').filter(Boolean) : null;
+    const result = getFinancePage({
+      targetTs,
+      types,
+      searchIds,
+      limit: LOGS_PAGE_SIZE,
+      offset: (page - 1) * LOGS_PAGE_SIZE,
+    });
+    res.json({
+      rows: result.rows,
+      total: result.total,
+      page: Math.floor(result.offset / LOGS_PAGE_SIZE) + 1,
+      pages: Math.max(1, Math.ceil(result.total / LOGS_PAGE_SIZE)),
+    });
+  } catch (e) {
+    console.error('[BACKEND] Error finance logs:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// Логи Дабла (Раунды или Ставки) + поиск по хешу раунда
 app.get('/api/admin/logs/double', (req, res) => {
   try {
-    const { sinceTs, searchIds, page } = parseLogsQuery(req);
+    const { targetTs, searchIds, page } = parseLogsQuery(req);
     const view = req.query.view === 'bets' ? 'bets' : 'rounds';
     const searchRaw = String(req.query.search || '').trim();
     let result;
     if (view === 'bets') {
-      // В ставках поиск: игрок (searchIds) ИЛИ хеш (внутри функции db)
-      result = getAdminDoubleBetsView({
-        sinceTs,
+      result = getBetsPage({
+        targetTs,
         searchIds,
         hash: searchRaw || null,
         limit: LOGS_PAGE_SIZE,
         offset: (page - 1) * LOGS_PAGE_SIZE,
       });
     } else {
-      // В раундах поиск — только по подстроке хеша
-      result = getAdminDoubleRoundsView({
-        sinceTs,
+      result = getRoundsPage({
+        targetTs,
         hash: searchRaw || null,
         limit: LOGS_PAGE_SIZE,
         offset: (page - 1) * LOGS_PAGE_SIZE,
@@ -214,7 +299,7 @@ app.get('/api/admin/logs/double', (req, res) => {
     res.json({
       rows: result.rows,
       total: result.total,
-      page,
+      page: Math.floor(result.offset / LOGS_PAGE_SIZE) + 1,
       pages: Math.max(1, Math.ceil(result.total / LOGS_PAGE_SIZE)),
     });
   } catch (e) {
@@ -234,7 +319,6 @@ app.get('/api/admin/logs/double/round/:roundId', (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 // === 5. Статика и роутинг фронтенда ===
 if (fs.existsSync(frontendOutPath)) {
   app.use(express.static(frontendOutPath, {
@@ -245,7 +329,6 @@ if (fs.existsSync(frontendOutPath)) {
       res.setHeader('Access-Control-Allow-Origin', '*');
     }
   }));
-
   app.get('*', (req, res) => {
     res.sendFile(path.join(frontendOutPath, 'index.html'));
   });
@@ -254,18 +337,16 @@ if (fs.existsSync(frontendOutPath)) {
     res.send(`<h1>Mini App Backend</h1><p>Фронтенд не найден в ${frontendOutPath}</p>`);
   });
 }
-
 // === 6. Запуск сервера с обработкой занятости порта ===
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[BACKEND] Сервер запущен на порту ${PORT}`);
 });
-
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`[BACKEND] Порт ${PORT} занят! Попытка убить процесс...`);
     const { exec } = require('child_process');
     // Команда для Windows для убийства процесса на порту
-    exec(`for /f "tokens=5" %a in ('netstat -aon ^| find ":${PORT}" ^| find "LISTENING"') do taskkill /F /PID %a`, 
+    exec(`for /f "tokens=5" %a in ('netstat -aon ^| find ":${PORT}" ^| find "LISTENING"') do taskkill /F /PID %a`,
       (error, stdout) => {
         if (!error && stdout.trim()) {
           console.log('[BACKEND] Процесс убит. Перезапуск сервера через 2 секунды...');
@@ -283,28 +364,20 @@ server.on('error', (err) => {
     console.error('[BACKEND] Критическая ошибка сервера:', err);
   }
 });
-
-server.keepAliveTimeout = 60000; 
-server.headersTimeout = 65000;   
-
+server.keepAliveTimeout = 60000;
+server.headersTimeout = 65000;
 // Keep-Alive пинг самого себя
 setInterval(() => {
   http.get(`http://127.0.0.1:${PORT}/api/health`, (res) => {
-    res.on('data', () => {}); 
+    res.on('data', () => {});
   }).on('error', (err) => {
     console.error('[KEEP-ALIVE] Ошибка пинга самого себя:', err.message);
   });
 }, 15000);
-
 // Эндпоинт для визуализации физики (если используется)
 app.get('/api/physics/users', (req, res) => {
   try {
-    const stmt = db.prepare(`
-      SELECT id, numeric_id, username, balance 
-      FROM users 
-      ORDER BY balance DESC 
-      LIMIT 2000
-    `);
+    const stmt = db.prepare(`SELECT id, numeric_id, username, balance FROM users ORDER BY balance DESC LIMIT 2000`);
     const users = stmt.all();
     res.json(users);
   } catch (err) {

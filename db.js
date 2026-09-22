@@ -1892,38 +1892,28 @@ function getMuteList(chatId) {
   }
 }
 
-// В файле db.js найдите функцию activatePromo и замените её полностью:
-
 function activatePromo(promoId, userId) {
   try {
     const promo = getPromoById(promoId);
-    
     if (!promo) {
       return { success: false, message: 'Промокод не найден.' };
     }
-
     const now = Math.floor(Date.now() / 1000);
-
     // 1. ПРОВЕРКА ВРЕМЕНИ (для временных промокодов)
-    // Если есть expires_at и текущее время больше времени истечения
     if (promo.expires_at && now > promo.expires_at) {
-      // Опционально: можно удалить промокод прямо здесь или оставить это фоновой задаче
-      // deletePromoById(promoId); 
+      logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Срок действия истёк' });
       return { success: false, message: 'Срок действия промокода истек.' };
     }
-
     // 2. ПРОВЕРКА АКТИВАЦИЙ (только если промокод НЕ временный)
-    // Временные промокоды имеют activations_left = -1
     if (promo.activations_left !== -1 && promo.activations_left <= 0) {
+      logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Активации исчерпаны' });
       return { success: false, message: 'Активации промокода исчерпаны.' };
     }
-
     // Уменьшаем количество активаций, ТОЛЬКО если это не временный промокод
     if (promo.activations_left !== -1) {
       const updateStmt = db.prepare('UPDATE promos SET activations_left = activations_left - 1 WHERE id = ?');
       updateStmt.run(promoId);
     }
-
     // Начисляем приз пользователю
     const result = updateUserField(userId, promo.prize_type, promo.prize_amount);
     if (!result.success) {
@@ -1932,9 +1922,11 @@ function activatePromo(promoId, userId) {
         const rollbackStmt = db.prepare('UPDATE promos SET activations_left = activations_left + 1 WHERE id = ?');
         rollbackStmt.run(promoId);
       }
+      logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Не удалось начислить приз' });
       return { success: false, message: 'Не удалось начислить приз.' };
     }
-
+    // УСПЕХ: пишем лог активации
+    logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: true });
     return { success: true, prizeType: promo.prize_type, prizeAmount: promo.prize_amount };
   } catch (error) {
     console.error('Ошибка при активации промокода:', error);
@@ -5219,6 +5211,81 @@ function logModeration({ adminId, targetUserId, type, chatId = null, chatTitle =
   });
 }
 
+// === ЛОГИРОВАНИЕ АКТИВАЦИЙ ПРОМОКОДОВ (тип 'promo' в finance_log) ===
+const PROMO_PRIZE_LABEL = {
+  balance: 'PF',
+  df_balance: 'DF',
+  npf_shares: 'NPF',
+  container_type_1: 'CONTAINER_1',
+  container_type_2: 'CONTAINER_2',
+  container_type_3: 'CONTAINER_3',
+};
+/**
+ * Пишет в finance_log факт активации промокода игроком (или отказ).
+ * @param {Object} o
+ * @param {string|number} o.userId - ID игрока
+ * @param {string} o.promoName - название промокода
+ * @param {string|null} [o.prizeType] - тип приза
+ * @param {number|null} [o.prizeAmount] - сумма приза
+ * @param {boolean} [o.success] - успешна ли активация
+ * @param {string|null} [o.reason] - причина отказа (для success=false)
+ */
+function logPromoActivation({ userId, promoName, prizeType = null, prizeAmount = null, success = true, reason = null }) {
+  const uName = resolveUsername(userId) || `ID ${userId}`;
+  const prizeLabel = PROMO_PRIZE_LABEL[prizeType] || String(prizeType || '').toUpperCase();
+  const qty = prizeAmount != null ? Number(prizeAmount).toLocaleString('ru-RU') : '';
+  let action;
+  if (success) {
+    action = `${uName} активировал(а) промокод «${promoName}» → начислено ${qty} ${prizeLabel}`;
+  } else {
+    action = `${uName} — отказ активации промокода «${promoName}»: ${reason || 'причина не указана'}`;
+  }
+  return logFinance({
+    type: 'promo',
+    actorUserId: userId,
+    targetUserId: null,
+    amount: success ? prizeAmount : null,
+    currency: success ? prizeLabel : null,
+    ref: promoName,
+    action,
+    payload: { reason, prizeType, prizeAmount },
+    success,
+  });
+}
+/**
+ * Опциональная ОДНОРАЗОВАЯ миграция: переносит СТАРЫЕ активации из promo_activations в finance_log.
+ * Идемпотентна: не создаёт дубликаты (проверяет наличие успешной записи type='promo' по паре промо+игрок).
+ */
+function backfillPromoActivationLogs() {
+  try {
+    const info = db.prepare(`
+      INSERT INTO finance_log (ts, type, actor_user_id, target_user_id, amount, currency, ref, chat_id, chat_title, chat_type, reason, action, payload, success)
+      SELECT pa.activated_at * 1000, 'promo', pa.user_id, NULL, p.prize_amount,
+             CASE p.prize_type
+               WHEN 'balance' THEN 'PF'
+               WHEN 'df_balance' THEN 'DF'
+               WHEN 'npf_shares' THEN 'NPF'
+               ELSE UPPER(COALESCE(p.prize_type, ''))
+             END,
+             p.name, NULL, NULL, NULL, NULL,
+             COALESCE(u.username, 'ID ' || pa.user_id) || ' активировал(а) промокод «' || p.name || '» → начислено ' || COALESCE(p.prize_amount, 0) || ' ' || COALESCE(p.prize_type, ''),
+             NULL, 1
+      FROM promo_activations pa
+      JOIN promos p ON p.id = pa.promo_id
+      LEFT JOIN users u ON u.id = pa.user_id
+      WHERE NOT EXISTS (
+        SELECT 1 FROM finance_log f
+        WHERE f.type = 'promo' AND f.success = 1 AND f.ref = p.name AND f.actor_user_id = pa.user_id
+      )
+    `).run();
+    console.log(`[DB] Backfill промо-логов: добавлено записей: ${info.changes}`);
+    return { success: true, added: info.changes };
+  } catch (error) {
+    console.error('[DB] Ошибка backfill промо-логов:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 
 // Категории типов для удобных фильтров в админке
 const FINANCE_LOG_CATEGORIES = {
@@ -5460,31 +5527,39 @@ function getDoubleBetsByRound(roundId) {
 // --- ВЫБОРКИ ДЛЯ АДМИН-ПАНЕЛИ MINI APP (ДАБЛ) ---
 
 // ВИД «РАУНДЫ»: фильтр по времени + поиск по подстроке хеша
-function getAdminDoubleRoundsView({ sinceTs = 0, hash = null, limit = 30, offset = 0 } = {}) {
+function getAdminDoubleRoundsView({ targetTs = null, hash = null, limit = 50 } = {}) {
   try {
-    const where = ['start_ts >= ?'];
-    const params = [sinceTs];
+    const where = [];
+    const params = [];
     if (hash) {
-      const safe = String(hash).replace(/[%_]/g, ''); // убираем LIKE-спецсимволы
-      if (safe) {
-        where.push('round_id LIKE ?');
-        params.push('%' + safe + '%');
-      }
+      const safe = String(hash).replace(/[%_]/g, '');
+      if (safe) { where.push('round_id LIKE ?'); params.push('%' + safe + '%'); }
     }
-    const whereSql = 'WHERE ' + where.join(' AND ');
-    const total = db.prepare(`SELECT COUNT(*) AS c FROM double_rounds ${whereSql}`).get(...params).c;
-    const rows = db.prepare(`SELECT * FROM double_rounds ${whereSql} ORDER BY start_ts DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
-    return { rows, total };
-  } catch (e) {
-    console.error('[DB] Ошибка выборки раундов:', e);
-    return { rows: [], total: 0 };
-  }
+    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    
+    if (targetTs) {
+      const half = Math.ceil(limit / 2);
+      const cond = whereSql ? 'AND' : 'WHERE';
+      const q1 = `SELECT * FROM double_rounds ${whereSql} ${cond} start_ts <= ? ORDER BY start_ts DESC LIMIT ?`;
+      const r1 = db.prepare(q1).all(...params, targetTs, half);
+      
+      const q2 = `SELECT * FROM double_rounds ${whereSql} ${cond} start_ts > ? ORDER BY start_ts ASC LIMIT ?`;
+      const r2 = db.prepare(q2).all(...params, targetTs, half);
+      
+      const rows = [...r1, ...r2].sort((a, b) => b.start_ts - a.start_ts);
+      return { rows, total: rows.length };
+    } else {
+      const rows = db.prepare(`SELECT * FROM double_rounds ${whereSql} ORDER BY start_ts DESC LIMIT ?`).all(...params, limit);
+      return { rows, total: rows.length };
+    }
+  } catch (e) { return { rows: [], total: 0 }; }
 }
 
-// ВИД «СТАВКИ»: строка = (раунд + игрок + чат); поиск по игроку ИЛИ по хешу раунда
-function getAdminDoubleBetsView({ sinceTs = 0, searchIds = null, hash = null, limit = 30, offset = 0 } = {}) {
+// ВИД «СТАВКИ»: строка = (раунд + игрок + чат); поиск по игроку ИЛИ по хешу раунда.
+// Время: targetTs = null → последние записи; targetTs = число → окно вокруг момента.
+function getAdminDoubleBetsView({ targetTs = null, searchIds = null, hash = null, limit = 30, offset = 0 } = {}) {
   try {
-    // Условие поиска: игрок (TG/numeric ID) ИЛИ хеш раунда
+    // --- условие поиска: игрок (TG/numeric ID) ИЛИ хеш раунда ---
     let searchSql = '';
     const searchParams = [];
     const hasIds = searchIds && searchIds.length > 0;
@@ -5504,36 +5579,54 @@ function getAdminDoubleBetsView({ sinceTs = 0, searchIds = null, hash = null, li
       searchSql = ' AND (' + parts.join(' OR ') + ')';
     }
 
-    const query = `SELECT b.round_id, b.user_id, b.chat_id, MIN(b.ts) as ts,
+    const baseFrom = `FROM double_bets_log b
+       JOIN double_rounds r ON r.round_id = b.round_id
+       LEFT JOIN users u ON u.id = b.user_id`;
+    const groupCols = `b.round_id, b.user_id, b.chat_id`;
+    const selectCols = `b.round_id, b.user_id, b.chat_id, MIN(b.ts) as ts,
        u.username as user_name, u.numeric_id as user_num,
        r.start_ts as round_start_ts, r.end_ts as round_end_ts,
        r.result_multiplier, r.salt, r.status as round_status,
-       MAX(b.chat_title) as chat_title
-     FROM double_bets_log b
-     JOIN double_rounds r ON r.round_id = b.round_id
-     LEFT JOIN users u ON u.id = b.user_id
-     WHERE r.start_ts >= ?${searchSql}
-     GROUP BY b.round_id, b.user_id, b.chat_id
-     ORDER BY ts DESC LIMIT ? OFFSET ?`;
-    const groups = db.prepare(query).all(sinceTs, ...searchParams, limit, offset);
-
-    const countQuery = `SELECT COUNT(*) as c FROM (
-       SELECT 1 FROM double_bets_log b
-       JOIN double_rounds r ON r.round_id = b.round_id
-       LEFT JOIN users u ON u.id = b.user_id
-       WHERE r.start_ts >= ?${searchSql}
-       GROUP BY b.round_id, b.user_id, b.chat_id)`;
-    const totalResult = db.prepare(countQuery).get(sinceTs, ...searchParams);
-    const total = totalResult ? totalResult.c : 0;
-
+       MAX(b.chat_title) as chat_title`;
     const betsStmt = db.prepare(`
       SELECT multiplier, amount, is_win, win_amount, game_choice, payout_status
       FROM double_bets_log
       WHERE round_id = ? AND user_id = ? AND chat_id = ?
       ORDER BY ts ASC
     `);
+
+    // --- РЕЖИМ ОКНА: ближайшие записи до и после выбранного момента ---
+    if (typeof targetTs === 'number' && !Number.isNaN(targetTs)) {
+      const half = Math.max(1, Math.ceil(limit / 2));
+      const before = db.prepare(`SELECT ${selectCols} ${baseFrom}
+         WHERE r.start_ts <= ?${searchSql}
+         GROUP BY ${groupCols}
+         ORDER BY ts DESC LIMIT ?`).all(targetTs, ...searchParams, half);
+      const after = db.prepare(`SELECT ${selectCols} ${baseFrom}
+         WHERE r.start_ts > ?${searchSql}
+         GROUP BY ${groupCols}
+         ORDER BY ts ASC LIMIT ?`).all(targetTs, ...searchParams, half);
+      const rows = [...after.reverse(), ...before]
+        .map(g => ({ ...g, bets: betsStmt.all(g.round_id, g.user_id, g.chat_id) }));
+      return { rows, total: rows.length, window: true };
+    }
+
+    // --- ОБЫЧНЫЙ РЕЖИМ: последние записи + пагинация ---
+    const query = `SELECT ${selectCols} ${baseFrom}
+       WHERE 1=1${searchSql}
+       GROUP BY ${groupCols}
+       ORDER BY ts DESC LIMIT ? OFFSET ?`;
+    const groups = db.prepare(query).all(...searchParams, limit, offset);
+
+    const countQuery = `SELECT COUNT(*) as c FROM (
+       SELECT 1 ${baseFrom}
+       WHERE 1=1${searchSql}
+       GROUP BY ${groupCols})`;
+    const totalResult = db.prepare(countQuery).get(...searchParams);
+    const total = totalResult ? totalResult.c : 0;
+
     const rows = groups.map(g => ({ ...g, bets: betsStmt.all(g.round_id, g.user_id, g.chat_id) }));
-    return { rows, total };
+    return { rows, total, window: false };
   } catch (e) {
     console.error('[DB] Ошибка выборки ставок дабла:', e);
     return { rows: [], total: 0 };
@@ -5592,12 +5685,11 @@ function resolveLogSearchIds(search) {
 }
 
 // Режим «общее»: finance_log + ники обеих сторон
-function getAdminLogsFinance({ sinceTs = 0, types = null, searchIds = null, limit = 30, offset = 0 } = {}) {
+function getAdminLogsFinance({ targetTs = null, types = null, searchIds = null, limit = 50 } = {}) {
   try {
-    const where = ['f.ts >= ?'];
-    const params = [sinceTs];
-    // Защита от пустых строк-мусора: оставляем только записи с содержимым
-    where.push(`((f.action IS NOT NULL AND f.action != '') OR f.amount IS NOT NULL OR f.target_user_id IS NOT NULL OR f.actor_user_id IS NOT NULL)`);
+    const where = [`((f.action IS NOT NULL AND f.action != '') OR f.amount IS NOT NULL OR f.target_user_id IS NOT NULL OR f.actor_user_id IS NOT NULL)`];
+    const params = [];
+
     if (types && types.length) {
       where.push(`f.type IN (${types.map(() => '?').join(',')})`);
       params.push(...types);
@@ -5607,22 +5699,33 @@ function getAdminLogsFinance({ sinceTs = 0, types = null, searchIds = null, limi
       where.push(`(CAST(f.actor_user_id AS TEXT) IN (${ph}) OR CAST(f.target_user_id AS TEXT) IN (${ph}))`);
       params.push(...searchIds, ...searchIds);
     }
+
     const whereSql = 'WHERE ' + where.join(' AND ');
-    const rows = db.prepare(`
-      SELECT
-        f.id, f.ts, f.type, f.actor_user_id, f.target_user_id,
-        f.amount, f.currency, f.ref, f.reason, f.action, f.payload, f.success,
-        f.chat_id, f.chat_title, f.chat_type,
-        a.username AS actor_name, a.numeric_id AS actor_num,
-        t.username AS target_name, t.numeric_id AS target_num
-      FROM finance_log f
-      LEFT JOIN users a ON CAST(a.id AS TEXT) = CAST(f.actor_user_id AS TEXT)
-      LEFT JOIN users t ON CAST(t.id AS TEXT) = CAST(f.target_user_id AS TEXT)
-      ${whereSql}
-      ORDER BY f.ts DESC LIMIT ? OFFSET ?
-    `).all(...params, limit, offset);
-    const total = db.prepare(`SELECT COUNT(*) AS c FROM finance_log f ${whereSql}`).get(...params).c;
-    return { rows, total };
+    const selectCols = `f.id, f.ts, f.type, f.actor_user_id, f.target_user_id, f.amount, f.currency, f.ref, f.reason, f.action, f.payload, f.success, f.chat_id, f.chat_title, f.chat_type, a.username AS actor_name, a.numeric_id AS actor_num, t.username AS target_name, t.numeric_id AS target_num`;
+    const joins = `FROM finance_log f LEFT JOIN users a ON CAST(a.id AS TEXT) = CAST(f.actor_user_id AS TEXT) LEFT JOIN users t ON CAST(t.id AS TEXT) = CAST(f.target_user_id AS TEXT)`;
+
+    let rows = [];
+
+    if (targetTs) {
+      const half = Math.ceil(limit / 2);
+      
+      // 1. Записи ДО и включая targetTs (использует индекс ts)
+      const q1 = `SELECT ${selectCols} ${joins} ${whereSql} AND f.ts <= ? ORDER BY f.ts DESC LIMIT ?`;
+      const r1 = db.prepare(q1).all(...params, targetTs, half);
+      
+      // 2. Записи ПОСЛЕ targetTs
+      const q2 = `SELECT ${selectCols} ${joins} ${whereSql} AND f.ts > ? ORDER BY f.ts ASC LIMIT ?`;
+      const r2 = db.prepare(q2).all(...params, targetTs, half);
+      
+      // Объединяем и сортируем по убыванию
+      rows = [...r1, ...r2].sort((a, b) => b.ts - a.ts);
+      return { rows, total: rows.length, page: 1, pages: 1 };
+    } else {
+      // Обычный режим (последние записи)
+      const q = `SELECT ${selectCols} ${joins} ${whereSql} ORDER BY f.ts DESC LIMIT ?`;
+      rows = db.prepare(q).all(...params, limit);
+      return { rows, total: rows.length, page: 1, pages: 1 };
+    }
   } catch (error) {
     console.error('[DB] Ошибка выборки finance-логов:', error);
     return { rows: [], total: 0 };
@@ -5955,6 +6058,8 @@ module.exports = {
   logMessage,
   updateDoubleBetPayoutByGroup, markDoubleBetPayoutFailed, markRoundBetsFailed, updateGameChoicesForRoundUser, finishDoubleRoundLog, getAdminDoubleRoundsView, getAdminDoubleBetsView,
   getDoubleRoundDetails,
+  logPromoActivation,
+  backfillPromoActivationLogs,
 
 
 };

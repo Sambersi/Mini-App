@@ -761,3 +761,14 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: #7a4dff; }
     font-weight: 600;
   }
 }
+
+.logs-stat-link, .logs-cell-sub[style*="cursor: pointer"], .seg-btn, .btn-mini {
+  touch-action: manipulation; /* Убирает задержку 300мс на мобильных */
+  -webkit-tap-highlight-color: transparent; /* Убирает серое мерцание при тапе */
+  user-select: none;
+  cursor: pointer;
+}
+/* Фильтр времени в логах */
+.logs-date-native { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.logs-date-btn { display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none; }
