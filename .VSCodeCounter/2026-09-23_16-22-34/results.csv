@@ -1,0 +1,109 @@
+"filename", "language", "JavaScript", "JSON", "Markdown", "JavaScript JSX", "CSS", "HTML", "comment", "blank", "total"
+"d:\coding\myBot\Events\Halloween\adminCandy.js", "JavaScript", 72, 0, 0, 0, 0, 0, 5, 15, 92
+"d:\coding\myBot\Events\Halloween\candy.js", "JavaScript", 75, 0, 0, 0, 0, 0, 4, 19, 98
+"d:\coding\myBot\Events\Halloween\candyShop.js", "JavaScript", 195, 0, 0, 0, 0, 0, 15, 49, 259
+"d:\coding\myBot\Events\Halloween\exchange.js", "JavaScript", 96, 0, 0, 0, 0, 0, 6, 25, 127
+"d:\coding\myBot\Events\fortuneWheel.js", "JavaScript", 351, 0, 0, 0, 0, 0, 28, 62, 441
+"d:\coding\myBot\Events\secretGift.js", "JavaScript", 137, 0, 0, 0, 0, 0, 18, 20, 175
+"d:\coding\myBot\adminUtils.js", "JavaScript", 140, 0, 0, 0, 0, 0, 32, 39, 211
+"d:\coding\myBot\admin\activateDice.js", "JavaScript", 75, 0, 0, 0, 0, 0, 16, 19, 110
+"d:\coding\myBot\admin\activateDouble.js", "JavaScript", 75, 0, 0, 0, 0, 0, 15, 16, 106
+"d:\coding\myBot\admin\addBalance.js", "JavaScript", 328, 0, 0, 0, 0, 0, 21, 63, 412
+"d:\coding\myBot\admin\adminPanel.js", "JavaScript", 321, 0, 0, 0, 0, 0, 34, 58, 413
+"d:\coding\myBot\admin\blacklistManagement.js", "JavaScript", 453, 0, 0, 0, 0, 0, 70, 95, 618
+"d:\coding\myBot\admin\broadcast.js", "JavaScript", 78, 0, 0, 0, 0, 0, 13, 15, 106
+"d:\coding\myBot\admin\kickManagement.js", "JavaScript", 247, 0, 0, 0, 0, 0, 64, 56, 367
+"d:\coding\myBot\admin\muteManagement.js", "JavaScript", 470, 0, 0, 0, 0, 0, 60, 94, 624
+"d:\coding\myBot\admin\reports.js", "JavaScript", 249, 0, 0, 0, 0, 0, 23, 51, 323
+"d:\coding\myBot\app\backend\index.js", "JavaScript", 350, 0, 0, 0, 0, 0, 29, 8, 387
+"d:\coding\myBot\app\backend\package.json", "JSON", 0, 17, 0, 0, 0, 0, 0, 1, 18
+"d:\coding\myBot\app\frontend\README.md", "Markdown", 0, 0, 23, 0, 0, 0, 0, 14, 37
+"d:\coding\myBot\app\frontend\react\index.html", "HTML", 0, 0, 0, 0, 0, 16, 0, 0, 16
+"d:\coding\myBot\app\frontend\react\package-lock.json", "JSON", 0, 1740, 0, 0, 0, 0, 0, 1, 1741
+"d:\coding\myBot\app\frontend\react\package.json", "JSON", 0, 20, 0, 0, 0, 0, 0, 0, 20
+"d:\coding\myBot\app\frontend\react\src\App.jsx", "JavaScript JSX", 0, 0, 0, 74, 0, 0, 2, 11, 87
+"d:\coding\myBot\app\frontend\react\src\components\Nav.jsx", "JavaScript JSX", 0, 0, 0, 28, 0, 0, 0, 1, 29
+"d:\coding\myBot\app\frontend\react\src\main.jsx", "JavaScript JSX", 0, 0, 0, 10, 0, 0, 0, 1, 11
+"d:\coding\myBot\app\frontend\react\src\pages\AdminLogs.jsx", "JavaScript JSX", 0, 0, 0, 458, 0, 0, 33, 0, 491
+"d:\coding\myBot\app\frontend\react\src\pages\AdminPanel.jsx", "JavaScript JSX", 0, 0, 0, 22, 0, 0, 0, 3, 25
+"d:\coding\myBot\app\frontend\react\src\pages\Donate.jsx", "JavaScript JSX", 0, 0, 0, 12, 0, 0, 1, 0, 13
+"d:\coding\myBot\app\frontend\react\src\pages\Fortune.jsx", "JavaScript JSX", 0, 0, 0, 118, 0, 0, 5, 18, 141
+"d:\coding\myBot\app\frontend\react\src\pages\Help.jsx", "JavaScript JSX", 0, 0, 0, 15, 0, 0, 1, 0, 16
+"d:\coding\myBot\app\frontend\react\src\pages\Profile.jsx", "JavaScript JSX", 0, 0, 0, 85, 0, 0, 1, 10, 96
+"d:\coding\myBot\app\frontend\react\src\styles.css", "CSS", 0, 0, 0, 0, 677, 0, 35, 62, 774
+"d:\coding\myBot\app\frontend\react\src\utils\api.js", "JavaScript", 47, 0, 0, 0, 0, 0, 0, 0, 47
+"d:\coding\myBot\app\frontend\react\src\utils\sound.js", "JavaScript", 36, 0, 0, 0, 0, 0, 0, 4, 40
+"d:\coding\myBot\app\frontend\react\vite.config.js", "JavaScript", 15, 0, 0, 0, 0, 0, 0, 1, 16
+"d:\coding\myBot\bank\bankHandler.js", "JavaScript", 54, 0, 0, 0, 0, 0, 11, 9, 74
+"d:\coding\myBot\bank\bankTechCommands.js", "JavaScript", 66, 0, 0, 0, 0, 0, 20, 19, 105
+"d:\coding\myBot\bank\bankTransfers.js", "JavaScript", 245, 0, 0, 0, 0, 0, 73, 60, 378
+"d:\coding\myBot\bank\cardTopUp.js", "JavaScript", 267, 0, 0, 0, 0, 0, 57, 66, 390
+"d:\coding\myBot\bank\npfShares.js", "JavaScript", 289, 0, 0, 0, 0, 0, 55, 65, 409
+"d:\coding\myBot\bank\npfTrading.js", "JavaScript", 98, 0, 0, 0, 0, 0, 20, 28, 146
+"d:\coding\myBot\boss\bossHandler.js", "JavaScript", 932, 0, 0, 0, 0, 0, 147, 174, 1253
+"d:\coding\myBot\boss\bossTop.js", "JavaScript", 89, 0, 0, 0, 0, 0, 20, 24, 133
+"d:\coding\myBot\boss\energyHandler.js", "JavaScript", 131, 0, 0, 0, 0, 0, 17, 30, 178
+"d:\coding\myBot\boss\upgradeAttackPower.js", "JavaScript", 310, 0, 0, 0, 0, 0, 62, 79, 451
+"d:\coding\myBot\bot.js", "JavaScript", 3743, 0, 0, 0, 0, 0, 580, 641, 4964
+"d:\coding\myBot\botMonitoring.js", "JavaScript", 81, 0, 0, 0, 0, 0, 14, 21, 116
+"d:\coding\myBot\cleanup_messages_logs.js", "JavaScript", 13, 0, 0, 0, 0, 0, 4, 5, 22
+"d:\coding\myBot\db.js", "JavaScript", 4728, 0, 0, 0, 0, 0, 611, 727, 6066
+"d:\coding\myBot\donations\donationShop.js", "JavaScript", 873, 0, 0, 0, 0, 0, 93, 154, 1120
+"d:\coding\myBot\donations\starDonation.js", "JavaScript", 91, 0, 0, 0, 0, 0, 8, 17, 116
+"d:\coding\myBot\empire\db.js", "JavaScript", 177, 0, 0, 0, 0, 0, 32, 31, 240
+"d:\coding\myBot\empire\handlers\adminCommandsHandler.js", "JavaScript", 48, 0, 0, 0, 0, 0, 12, 13, 73
+"d:\coding\myBot\empire\handlers\buildHandlers.js", "JavaScript", 275, 0, 0, 0, 0, 0, 77, 74, 426
+"d:\coding\myBot\empire\handlers\empireHandler.js", "JavaScript", 90, 0, 0, 0, 0, 0, 16, 26, 132
+"d:\coding\myBot\empire\logic\businessLogic.js", "JavaScript", 139, 0, 0, 0, 0, 0, 32, 22, 193
+"d:\coding\myBot\games\diceGame.js", "JavaScript", 409, 0, 0, 0, 0, 0, 18, 63, 490
+"d:\coding\myBot\games\doubleGame.js", "JavaScript", 799, 0, 0, 0, 0, 0, 118, 105, 1022
+"d:\coding\myBot\games\generateDiceResultsImage.js", "JavaScript", 84, 0, 0, 0, 0, 0, 26, 28, 138
+"d:\coding\myBot\generateCard.js", "JavaScript", 63, 0, 0, 0, 0, 0, 17, 18, 98
+"d:\coding\myBot\handlers\auction.js", "JavaScript", 459, 0, 0, 0, 0, 0, 26, 81, 566
+"d:\coding\myBot\handlers\balance.js", "JavaScript", 43, 0, 0, 0, 0, 0, 11, 7, 61
+"d:\coding\myBot\handlers\bonus.js", "JavaScript", 183, 0, 0, 0, 0, 0, 18, 38, 239
+"d:\coding\myBot\handlers\buttons.js", "JavaScript", 56, 0, 0, 0, 0, 0, 11, 12, 79
+"d:\coding\myBot\handlers\buyContainer.js", "JavaScript", 257, 0, 0, 0, 0, 0, 26, 56, 339
+"d:\coding\myBot\handlers\cardInfo.js", "JavaScript", 451, 0, 0, 0, 0, 0, 83, 91, 625
+"d:\coding\myBot\handlers\changeNickname.js", "JavaScript", 109, 0, 0, 0, 0, 0, 27, 30, 166
+"d:\coding\myBot\handlers\donationNotifications.js", "JavaScript", 25, 0, 0, 0, 0, 0, 2, 4, 31
+"d:\coding\myBot\handlers\donationStats.js", "JavaScript", 329, 0, 0, 0, 0, 0, 57, 71, 457
+"d:\coding\myBot\handlers\double.js", "JavaScript", 211, 0, 0, 0, 0, 0, 40, 58, 309
+"d:\coding\myBot\handlers\fortyTwo.js", "JavaScript", 146, 0, 0, 0, 0, 0, 32, 29, 207
+"d:\coding\myBot\handlers\gameHandlers.js", "JavaScript", 120, 0, 0, 0, 0, 0, 22, 27, 169
+"d:\coding\myBot\handlers\generatePromoImage.js", "JavaScript", 196, 0, 0, 0, 0, 0, 39, 31, 266
+"d:\coding\myBot\handlers\guessNumberGame.js", "JavaScript", 93, 0, 0, 0, 0, 0, 16, 30, 139
+"d:\coding\myBot\handlers\help.js", "JavaScript", 137, 0, 0, 0, 0, 0, 7, 26, 170
+"d:\coding\myBot\handlers\openContainer.js", "JavaScript", 301, 0, 0, 0, 0, 0, 26, 54, 381
+"d:\coding\myBot\handlers\prefixes.js", "JavaScript", 289, 0, 0, 0, 0, 0, 40, 72, 401
+"d:\coding\myBot\handlers\profile.js", "JavaScript", 189, 0, 0, 0, 0, 0, 25, 35, 249
+"d:\coding\myBot\handlers\promoHandler.js", "JavaScript", 706, 0, 0, 0, 0, 0, 37, 30, 773
+"d:\coding\myBot\handlers\referralSystem.js", "JavaScript", 669, 0, 0, 0, 0, 0, 136, 135, 940
+"d:\coding\myBot\handlers\registration.js", "JavaScript", 378, 0, 0, 0, 0, 0, 68, 30, 476
+"d:\coding\myBot\handlers\roulette.js", "JavaScript", 595, 0, 0, 0, 0, 0, 110, 146, 851
+"d:\coding\myBot\handlers\rules.js", "JavaScript", 76, 0, 0, 0, 0, 0, 6, 26, 108
+"d:\coding\myBot\handlers\sequentialInput.js", "JavaScript", 181, 0, 0, 0, 0, 0, 22, 53, 256
+"d:\coding\myBot\handlers\statistics.js", "JavaScript", 60, 0, 0, 0, 0, 0, 5, 15, 80
+"d:\coding\myBot\handlers\statusReport.js", "JavaScript", 68, 0, 0, 0, 0, 0, 9, 12, 89
+"d:\coding\myBot\handlers\technicalCommands.js", "JavaScript", 1468, 0, 0, 0, 0, 0, 281, 390, 2139
+"d:\coding\myBot\handlers\testHandler.js", "JavaScript", 81, 0, 0, 0, 0, 0, 22, 20, 123
+"d:\coding\myBot\handlers\testerKit.js", "JavaScript", 65, 0, 0, 0, 0, 0, 15, 17, 97
+"d:\coding\myBot\handlers\top.js", "JavaScript", 351, 0, 0, 0, 0, 0, 53, 71, 475
+"d:\coding\myBot\index.js", "JavaScript", 37, 0, 0, 0, 0, 0, 5, 10, 52
+"d:\coding\myBot\middleware\all.js", "JavaScript", 91, 0, 0, 0, 0, 0, 25, 24, 140
+"d:\coding\myBot\middleware\subscription.js", "JavaScript", 44, 0, 0, 0, 0, 0, 11, 12, 67
+"d:\coding\myBot\package-lock.json", "JSON", 0, 2055, 0, 0, 0, 0, 0, 1, 2056
+"d:\coding\myBot\package.json", "JSON", 0, 28, 0, 0, 0, 0, 0, 1, 29
+"d:\coding\myBot\postToChannel.js", "JavaScript", 45, 0, 0, 0, 0, 0, 11, 12, 68
+"d:\coding\myBot\seed_test_data.js", "JavaScript", 46, 0, 0, 0, 0, 0, 6, 8, 60
+"d:\coding\myBot\sessions\registrationSession.js", "JavaScript", 37, 0, 0, 0, 0, 0, 5, 10, 52
+"d:\coding\myBot\sessions\skinShopSession.js", "JavaScript", 37, 0, 0, 0, 0, 0, 5, 9, 51
+"d:\coding\myBot\skins\checkSkins.js", "JavaScript", 141, 0, 0, 0, 0, 0, 29, 32, 202
+"d:\coding\myBot\skins\mySkinsHandlers.js", "JavaScript", 191, 0, 0, 0, 0, 0, 10, 44, 245
+"d:\coding\myBot\skins\shopHandler.js", "JavaScript", 344, 0, 0, 0, 0, 0, 29, 62, 435
+"d:\coding\myBot\statusCommands.js", "JavaScript", 228, 0, 0, 0, 0, 0, 41, 56, 325
+"d:\coding\myBot\updateStatuses.js", "JavaScript", 37, 0, 0, 0, 0, 0, 7, 7, 51
+"d:\coding\myBot\utils\error.js", "JavaScript", 82, 0, 0, 0, 0, 0, 14, 18, 114
+"d:\coding\myBot\utils\errorHandler.js", "JavaScript", 14, 0, 0, 0, 0, 0, 3, 5, 22
+"d:\coding\myBot\utils\userLink.js", "JavaScript", 7, 0, 0, 0, 0, 0, 1, 2, 10
+"Total", "-", 27577, 3860, 23, 822, 677, 16, 4145, 5340, 42460

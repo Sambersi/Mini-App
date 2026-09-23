@@ -76,6 +76,7 @@ const newColumns = [
   { name: 'last_message_ts', type: 'INTEGER DEFAULT 0' }, // Время (мс) последнего сообщения в боте
   { name: 'last_app_ts', type: 'INTEGER DEFAULT 0' }, // Время (мс) последнего пинга из Mini App
   { name: 'total_messages', type: 'INTEGER DEFAULT 0' }, // Счётчик сообщений за всё время
+  { name: 'game_wins', type: 'INTEGER DEFAULT 0' },
   // { name: '', type: '' },
   // { name: '', type: '' }
 ];
@@ -2362,7 +2363,10 @@ function getBetsByRoundId(roundId) {
 function getActiveChatIdsByRoundHash(roundHash) {
   return new Promise((resolve, reject) => {
     try {
-      const stmt = db.prepare('SELECT DISTINCT chat_id FROM double_bets WHERE round_id = ?');
+      // ИСПРАВЛЕНО: читаем из double_bets_log (единственный источник ставок)
+      const stmt = db.prepare(
+        "SELECT DISTINCT chat_id FROM double_bets_log WHERE round_id = ? AND status = 'accepted'"
+      );
       const rows = stmt.all(roundHash);
       resolve(rows.map(row => row.chat_id.toString()));
     } catch (error) {
@@ -5806,6 +5810,142 @@ function getDoubleRoundDetails(roundId) {
   }
 }
 
+// ============================================================
+// === DOUBLE GAME STATE MACHINE ===
+// ============================================================
+
+// Таблица текущего состояния раунда (единый источник правды)
+db.prepare(`CREATE TABLE IF NOT EXISTS double_round_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  state TEXT NOT NULL DEFAULT 'ACCEPTING',
+  hash TEXT,
+  result TEXT,
+  salt TEXT,
+  end_time INTEGER,
+  cell_contents TEXT,
+  final_multipliers TEXT,
+  game_button_active INTEGER DEFAULT 0,
+  processed_chats TEXT DEFAULT '[]',
+  game_choices TEXT DEFAULT '{}',
+  global_choices TEXT DEFAULT '{}',
+  notifications TEXT DEFAULT '{}',
+  updated_at INTEGER NOT NULL
+)`).run();
+
+// Таблица дедупликации уведомлений
+db.prepare(`CREATE TABLE IF NOT EXISTS double_notifications (
+  notification_key TEXT PRIMARY KEY,
+  round_hash TEXT NOT NULL,
+  sent_at INTEGER NOT NULL
+)`).run();
+
+function getDoubleRoundState() {
+  try {
+    const row = db.prepare('SELECT * FROM double_round_state WHERE id = 1').get();
+    if (!row) return null;
+    return {
+      state: row.state,
+      hash: row.hash,
+      result: row.result,
+      salt: row.salt,
+      endTime: row.end_time,
+      cellContents: row.cell_contents ? JSON.parse(row.cell_contents) : null,
+      finalMultipliers: row.final_multipliers ? JSON.parse(row.final_multipliers) : null,
+      gameButtonActive: !!row.game_button_active,
+      processedChats: JSON.parse(row.processed_chats || '[]'),
+      gameChoices: JSON.parse(row.game_choices || '{}'),
+      globalChoices: JSON.parse(row.global_choices || '{}'),
+      notifications: JSON.parse(row.notifications || '{}'),
+    };
+  } catch (e) { return null; }
+}
+
+function setDoubleRoundState(state) {
+  try {
+    db.prepare(`INSERT OR REPLACE INTO double_round_state
+      (id, state, hash, result, salt, end_time, cell_contents, final_multipliers,
+       game_button_active, processed_chats, game_choices, global_choices, notifications, updated_at)
+      VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      state.state || 'ACCEPTING',
+      state.hash || null,
+      state.result || null,
+      state.salt || null,
+      state.endTime || null,
+      state.cellContents ? JSON.stringify(state.cellContents) : null,
+      state.finalMultipliers ? JSON.stringify(state.finalMultipliers) : null,
+      state.gameButtonActive ? 1 : 0,
+      JSON.stringify(state.processedChats || []),
+      JSON.stringify(state.gameChoices || {}),
+      JSON.stringify(state.globalChoices || {}),
+      JSON.stringify(state.notifications || {}),
+      Date.now()
+    );
+  } catch (e) { console.error('[DB] setDoubleRoundState:', e.message); }
+}
+
+function getDoubleNotification(key) {
+  try { return !!db.prepare('SELECT 1 FROM double_notifications WHERE notification_key = ?').get(key); }
+  catch (e) { return false; }
+}
+
+function markDoubleNotificationSent(key, roundHash = '') {
+  try { db.prepare('INSERT OR IGNORE INTO double_notifications (notification_key, round_hash, sent_at) VALUES (?, ?, ?)').run(key, roundHash, Date.now()); }
+  catch (e) {}
+}
+
+function refundBetsForRound(roundHash) {
+  try {
+    const refunds = db.prepare(`
+      SELECT user_id, SUM(amount) as total FROM double_bets_log
+      WHERE round_id = ? AND status = 'accepted' AND payout_status = 'pending'
+      GROUP BY user_id
+    `).all(roundHash);
+    let count = 0;
+    for (const r of refunds) {
+      try { updateUserBalance(r.user_id, r.total); count++; } catch (e) {}
+    }
+    db.prepare(`UPDATE double_bets_log SET payout_status = 'refunded', status = 'rejected'
+      WHERE round_id = ? AND status = 'accepted' AND payout_status = 'pending'`).run(roundHash);
+    return count;
+  } catch (e) { return 0; }
+}
+
+function cleanupDoubleNotifications(maxAgeDays = 7) {
+  try {
+    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    db.prepare('DELETE FROM double_notifications WHERE sent_at < ?').run(cutoff);
+  } catch (e) {}
+}
+
+// +1 к счётчику выигранных GAME
+function incrementGameWins(userId, amount = 1) {
+  try {
+    return db.prepare('UPDATE users SET game_wins = game_wins + ? WHERE id = ?').run(amount, userId.toString()).changes;
+  } catch (e) {
+    console.error('[DB] incrementGameWins:', e.message);
+    return 0;
+  }
+}
+
+// Полное обнуление игровой статистики всех игроков
+function resetAllDoubleStatistics() {
+  try {
+    db.exec('BEGIN TRANSACTION;');
+    db.prepare(`UPDATE users SET
+      total_rounds = 0, round_wins = 0, round_losses = 0,
+      double_total_bets = 0, double_wins = 0, double_losses = 0,
+      double_total_winnings = 0, double_total_losses = 0,
+      game_wins = 0`).run();
+    db.prepare('DELETE FROM bet_history').run();
+    db.exec('COMMIT;');
+    return { success: true };
+  } catch (e) {
+    try { db.exec('ROLLBACK;'); } catch (_) {}
+    console.error('[DB] resetAllDoubleStatistics:', e.message);
+    return { success: false, error: e.message };
+  }
+}
+
 // Экспортируем функции
 module.exports = {
   getUserById,
@@ -6060,6 +6200,13 @@ module.exports = {
   getDoubleRoundDetails,
   logPromoActivation,
   backfillPromoActivationLogs,
+  getDoubleRoundState,
+  setDoubleRoundState,
+  getDoubleNotification,
+  markDoubleNotificationSent,
+  refundBetsForRound,
+  cleanupDoubleNotifications,
+  incrementGameWins, resetAllDoubleStatistics,
 
 
 };

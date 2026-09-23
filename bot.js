@@ -37,6 +37,7 @@ const {
   getOwnedWeapons,
   logFinance,
   saveBet,
+  getDoubleBetsByRound,
 } = require('./db');
 
 
@@ -2833,67 +2834,39 @@ bot.action(/^open_container_(\d+)$/, async (ctx) => {
 
 bot.action(/^game_choice_(-?\d+)_([a-z]+)$/, async (ctx) => {
   try {
-      // Проверка статуса пользователя
-      if (!(await checkUserStatus(ctx))) {
-          return ctx.answerCbQuery('❌ Вы не можете участвовать в игре.');
-      }
+    if (!(await checkUserStatus(ctx))) return ctx.answerCbQuery('❌ Вы не можете участвовать в игре.');
+    const [, chatIdStr, choice] = ctx.match;
+    const chatId = parseInt(chatIdStr, 10);
+    const userId = ctx.from.id.toString();
 
-      const [, chatIdStr, choice] = ctx.match; // Разбиваем callback_data
-      const chatId = parseInt(chatIdStr, 10);
-      const userId = ctx.from.id.toString();
-      
-      // Глобальный ключ выбора
-      const globalChoiceKey = `global_choice_${userId}`;
-      
-      // Проверяем глобальный выбор
-      if (doubleGame.globalChoices[globalChoiceKey]) {
-          const existingChoice = doubleGame.globalChoices[globalChoiceKey];
-          if (existingChoice !== choice) {
-              return ctx.answerCbQuery(`❕ Вы уже выбрали ${existingChoice === 'left' ? 'левую' : 'правую'} ячейку во всех чатах.`);
-          }
-      } else {
-          doubleGame.globalChoices[globalChoiceKey] = choice;
-      }
+    if (!doubleGame.round || Date.now() >= doubleGame.round.endTime) {
+      return ctx.answerCbQuery('❕ Раунд уже завершен.');
+    }
+    if (!doubleGame.round.gameButtonActive) {
+      return ctx.answerCbQuery('❕ Кнопки выбора недоступны.');
+    }
 
-      // Проверяем активность раунда
-      if (!doubleGame.globalRound || Date.now() >= doubleGame.globalRound.endTime) {
-          return ctx.answerCbQuery('❕ Раунд уже завершен.');
-      }
+    const bets = getDoubleBetsByRound(doubleGame.round.hash);
+    const userBet = bets.find((b) => b.user_id === userId && b.multiplier === 'GAME');
+    if (!userBet) return ctx.answerCbQuery('❕ Вы не участвуете в текущем раунде GAME.');
 
-      // Проверяем активность кнопок
-      if (!doubleGame.globalRound.gameButtonActive) {
-          return ctx.answerCbQuery('❕ Кнопки выбора недоступны.');
-      }
+    const gKey = `global_choice_${userId}`;
+    if (doubleGame.globalChoices[gKey] && doubleGame.globalChoices[gKey] !== choice) {
+      return ctx.answerCbQuery(`❕ Вы уже выбрали ${doubleGame.globalChoices[gKey] === 'left' ? 'левую' : 'правую'} ячейку во всех чатах.`);
+    }
 
-      // Проверяем участие пользователя в раунде
-      const bets = await getBetsByRoundId(doubleGame.globalRound.hash);
-      const userBet = bets.find(
-          (bet) => bet.user_id === userId && bet.multiplier === 'GAME'
-      );
+    if (!doubleGame.recordGameChoice(userId, chatId, choice)) {
+      return ctx.answerCbQuery('❕ Выбор уже сделан или кнопки неактивны.');
+    }
+    try { updateGameChoicesForRoundUser(doubleGame.round.hash, userId, chatId, choice); } catch (e) {}
 
-      if (!userBet) {
-          return ctx.answerCbQuery('❕ Вы не участвуете в текущем раунде GAME.');
-      }
-
-      // Записываем выбор
-      const key = `${chatId}_${userId}`;
-      doubleGame.gameChoices[key] = choice;
-
-      // Получаем данные пользователя
-      const userFromDb = await getUserById(userId);
-      const username = userFromDb?.username || 'Неизвестный';
-      const userLink = createUserLink(userId, username);
-
-      // Отправляем подтверждение
-      await ctx.answerCbQuery(`❕ Вы выбрали: ${choice === 'left' ? 'Левая' : 'Правая'}`);
-      const formattedChoice = choice === 'left' ? '<b>Левая</b>' : '<b>Правая</b>';
-      await ctx.replyWithHTML(
-          `☑️ ${userLink}, ваш выбор записан: ${formattedChoice}`
-      );
-
+    const userFromDb = await getUserById(userId);
+    const userLink = createUserLink(userId, userFromDb?.username || 'Неизвестный');
+    await ctx.answerCbQuery(`❕ Вы выбрали: ${choice === 'left' ? 'Левая' : 'Правая'}`);
+    await ctx.replyWithHTML(`☑️ ${userLink}, ваш выбор записан: ${choice === 'left' ? '<b>Левая</b>' : '<b>Правая</b>'}`);
   } catch (error) {
-      console.error('Ошибка при обработке выбора ячейки:', error);
-      await ctx.answerCbQuery('❌ Произошла ошибка. Попробуйте позже.');
+    console.error('Ошибка при обработке выбора ячейки:', error);
+    await ctx.answerCbQuery('❌ Произошла ошибка. Попробуйте позже.');
   }
 });
 
@@ -4097,10 +4070,9 @@ bot.action(/^bet_(x\d+|GAME)_(\d+)$/, async (ctx) => {
       lastBetTimes[cooldownKey] = currentTime;
 
       // Проверяем время окончания приема ставок
-      const remainingTimeForBets =
-        doubleGame.globalRound.result === 'GAME'
-          ? doubleGame.globalRound.endTime - 20 * 1000
-          : doubleGame.globalRound.endTime - 5 * 1000;
+      const remainingTimeForBets = doubleGame.round.result === 'GAME'
+      ? doubleGame.round.endTime - 20 * 1000
+      : doubleGame.round.endTime - 5 * 1000;
 
       if (currentTime >= remainingTimeForBets) {
         return ctx.answerCbQuery('⏳ Ставки больше не принимаются. Формируются итоги игры.', { show_alert: true });
@@ -4110,9 +4082,6 @@ bot.action(/^bet_(x\d+|GAME)_(\d+)$/, async (ctx) => {
       if (userFromDb.balance < amount) {
         return ctx.answerCbQuery('❌ Недостаточно средств для ставки.');
       }
-
-      // Сохраняем ставку в базу данных
-      await saveBet(doubleGame.globalRound.hash, userId, username, multiplier, amount, ctx.chat.id);
 
       // Обрабатываем ставку через DoubleGame
       const betResult = await doubleGame.handleBet(userId, username, multiplier, amount, ctx.chat.id);

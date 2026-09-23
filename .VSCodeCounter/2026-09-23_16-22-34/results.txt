@@ -1,0 +1,165 @@
+Date : 2026-09-23 16:22:34
+Directory : d:\coding\myBot
+Total : 107 files,  32975 codes, 4145 comments, 5340 blanks, all 42460 lines
+
+Languages
++----------------+------------+------------+------------+------------+------------+
+| language       | files      | code       | comment    | blank      | total      |
++----------------+------------+------------+------------+------------+------------+
+| JavaScript     |         90 |     27,577 |      4,067 |      5,216 |     36,860 |
+| JSON           |          5 |      3,860 |          0 |          4 |      3,864 |
+| JavaScript JSX |          9 |        822 |         43 |         44 |        909 |
+| CSS            |          1 |        677 |         35 |         62 |        774 |
+| Markdown       |          1 |         23 |          0 |         14 |         37 |
+| HTML           |          1 |         16 |          0 |          0 |         16 |
++----------------+------------+------------+------------+------------+------------+
+
+Directories
++-------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                        | files      | code       | comment    | blank      | total      |
++-------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                           |        107 |     32,975 |      4,145 |      5,340 |     42,460 |
+| . (Files)                                                   |         13 |     11,244 |      1,328 |      1,546 |     14,118 |
+| Events                                                      |          6 |        926 |         76 |        190 |      1,192 |
+| Events (Files)                                              |          2 |        488 |         46 |         82 |        616 |
+| Events\Halloween                                            |          4 |        438 |         30 |        108 |        576 |
+| admin                                                       |          9 |      2,296 |        316 |        467 |      3,079 |
+| app                                                         |         19 |      3,763 |        107 |        135 |      4,005 |
+| app\backend                                                 |          2 |        367 |         29 |          9 |        405 |
+| app\frontend                                                |         17 |      3,396 |         78 |        126 |      3,600 |
+| app\frontend (Files)                                        |          1 |         23 |          0 |         14 |         37 |
+| app\frontend\react                                          |         16 |      3,373 |         78 |        112 |      3,563 |
+| app\frontend\react (Files)                                  |          4 |      1,791 |          0 |          2 |      1,793 |
+| app\frontend\react\src                                      |         12 |      1,582 |         78 |        110 |      1,770 |
+| app\frontend\react\src (Files)                              |          3 |        761 |         37 |         74 |        872 |
+| app\frontend\react\src\components                           |          1 |         28 |          0 |          1 |         29 |
+| app\frontend\react\src\pages                                |          6 |        710 |         41 |         31 |        782 |
+| app\frontend\react\src\utils                                |          2 |         83 |          0 |          4 |         87 |
+| bank                                                        |          6 |      1,019 |        236 |        247 |      1,502 |
+| boss                                                        |          4 |      1,462 |        246 |        307 |      2,015 |
+| donations                                                   |          2 |        964 |        101 |        171 |      1,236 |
+| empire                                                      |          5 |        729 |        169 |        166 |      1,064 |
+| empire (Files)                                              |          1 |        177 |         32 |         31 |        240 |
+| empire\handlers                                             |          3 |        413 |        105 |        113 |        631 |
+| empire\logic                                                |          1 |        139 |         32 |         22 |        193 |
+| games                                                       |          3 |      1,292 |        162 |        196 |      1,650 |
+| handlers                                                    |         30 |      8,292 |      1,272 |      1,697 |     11,261 |
+| middleware                                                  |          2 |        135 |         36 |         36 |        207 |
+| sessions                                                    |          2 |         74 |         10 |         19 |        103 |
+| skins                                                       |          3 |        676 |         68 |        138 |        882 |
+| utils                                                       |          3 |        103 |         18 |         25 |        146 |
++-------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++-------------------------------------------------------------+----------------+------------+------------+------------+------------+
+| filename                                                    | language       | code       | comment    | blank      | total      |
++-------------------------------------------------------------+----------------+------------+------------+------------+------------+
+| d:\coding\myBot\Events\Halloween\adminCandy.js              | JavaScript     |         72 |          5 |         15 |         92 |
+| d:\coding\myBot\Events\Halloween\candy.js                   | JavaScript     |         75 |          4 |         19 |         98 |
+| d:\coding\myBot\Events\Halloween\candyShop.js               | JavaScript     |        195 |         15 |         49 |        259 |
+| d:\coding\myBot\Events\Halloween\exchange.js                | JavaScript     |         96 |          6 |         25 |        127 |
+| d:\coding\myBot\Events\fortuneWheel.js                      | JavaScript     |        351 |         28 |         62 |        441 |
+| d:\coding\myBot\Events\secretGift.js                        | JavaScript     |        137 |         18 |         20 |        175 |
+| d:\coding\myBot\adminUtils.js                               | JavaScript     |        140 |         32 |         39 |        211 |
+| d:\coding\myBot\admin\activateDice.js                       | JavaScript     |         75 |         16 |         19 |        110 |
+| d:\coding\myBot\admin\activateDouble.js                     | JavaScript     |         75 |         15 |         16 |        106 |
+| d:\coding\myBot\admin\addBalance.js                         | JavaScript     |        328 |         21 |         63 |        412 |
+| d:\coding\myBot\admin\adminPanel.js                         | JavaScript     |        321 |         34 |         58 |        413 |
+| d:\coding\myBot\admin\blacklistManagement.js                | JavaScript     |        453 |         70 |         95 |        618 |
+| d:\coding\myBot\admin\broadcast.js                          | JavaScript     |         78 |         13 |         15 |        106 |
+| d:\coding\myBot\admin\kickManagement.js                     | JavaScript     |        247 |         64 |         56 |        367 |
+| d:\coding\myBot\admin\muteManagement.js                     | JavaScript     |        470 |         60 |         94 |        624 |
+| d:\coding\myBot\admin\reports.js                            | JavaScript     |        249 |         23 |         51 |        323 |
+| d:\coding\myBot\app\backend\index.js                        | JavaScript     |        350 |         29 |          8 |        387 |
+| d:\coding\myBot\app\backend\package.json                    | JSON           |         17 |          0 |          1 |         18 |
+| d:\coding\myBot\app\frontend\README.md                      | Markdown       |         23 |          0 |         14 |         37 |
+| d:\coding\myBot\app\frontend\react\index.html               | HTML           |         16 |          0 |          0 |         16 |
+| d:\coding\myBot\app\frontend\react\package-lock.json        | JSON           |      1,740 |          0 |          1 |      1,741 |
+| d:\coding\myBot\app\frontend\react\package.json             | JSON           |         20 |          0 |          0 |         20 |
+| d:\coding\myBot\app\frontend\react\src\App.jsx              | JavaScript JSX |         74 |          2 |         11 |         87 |
+| d:\coding\myBot\app\frontend\react\src\components\Nav.jsx   | JavaScript JSX |         28 |          0 |          1 |         29 |
+| d:\coding\myBot\app\frontend\react\src\main.jsx             | JavaScript JSX |         10 |          0 |          1 |         11 |
+| d:\coding\myBot\app\frontend\react\src\pages\AdminLogs.jsx  | JavaScript JSX |        458 |         33 |          0 |        491 |
+| d:\coding\myBot\app\frontend\react\src\pages\AdminPanel.jsx | JavaScript JSX |         22 |          0 |          3 |         25 |
+| d:\coding\myBot\app\frontend\react\src\pages\Donate.jsx     | JavaScript JSX |         12 |          1 |          0 |         13 |
+| d:\coding\myBot\app\frontend\react\src\pages\Fortune.jsx    | JavaScript JSX |        118 |          5 |         18 |        141 |
+| d:\coding\myBot\app\frontend\react\src\pages\Help.jsx       | JavaScript JSX |         15 |          1 |          0 |         16 |
+| d:\coding\myBot\app\frontend\react\src\pages\Profile.jsx    | JavaScript JSX |         85 |          1 |         10 |         96 |
+| d:\coding\myBot\app\frontend\react\src\styles.css           | CSS            |        677 |         35 |         62 |        774 |
+| d:\coding\myBot\app\frontend\react\src\utils\api.js         | JavaScript     |         47 |          0 |          0 |         47 |
+| d:\coding\myBot\app\frontend\react\src\utils\sound.js       | JavaScript     |         36 |          0 |          4 |         40 |
+| d:\coding\myBot\app\frontend\react\vite.config.js           | JavaScript     |         15 |          0 |          1 |         16 |
+| d:\coding\myBot\bank\bankHandler.js                         | JavaScript     |         54 |         11 |          9 |         74 |
+| d:\coding\myBot\bank\bankTechCommands.js                    | JavaScript     |         66 |         20 |         19 |        105 |
+| d:\coding\myBot\bank\bankTransfers.js                       | JavaScript     |        245 |         73 |         60 |        378 |
+| d:\coding\myBot\bank\cardTopUp.js                           | JavaScript     |        267 |         57 |         66 |        390 |
+| d:\coding\myBot\bank\npfShares.js                           | JavaScript     |        289 |         55 |         65 |        409 |
+| d:\coding\myBot\bank\npfTrading.js                          | JavaScript     |         98 |         20 |         28 |        146 |
+| d:\coding\myBot\boss\bossHandler.js                         | JavaScript     |        932 |        147 |        174 |      1,253 |
+| d:\coding\myBot\boss\bossTop.js                             | JavaScript     |         89 |         20 |         24 |        133 |
+| d:\coding\myBot\boss\energyHandler.js                       | JavaScript     |        131 |         17 |         30 |        178 |
+| d:\coding\myBot\boss\upgradeAttackPower.js                  | JavaScript     |        310 |         62 |         79 |        451 |
+| d:\coding\myBot\bot.js                                      | JavaScript     |      3,743 |        580 |        641 |      4,964 |
+| d:\coding\myBot\botMonitoring.js                            | JavaScript     |         81 |         14 |         21 |        116 |
+| d:\coding\myBot\cleanup_messages_logs.js                    | JavaScript     |         13 |          4 |          5 |         22 |
+| d:\coding\myBot\db.js                                       | JavaScript     |      4,728 |        611 |        727 |      6,066 |
+| d:\coding\myBot\donations\donationShop.js                   | JavaScript     |        873 |         93 |        154 |      1,120 |
+| d:\coding\myBot\donations\starDonation.js                   | JavaScript     |         91 |          8 |         17 |        116 |
+| d:\coding\myBot\empire\db.js                                | JavaScript     |        177 |         32 |         31 |        240 |
+| d:\coding\myBot\empire\handlers\adminCommandsHandler.js     | JavaScript     |         48 |         12 |         13 |         73 |
+| d:\coding\myBot\empire\handlers\buildHandlers.js            | JavaScript     |        275 |         77 |         74 |        426 |
+| d:\coding\myBot\empire\handlers\empireHandler.js            | JavaScript     |         90 |         16 |         26 |        132 |
+| d:\coding\myBot\empire\logic\businessLogic.js               | JavaScript     |        139 |         32 |         22 |        193 |
+| d:\coding\myBot\games\diceGame.js                           | JavaScript     |        409 |         18 |         63 |        490 |
+| d:\coding\myBot\games\doubleGame.js                         | JavaScript     |        799 |        118 |        105 |      1,022 |
+| d:\coding\myBot\games\generateDiceResultsImage.js           | JavaScript     |         84 |         26 |         28 |        138 |
+| d:\coding\myBot\generateCard.js                             | JavaScript     |         63 |         17 |         18 |         98 |
+| d:\coding\myBot\handlers\auction.js                         | JavaScript     |        459 |         26 |         81 |        566 |
+| d:\coding\myBot\handlers\balance.js                         | JavaScript     |         43 |         11 |          7 |         61 |
+| d:\coding\myBot\handlers\bonus.js                           | JavaScript     |        183 |         18 |         38 |        239 |
+| d:\coding\myBot\handlers\buttons.js                         | JavaScript     |         56 |         11 |         12 |         79 |
+| d:\coding\myBot\handlers\buyContainer.js                    | JavaScript     |        257 |         26 |         56 |        339 |
+| d:\coding\myBot\handlers\cardInfo.js                        | JavaScript     |        451 |         83 |         91 |        625 |
+| d:\coding\myBot\handlers\changeNickname.js                  | JavaScript     |        109 |         27 |         30 |        166 |
+| d:\coding\myBot\handlers\donationNotifications.js           | JavaScript     |         25 |          2 |          4 |         31 |
+| d:\coding\myBot\handlers\donationStats.js                   | JavaScript     |        329 |         57 |         71 |        457 |
+| d:\coding\myBot\handlers\double.js                          | JavaScript     |        211 |         40 |         58 |        309 |
+| d:\coding\myBot\handlers\fortyTwo.js                        | JavaScript     |        146 |         32 |         29 |        207 |
+| d:\coding\myBot\handlers\gameHandlers.js                    | JavaScript     |        120 |         22 |         27 |        169 |
+| d:\coding\myBot\handlers\generatePromoImage.js              | JavaScript     |        196 |         39 |         31 |        266 |
+| d:\coding\myBot\handlers\guessNumberGame.js                 | JavaScript     |         93 |         16 |         30 |        139 |
+| d:\coding\myBot\handlers\help.js                            | JavaScript     |        137 |          7 |         26 |        170 |
+| d:\coding\myBot\handlers\openContainer.js                   | JavaScript     |        301 |         26 |         54 |        381 |
+| d:\coding\myBot\handlers\prefixes.js                        | JavaScript     |        289 |         40 |         72 |        401 |
+| d:\coding\myBot\handlers\profile.js                         | JavaScript     |        189 |         25 |         35 |        249 |
+| d:\coding\myBot\handlers\promoHandler.js                    | JavaScript     |        706 |         37 |         30 |        773 |
+| d:\coding\myBot\handlers\referralSystem.js                  | JavaScript     |        669 |        136 |        135 |        940 |
+| d:\coding\myBot\handlers\registration.js                    | JavaScript     |        378 |         68 |         30 |        476 |
+| d:\coding\myBot\handlers\roulette.js                        | JavaScript     |        595 |        110 |        146 |        851 |
+| d:\coding\myBot\handlers\rules.js                           | JavaScript     |         76 |          6 |         26 |        108 |
+| d:\coding\myBot\handlers\sequentialInput.js                 | JavaScript     |        181 |         22 |         53 |        256 |
+| d:\coding\myBot\handlers\statistics.js                      | JavaScript     |         60 |          5 |         15 |         80 |
+| d:\coding\myBot\handlers\statusReport.js                    | JavaScript     |         68 |          9 |         12 |         89 |
+| d:\coding\myBot\handlers\technicalCommands.js               | JavaScript     |      1,468 |        281 |        390 |      2,139 |
+| d:\coding\myBot\handlers\testHandler.js                     | JavaScript     |         81 |         22 |         20 |        123 |
+| d:\coding\myBot\handlers\testerKit.js                       | JavaScript     |         65 |         15 |         17 |         97 |
+| d:\coding\myBot\handlers\top.js                             | JavaScript     |        351 |         53 |         71 |        475 |
+| d:\coding\myBot\index.js                                    | JavaScript     |         37 |          5 |         10 |         52 |
+| d:\coding\myBot\middleware\all.js                           | JavaScript     |         91 |         25 |         24 |        140 |
+| d:\coding\myBot\middleware\subscription.js                  | JavaScript     |         44 |         11 |         12 |         67 |
+| d:\coding\myBot\package-lock.json                           | JSON           |      2,055 |          0 |          1 |      2,056 |
+| d:\coding\myBot\package.json                                | JSON           |         28 |          0 |          1 |         29 |
+| d:\coding\myBot\postToChannel.js                            | JavaScript     |         45 |         11 |         12 |         68 |
+| d:\coding\myBot\seed_test_data.js                           | JavaScript     |         46 |          6 |          8 |         60 |
+| d:\coding\myBot\sessions\registrationSession.js             | JavaScript     |         37 |          5 |         10 |         52 |
+| d:\coding\myBot\sessions\skinShopSession.js                 | JavaScript     |         37 |          5 |          9 |         51 |
+| d:\coding\myBot\skins\checkSkins.js                         | JavaScript     |        141 |         29 |         32 |        202 |
+| d:\coding\myBot\skins\mySkinsHandlers.js                    | JavaScript     |        191 |         10 |         44 |        245 |
+| d:\coding\myBot\skins\shopHandler.js                        | JavaScript     |        344 |         29 |         62 |        435 |
+| d:\coding\myBot\statusCommands.js                           | JavaScript     |        228 |         41 |         56 |        325 |
+| d:\coding\myBot\updateStatuses.js                           | JavaScript     |         37 |          7 |          7 |         51 |
+| d:\coding\myBot\utils\error.js                              | JavaScript     |         82 |         14 |         18 |        114 |
+| d:\coding\myBot\utils\errorHandler.js                       | JavaScript     |         14 |          3 |          5 |         22 |
+| d:\coding\myBot\utils\userLink.js                           | JavaScript     |          7 |          1 |          2 |         10 |
+| Total                                                       |                |     32,975 |      4,145 |      5,340 |     42,460 |
++-------------------------------------------------------------+----------------+------------+------------+------------+------------+
