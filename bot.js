@@ -38,6 +38,8 @@ const {
   logFinance,
   saveBet,
   getDoubleBetsByRound,
+  getActivePlayersCount,
+  logMessage,
 } = require('./db');
 
 
@@ -287,6 +289,26 @@ bot.use(async (ctx, next) => {
     console.error('Ошибка в middleware:', error);
     await ctx.reply('Произошла ошибка. Попробуйте через несколько секунд.');
   }
+});
+
+// Логирование нажатий кнопок (callback_query) в message_log — для счётчика онлайна
+bot.on('callback_query', async (ctx, next) => {
+  try {
+    const userId = ctx.from?.id;
+    if (userId) {
+      logMessage(
+        userId,
+        ctx.chat?.type || 'private',
+        ctx.chat?.id || userId,
+        ctx.chat?.title || null,
+        `[btn] ${ctx.callbackQuery?.data || ''}`,
+        false
+      );
+    }
+  } catch (e) {
+    // ошибка логирования не должна ломать обработку кнопок
+  }
+  return next();
 });
 
 // Middleware для обработки последовательного ввода

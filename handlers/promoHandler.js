@@ -23,6 +23,7 @@ const prizeTypeMapping = {
   'balance': 'PF',
   'df_balance': 'DF',
   'npf_shares': 'NPF-акция',
+  'tickets': 'Билетики',
 };
 const statusesList = [
   { id: 0, name: 'Все пользователи' },
@@ -109,6 +110,7 @@ const prizeTypeKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('📦 GOLD-контейнер', 'promo_prize_container_type_3')],
   [Markup.button.callback('💰 PF', 'promo_prize_balance'), Markup.button.callback('💎 DF', 'promo_prize_df_balance')],
   [Markup.button.callback('📈 NPF-акция', 'promo_prize_npf_shares')],
+  [Markup.button.callback('🎫 Билетики', 'promo_prize_tickets')],
   [Markup.button.callback('🔙 Отмена', 'promo_cancel_create')]
 ]);
 const prizeAmountQuickKeyboard = Markup.inlineKeyboard([
@@ -412,7 +414,10 @@ async function handleCallback(ctx) {
       'container_type_3': 'container_type_3',
       'balance': 'balance',
       'df_balance': 'df_balance',
-      'npf_shares': 'npf_shares'
+      'npf_shares': 'npf_shares',
+      'tickets': 'tickets'
+
+      
     };
     if (!map[typeKey]) return ctx.answerCbQuery('❌ Неизвестный тип приза.');
     session.data.prize_type = map[typeKey];

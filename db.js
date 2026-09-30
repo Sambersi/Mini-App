@@ -77,6 +77,11 @@ const newColumns = [
   { name: 'last_app_ts', type: 'INTEGER DEFAULT 0' }, // Время (мс) последнего пинга из Mini App
   { name: 'total_messages', type: 'INTEGER DEFAULT 0' }, // Счётчик сообщений за всё время
   { name: 'game_wins', type: 'INTEGER DEFAULT 0' },
+  { name: 'max_win_amount', type: 'INTEGER DEFAULT 0' },
+  { name: 'max_bet_amount', type: 'INTEGER DEFAULT 0' },
+  { name: 'multiplier_stats', type: "TEXT DEFAULT '{}'" },
+  { name: 'current_win_streak', type: 'INTEGER DEFAULT 0' },
+  { name: 'best_win_streak', type: 'INTEGER DEFAULT 0' },
   // { name: '', type: '' },
   // { name: '', type: '' }
 ];
@@ -5019,6 +5024,17 @@ function cleanupOldMessageLogs(days = 30) {
       return { success: false, error: error.message };
   }
 }
+// Количество уникальных игроков, взаимодействовавших с ботом в окне windowMs
+function getActivePlayersCount(windowMs = 5 * 60 * 1000) {
+  try {
+    const cutoff = Date.now() - windowMs;
+    const row = db.prepare('SELECT COUNT(DISTINCT user_id) AS c FROM message_log WHERE ts >= ?').get(cutoff);
+    return row?.c || 0;
+  } catch (error) {
+    console.error('[DB] getActivePlayersCount:', error.message);
+    return 0;
+  }
+}
 
 
 // === ТАБЛИЦА ФИНАНСОВЫХ И АДМИН-ОПЕРАЦИЙ ===
@@ -5223,6 +5239,7 @@ const PROMO_PRIZE_LABEL = {
   container_type_1: 'CONTAINER_1',
   container_type_2: 'CONTAINER_2',
   container_type_3: 'CONTAINER_3',
+  tickets: 'TICKETS',
 };
 /**
  * Пишет в finance_log факт активации промокода игроком (или отказ).
@@ -5935,7 +5952,8 @@ function resetAllDoubleStatistics() {
       total_rounds = 0, round_wins = 0, round_losses = 0,
       double_total_bets = 0, double_wins = 0, double_losses = 0,
       double_total_winnings = 0, double_total_losses = 0,
-      game_wins = 0`).run();
+      game_wins = 0, max_win_amount = 0, max_bet_amount = 0,
+      multiplier_stats = '{}', current_win_streak = 0, best_win_streak = 0`).run();
     db.prepare('DELETE FROM bet_history').run();
     db.exec('COMMIT;');
     return { success: true };
@@ -5944,6 +5962,47 @@ function resetAllDoubleStatistics() {
     console.error('[DB] resetAllDoubleStatistics:', e.message);
     return { success: false, error: e.message };
   }
+}
+
+// === РАСШИРЕННАЯ СТАТИСТИКА ДАБЛА ===
+function updateMaxBetIfGreater(userId, amount) {
+  try {
+    return db.prepare('UPDATE users SET max_bet_amount = ? WHERE id = ? AND (? > max_bet_amount)').run(amount, userId.toString(), amount).changes;
+  } catch (e) { console.error('[DB] updateMaxBetIfGreater:', e.message); return 0; }
+}
+
+function updateMaxWinIfGreater(userId, winAmount) {
+  try {
+    return db.prepare('UPDATE users SET max_win_amount = ? WHERE id = ? AND (? > max_win_amount)').run(winAmount, userId.toString(), winAmount).changes;
+  } catch (e) { console.error('[DB] updateMaxWinIfGreater:', e.message); return 0; }
+}
+
+function incrementMultiplierCount(userId, multiplier) {
+  try {
+    const user = db.prepare('SELECT multiplier_stats FROM users WHERE id = ?').get(userId.toString());
+    if (!user) return 0;
+    const stats = JSON.parse(user.multiplier_stats || '{}');
+    stats[multiplier] = (stats[multiplier] || 0) + 1;
+    return db.prepare('UPDATE users SET multiplier_stats = ? WHERE id = ?').run(JSON.stringify(stats), userId.toString()).changes;
+  } catch (e) { console.error('[DB] incrementMultiplierCount:', e.message); return 0; }
+}
+
+function getMultiplierStats(userId) {
+  try {
+    const user = db.prepare('SELECT multiplier_stats FROM users WHERE id = ?').get(userId.toString());
+    return JSON.parse(user?.multiplier_stats || '{}');
+  } catch (e) { return {}; }
+}
+
+// Серия: true — победа в раунде одиночной ставкой (+1), false — серия обрывается (0)
+function updateWinStreak(userId, wonSingle) {
+  try {
+    if (wonSingle) {
+      return db.prepare(`UPDATE users SET current_win_streak = current_win_streak + 1,
+        best_win_streak = MAX(best_win_streak, current_win_streak + 1) WHERE id = ?`).run(userId.toString()).changes;
+    }
+    return db.prepare('UPDATE users SET current_win_streak = 0 WHERE id = ? AND current_win_streak > 0').run(userId.toString()).changes;
+  } catch (e) { console.error('[DB] updateWinStreak:', e.message); return 0; }
 }
 
 // Экспортируем функции
@@ -6207,6 +6266,7 @@ module.exports = {
   refundBetsForRound,
   cleanupDoubleNotifications,
   incrementGameWins, resetAllDoubleStatistics,
-
-
+  updateMaxBetIfGreater, updateMaxWinIfGreater, incrementMultiplierCount, getMultiplierStats, updateWinStreak,
+  getActivePlayersCount,
+  
 };

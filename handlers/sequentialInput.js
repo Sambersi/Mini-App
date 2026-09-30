@@ -1,4 +1,4 @@
-// handlers/sequentialInput.js
+// handlers/sequentialInput.js  тестим последовательный ввод
 const { Markup } = require('telegraf');
 
 // Простое хранилище в памяти

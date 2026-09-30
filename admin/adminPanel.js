@@ -1,7 +1,13 @@
 const { Markup } = require('telegraf');
-const { getAllUsers, getUsersByStatuses, getUserStatuses } = require('../db'); // Импортируем необходимые функции
+const { getAllUsers, getUsersByStatuses, getUserStatuses, getActivePlayersCount } = require('../db'); // Импортируем необходимые функции
 const { isModerator } = require('./muteManagement');
-const { calculateLoadDetails } = require('../botMonitoring'); // Импортируем обновленную функцию
+const { calculateLoadDetails, getHealthStatus } = require('../botMonitoring');
+
+const load = calculateLoadDetails();
+const health = getHealthStatus();
+const emoji = health.level === 'ok' ? '🟢' : health.level === 'warning' ? '🟡' : '🔴';
+
+
 
 // Функция для создания клавиатуры админ-панели
 function getAdminPanelKeyboard() {
@@ -76,20 +82,24 @@ async function showAdminPanel(ctx) {
 
       // Получаем подробную информацию о нагрузке
       const loadDetails = calculateLoadDetails();
+      const online5m = getActivePlayersCount(5 * 60 * 1000);
+      const active24h = getActivePlayersCount(24 * 60 * 60 * 1000);
 
       // Формируем сообщение для админ-панели
       const adminPanelMessage = `
 📊 <b>Админ-панель</b> 📊
-
-👥 Количество игроков: ${formatNumber(totalPlayers)}
- 💰 Общий баланс PF: ${formattedTotalPF}
- 💳 Общий баланс карт: ${formattedCardBalance}
- 🍩 Общее количество DF: ${formattedTotalDF}
-
-💻 <b>Нагрузка бота:</b>
- • RAM: ${loadDetails.memory}%
- • Общая: ${loadDetails.overall}%
-
+ Количество игроков: ${formatNumber(totalPlayers)}
+🟢 Онлайн: ${formatNumber(online5m)}
+📈 Активны за сутки: ${formatNumber(active24h)}\n
+💰 Общий баланс PF: ${formattedTotalPF}
+💳 Общий баланс карт: ${formattedCardBalance}
+🍩 Общее количество DF: ${formattedTotalDF}\n
+💻 <b>Нагрузка:</b>
+${emoji} Состояние: ${health.reason}
+⚡ CPU: ${load.cpu.toFixed(1)}%
+🧠 Heap: ${load.heap.toFixed(1)}% (${load.rssMB} MB RSS)
+🔄 Event loop lag: ${load.eventLoopLagMs} ms (пик ${load.maxEventLoopLagMs} ms)
+📨 RPS: ${load.rps} / RPM: ${load.rpm} (пик ${load.peakRPS})
 Выберите действие:
 `.trim();
 

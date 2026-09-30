@@ -21,7 +21,10 @@ const {
   markDoubleNotificationSent,
   refundBetsForRound,
   incrementGameWins,
-
+  updateMaxBetIfGreater,
+  updateMaxWinIfGreater,
+  incrementMultiplierCount,
+  updateWinStreak,
 } = require('../db');
 
 // === КОНСТАНТЫ ===
@@ -39,7 +42,6 @@ const MULTIPLIER_WEIGHTS = [
   { multiplier: 'x5', weight: 20 },
   { multiplier: 'GAME', weight: 4 },
 ];
-
 const CELL_MULTIPLIER_WEIGHTS = {
   small: [
     { multiplier: 'x2', weight: 55 },
@@ -90,7 +92,7 @@ class DoubleGame {
     return DoubleGame.instance;
   }
 
-  // Совместимость со старыми обработчиками (double.js), которые читают globalRound
+  // Совместимость со старыми обработчиками, которые читают globalRound
   get globalRound() { return this.round; }
   // Раунды создаёт только таймер/initGame; вызовы из обработчиков игнорируем
   startGlobalRound() { return; }
@@ -141,10 +143,7 @@ class DoubleGame {
       this.state = saved.state;
       this.gameChoices = saved.gameChoices || {};
       this.globalChoices = saved.globalChoices || {};
-      // Флаги планирования сбрасываем: всё, что уже пора отправить, будет поставлено
-      // в очередь заново, а дубли отсечёт дедупликация по ключам в БД (на каждый чат).
       this._notifScheduled = { gameNotify: false, gameChoice: false, fiveSec: false };
-
       if (Date.now() >= this.round.endTime) {
         console.log('[DoubleGame] Раунд истёк при восстановлении → завершение.');
         this.state = ROUND_STATE.RESOLVING;
@@ -154,7 +153,6 @@ class DoubleGame {
     } else {
       this._createNewRound(bot);
     }
-
     this._tickTimer = setInterval(() => this._tick(bot), TICK_INTERVAL_MS);
     console.log('[DoubleGame] Таймер запущен.');
   }
@@ -183,7 +181,6 @@ class DoubleGame {
 
     try { createDoubleRound(hash, Date.now()); } catch (e) { console.error('[DoubleGame] createDoubleRound:', e.message); }
     this._persist();
-
     console.log(`[DoubleGame] Новый раунд: ${multiplier}, hash=${hash}`);
     this._sendLogMessage(bot, `🎲 Новый глобальный раунд:\n▪️ Множитель: ${multiplier}\n▪️ Хеш: ${hash}\n▪️ Соль: ${salt}`);
   }
@@ -192,19 +189,15 @@ class DoubleGame {
   _tick(bot) {
     try {
       if (!this.round || this.state === ROUND_STATE.RESOLVING) return;
-
       const remaining = this.round.endTime - Date.now();
       const isGame = this.round.result === 'GAME';
 
-      // Время вышло → завершение (один раз: мьютекс + состояние RESOLVING)
       if (remaining <= 0) {
         this.state = ROUND_STATE.RESOLVING;
         this._persist();
         this._resolveRound(bot);
         return;
       }
-
-      // Переходы состояний
       if (this.state === ROUND_STATE.ACCEPTING) {
         const blockTime = isGame ? BLOCK_GAME_MS : BLOCK_ORDINARY_MS;
         if (remaining <= blockTime) { this.state = ROUND_STATE.BLOCKED; this._persist(); }
@@ -215,8 +208,6 @@ class DoubleGame {
       if (this.state === ROUND_STATE.GAME_CHOICE && remaining <= GAME_DEACTIVATE_AT_MS && this.round.gameButtonActive) {
         this.round.gameButtonActive = false; this._persist();
       }
-
-      // Планирование уведомлений (идемпотентно, порядок гарантирует очередь)
       this._scheduleNotifications(bot, isGame);
     } catch (e) {
       console.error('[DoubleGame] tick error:', e.message);
@@ -247,7 +238,7 @@ class DoubleGame {
     return [...new Set(bets.map((b) => String(b.chat_id)))];
   }
 
-  // Рассылка по чатам: ключ дедупликации ставится ТОЛЬКО после успешной отправки
+  // Ключ дедупликации ставится ТОЛЬКО после успешной отправки
   async _sendToChats(bot, chats, makeKey, sendFn) {
     await Promise.allSettled(chats.map(async (chatId) => {
       const key = makeKey(chatId);
@@ -263,7 +254,6 @@ class DoubleGame {
 
   _enqueueFiveSec(bot) {
     const hash = this.round.hash;
-    console.log(`[DoubleGame] Планирую предупреждение о 5 сек: ${hash}`);
     this._enqueue(async () => {
       const chats = this._chatsWithBets();
       await this._sendToChats(bot, chats,
@@ -275,7 +265,6 @@ class DoubleGame {
 
   _enqueueGameNotify(bot) {
     const hash = this.round.hash;
-    console.log(`[DoubleGame] Планирую GAME-уведомление: ${hash}`);
     this._enqueue(async () => {
       const chats = this._chatsWithBets();
       await this._sendToChats(bot, chats,
@@ -290,7 +279,6 @@ class DoubleGame {
 
   _enqueueGameChoice(bot) {
     const hash = this.round.hash;
-    console.log(`[DoubleGame] Планирую кнопки выбора GAME: ${hash}`);
     this._enqueue(async () => {
       const bets = getDoubleBetsByRound(hash);
       const chats = [...new Set(bets.map((b) => String(b.chat_id)))];
@@ -342,7 +330,6 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
     try {
       if (!this.round) return { success: false, message: '❕ Раунд еще не начался.' };
       if (this.state !== ROUND_STATE.ACCEPTING) return { success: false, message: '⏳ Ставки больше не принимаются. Формируются итоги игры.' };
-
       const remaining = this.round.endTime - Date.now();
       const blockTime = this.round.result === 'GAME' ? BLOCK_GAME_MS : BLOCK_ORDINARY_MS;
       if (remaining <= blockTime) return { success: false, message: '⏳ Ставки больше не принимаются. Формируются итоги игры.' };
@@ -352,13 +339,11 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
         if (this.activeGameBets[userId]) return { success: false, message: '❌ У вас уже есть активная ставка GAME.' };
         this.activeGameBets[userId] = true;
       }
-
       const user = getUserById(userId);
       if (!user || user.balance < amount) {
         if (multiplier === 'GAME') delete this.activeGameBets[userId];
         return { success: false, message: '❌ Недостаточно средств для ставки.' };
       }
-
       try {
         updateUserBalance(userId, -amount);
         logDoubleBet({ ts: Date.now(), roundId: this.round.hash, userId, username, chatId, chatTitle, multiplier, amount, status: 'accepted', isWin: null, winAmount: null });
@@ -368,7 +353,8 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
         if (multiplier === 'GAME') delete this.activeGameBets[userId];
         return { success: false, message: 'Произошла ошибка при обработке ставки.' };
       }
-
+      // Максимальная ставка — по каждой одиночной ставке
+      try { updateMaxBetIfGreater(userId, amount); } catch (e) {}
       if (multiplier === 'GAME') delete this.activeGameBets[userId];
       return { success: true };
     } catch (error) {
@@ -405,7 +391,7 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
     this._resolving = true;
     const roundHash = this.round?.hash || 'unknown';
     try {
-      // 1. Дожидаемся доотправки уведомлений (GAME-фото, кнопки) — итоги придут строго после них
+      // 1. Дожидаемся доотправки уведомлений — итоги придут строго после них
       await this._queue;
       if (!this.round) return;
 
@@ -420,7 +406,7 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
       try { finishDoubleRoundLog(hash, { endTs: Date.now(), resultMultiplier: result, salt, status: 'finished' }); }
       catch (e) { console.error('[DoubleGame] finishRound:', e.message); }
 
-      // 4. Расчёты и выплаты (синхронно по БД), сбор сообщений
+      // 4. Расчёты и выплаты по чатам (сообщения), строки ставок помечаются исходом
       const allBets = getDoubleBetsByRound(hash);
       const activeChats = [...new Set(allBets.map((b) => String(b.chat_id)))];
       const deliveries = [];
@@ -432,7 +418,10 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
         this._persist(); // чат помечен обработанным ДО отправки: повторных выплат не будет
       }
 
-      // 5. Отправка итогов через очередь, дедупликация по каждому чату
+      // 5. Глобальная статистика: ОДИН раз на игрока за раунд, по всем чатам сразу
+      this._applyRoundStatistics(allBets, hash);
+
+      // 6. Отправка итогов через очередь, дедупликация по каждому чату
       await this._enqueue(async () => {
         await Promise.allSettled(deliveries.map(async (d) => {
           const key = `results_${hash}_${d.chatId}`;
@@ -450,7 +439,8 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
         }));
       });
 
-      // 6. Все чаты дождались итогов → новый раунд
+      // 7. Страховка и новый раунд
+      try { const n = markRoundBetsFailed(hash); if (n > 0) console.log(`[DoubleGame] markFailed: ${n}`); } catch (e) {}
       this.round = null;
       this._createNewRound(bot);
     } catch (error) {
@@ -463,7 +453,7 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
     }
   };
 
-  // Расчёт одного чата: выплаты в БД + готовое сообщение. Синхронно.
+  // Расчёт ОДНОГО чата: выплаты в БД + готовое сообщение. Исходы пишутся в строки ставок (и в память).
   _buildChatResult(chatId, allBets, result, finalMultipliers, hash, salt) {
     const chatBets = allBets.filter((b) => b.chat_id === chatId);
     if (!chatBets.length) return null;
@@ -476,17 +466,13 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
       }
       if (!grouped[bet.user_id].bets[bet.multiplier]) grouped[bet.user_id].bets[bet.multiplier] = { amount: 0, details: [] };
       grouped[bet.user_id].bets[bet.multiplier].amount += bet.amount;
-      grouped[bet.user_id].bets[bet.multiplier].details.push({ id: bet.id, amount: bet.amount });
+      grouped[bet.user_id].bets[bet.multiplier].details.push(bet); // ссылки на строки allBets
     }
 
     let msg = `<b>Итоговые результаты:</b>\n\n`;
-
     for (const [userId, userData] of Object.entries(grouped)) {
-      let totalWinnings = 0, totalLosses = 0, wins = 0, losses = 0;
-
       for (const [multiplier, group] of Object.entries(userData.bets)) {
         let isWin = false, winAmount = 0, selectedMult = null;
-
         if (result === 'GAME') {
           if (multiplier === 'GAME') {
             let choice = this.gameChoices[`${chatId}_${userId}`] || this.globalChoices[`global_choice_${userId}`];
@@ -502,11 +488,13 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
           if (isWin) winAmount = group.amount * parseInt(result.replace('x', ''), 10);
         }
 
+        // Исход по каждой одиночной ставке (строки) + в память для глобального прохода
         for (const d of group.details) {
           const detailWin = isWin ? Math.floor(winAmount * (d.amount / group.amount)) : 0;
+          d.is_win = isWin ? 1 : 0;
+          d.win_amount = detailWin;
           try { updateDoubleBetOutcome(d.id, isWin, detailWin); } catch (e) {}
         }
-        try { saveBetDetails(userId, [{ roundHash: hash, multiplier, amount: group.amount, isWin: isWin ? 1 : 0, winAmount }]); } catch (e) {}
 
         const userLink = createUserLink(userId, userData.username);
         if (isWin && winAmount > 0) {
@@ -515,11 +503,6 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
           } else {
             msg += `✅ ${userLink} ставка ${group.amount.toLocaleString('ru-RU')} PF на ${multiplier} → приз ${winAmount.toLocaleString('ru-RU')} PF\n`;
           }
-          totalWinnings += winAmount; wins++;
-                 // Счётчик выигранных GAME
-            if (multiplier === 'GAME') {
-              try { incrementGameWins(userId); } catch (e) {}
-            }
           for (const d of group.details) {
             if (d.amount >= 100000 && Math.random() < 0.25) {
               const candy = Math.floor(Math.random() * 6) + 1;
@@ -529,18 +512,8 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
           try { updateUserBalance(userId, winAmount); } catch (e) { console.error(`[DoubleGame] Выплата ${userId}:`, e.message); }
         } else {
           msg += `❌ ${userLink} ставка ${group.amount.toLocaleString('ru-RU')} PF на ${multiplier} проиграла\n`;
-          totalLosses += group.amount; losses++;
         }
       }
-
-      try {
-        updateRoundStatistics(userId, {
-          totalRounds: 1, roundWins: wins, roundLosses: losses,
-          doubleTotalBets: Object.keys(userData.bets).length,
-          doubleWins: wins, doubleLosses: losses,
-          doubleTotalWinnings: totalWinnings, doubleTotalLosses: totalLosses,
-        });
-      } catch (e) {}
     }
 
     if (result === 'GAME') msg += `\n<b>☑️ Результаты GAME:</b> L:${finalMultipliers.left} R:${finalMultipliers.right}\n`;
@@ -549,8 +522,63 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
     const img = result === 'GAME'
       ? imgPath(`${finalMultipliers.left.replace('x', '')}l_${finalMultipliers.right.replace('x', '')}p.png`)
       : imgPath(`${result}.jpg`);
-
     return { chatId, text: msg.trim(), img };
+  }
+
+  // Глобальная статистика раунда: игрок = 1 участие, независимо от числа чатов.
+  // Группы (игрок+множитель) объединяют ставки из всех чатов: x2 в чате A и x2 в чате B = одна группа.
+  _applyRoundStatistics(allBets, hash) {
+    const perUser = {};
+    for (const b of allBets) {
+      if (b.status !== 'accepted') continue;
+      if (!perUser[b.user_id]) perUser[b.user_id] = { groups: {}, rows: [], won: false };
+      const u = perUser[b.user_id];
+      u.rows.push(b);
+      if (!u.groups[b.multiplier]) u.groups[b.multiplier] = { amount: 0, win: 0, isWin: false };
+      const g = u.groups[b.multiplier];
+      g.amount += b.amount;
+      if (b.is_win === 1) { g.isWin = true; g.win += (b.win_amount || 0); u.won = true; }
+    }
+
+    for (const [userId, u] of Object.entries(perUser)) {
+      const mults = Object.keys(u.groups);
+      let totalWinnings = 0, totalLosses = 0, wins = 0, losses = 0;
+
+      for (const m of mults) {
+        const g = u.groups[m];
+        if (g.isWin) { wins++; totalWinnings += g.win; } else { losses++; totalLosses += g.amount; }
+        // Любимый множитель: 1 отметка на (раунд + множитель), не на каждую ставку/чат
+        try { incrementMultiplierCount(userId, m); } catch (e) {}
+        // bet_history: 1 строка на (раунд + множитель) с суммами по всем чатам
+        try { saveBetDetails(userId, [{ roundHash: hash, multiplier: m, amount: g.amount, isWin: g.isWin ? 1 : 0, winAmount: g.win }]); } catch (e) {}
+      }
+
+      // Макс. выигрыш — по одиночной ставке (строке)
+      for (const b of u.rows) {
+        if (b.is_win === 1 && (b.win_amount || 0) > 0) {
+          try { updateMaxWinIfGreater(userId, b.win_amount); } catch (e) {}
+        }
+      }
+
+      // Выигранный GAME — один раз за раунд
+      if (u.groups['GAME'] && u.groups['GAME'].isWin) {
+        try { incrementGameWins(userId); } catch (e) {}
+      }
+
+      // Серия: ровно один множитель во ВСЕХ чатах раунда + победа → +1, иначе обрыв
+      const wonSingle = mults.length === 1 && u.won;
+      try { updateWinStreak(userId, wonSingle); } catch (e) {}
+
+      // Раунд-статистика — один раз на игрока за раунд
+      try {
+        updateRoundStatistics(userId, {
+          totalRounds: 1, roundWins: u.won ? 1 : 0, roundLosses: u.won ? 0 : 1,
+          doubleTotalBets: mults.length,
+          doubleWins: wins, doubleLosses: losses,
+          doubleTotalWinnings: totalWinnings, doubleTotalLosses: totalLosses,
+        });
+      } catch (e) {}
+    }
   }
 
   // === СОСТОЯНИЕ ===
