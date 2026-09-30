@@ -837,25 +837,93 @@ async function checkUserStatus(ctx) {
   return true; // Пользователь не забанен и не замучен
 }
 
-// Команда /start с передачей экземпляра бота
+// Команда /start с передачей экземпляра бота// Команда /start с передачей экземпляра бота
 bot.start(async (ctx) => {
+  // Получаем параметр из deep link (то, что после ?start=)
+  const startPayload = ctx.startPayload;
+
   if (ctx.chat.type === 'private') {
-      // Личный чат - стандартная регистрация
-      await registerHandler(ctx, bot);
-  } else {
-      // Публичный чат - просим перейти в ЛС
-      const botUsername = process.env.BOT_USERNAME || 'F_roobot';
-      const startButton = Markup.inlineKeyboard([
-          Markup.button.url('📝 Начать регистрацию', `https://t.me/${botUsername}?start=start`)
-      ]);
+    // Личный чат
+    
+    // 1. Проверяем, является ли ссылка промо-ссылкой
+    if (startPayload && startPayload.startsWith('promo_')) {
+      const rawName = startPayload.substring(6);
+      const { getPromoNameByAlias } = require('./db');
       
-      const userLink = createUserLink(ctx.from.id, ctx.from.username || ctx.from.first_name);
-      return ctx.replyWithHTML(
-          `${userLink}, для регистрации и использования функционала бота перейдите в личные сообщения.`,
-          startButton
-      );
+      // Сначала пробуем найти по алиасу (транслит), потом по прямому имени
+      const promoName = getPromoNameByAlias(rawName) || rawName;
+      
+      if (promoName) {
+        // Проверяем, зарегистрирован ли пользователь
+        const userId = ctx.from.id.toString();
+        const user = await getUserById(userId);
+
+        if (user) {
+          // --- ПОЛЬЗОВАТЕЛЬ ЗАРЕГИСТРИРОВАН ---
+          // Активируем промокод сразу
+          
+          // Имитируем контекст для usePromoHandler, так как он парсит ctx.message.text
+          const fakeCtx = {
+            ...ctx,
+            message: {
+              text: `промо ${promoName}`,
+              from: ctx.from,
+              chat: ctx.chat,
+              date: Date.now() / 1000,
+              message_id: ctx.message?.message_id || 0
+            },
+            updateType: 'message',
+            reply: ctx.reply.bind(ctx),
+            replyWithHTML: ctx.replyWithHTML.bind(ctx),
+            replyWithPhoto: ctx.replyWithPhoto.bind(ctx),
+            answerCbQuery: ctx.answerCbQuery ? ctx.answerCbQuery.bind(ctx) : undefined,
+            from: ctx.from,
+            chat: ctx.chat,
+            telegram: ctx.telegram
+          };
+
+          try {
+            console.log(`[PROMO LINK] Авто-активация промокода "${promoName}" для пользователя ${userId}`);
+            await usePromoHandler(fakeCtx); 
+            return; // Промо активирован, выходим
+          } catch (error) {
+            console.error('[PROMO LINK] Ошибка при авто-активации:', error);
+            // Если ошибка, падаем в стандартную логику ниже
+          }
+        } else {
+          // --- ПОЛЬЗОВАТЕЛЬ НЕ ЗАРЕГИСТРИРОВАН ---
+          console.log(`[PROMO LINK] Незарегистрированный пользователь ${userId} перешел по промо-ссылке "${promoName}". Запуск стандартной регистрации.`);
+          await registerHandler(ctx, bot);
+          return;
+        }
+      }
+    } // <--- ЭТА СКОБКА БЫЛА ПРОПУЩЕНА В ТВОЕМ ФРАГМЕНТЕ
+
+    // 2. Стандартная логика для обычных ссылок или если промо не сработало/не найдено
+    // Сюда попадаем, если нет payload, или если промо не найдено, или если была ошибка активации
+    await registerHandler(ctx, bot);
+
+  } else {
+    // Публичный чат - просим перейти в ЛС
+    const botUsername = process.env.BOT_USERNAME || 'F_roobot';
+    
+    let startUrl = `https://t.me/${botUsername}?start=start`;
+    if (startPayload && startPayload.startsWith('promo_')) {
+        startUrl = `https://t.me/${botUsername}?start=${startPayload}`;
+    }
+
+    const startButton = Markup.inlineKeyboard([
+      Markup.button.url('📝 Начать регистрацию', startUrl)
+    ]);
+
+    const userLink = createUserLink(ctx.from.id, ctx.from.username || ctx.from.first_name);
+    return ctx.replyWithHTML(
+      `${userLink}, для регистрации и использования функционала бота перейдите в личные сообщения.`,
+      startButton
+    );
   }
 });
+
 bot.command('help', helpHandler);
 
 // Команда для тестирования последовательного ввода

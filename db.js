@@ -1309,12 +1309,12 @@ function getAllUsers() {
 }
 
 // Функция для создания нового промокода
-function createPromo(name, activations, prizeType, prizeAmount, createdBy, minStatusId) {
+function createPromo(name, activations, prizeType, prizeAmount, createdBy, minStatusId, expiresAt = null) {
   const stmt = db.prepare(
-    'INSERT INTO promos (name, activations_left, prize_type, prize_amount, created_by, min_status_id) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO promos (name, activations_left, prize_type, prize_amount, created_by, min_status_id, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
   );
   try {
-    stmt.run(name, activations, prizeType, prizeAmount, createdBy, minStatusId);
+    stmt.run(name, activations, prizeType, prizeAmount, createdBy, minStatusId, expiresAt);
     return { success: true };
   } catch (error) {
     return { success: false, message: 'Промокод с таким названием уже существует.' };
@@ -6005,6 +6005,76 @@ function updateWinStreak(userId, wonSingle) {
   } catch (e) { console.error('[DB] updateWinStreak:', e.message); return 0; }
 }
 
+// Таблица алиасов для промо-ссылок (транслитерация кириллицы)
+db.prepare(`CREATE TABLE IF NOT EXISTS promo_link_aliases (
+  alias TEXT PRIMARY KEY,
+  promo_name TEXT NOT NULL,
+  created_at INTEGER DEFAULT (strftime('%s', 'now'))
+)`).run();
+
+// Транслитерация кириллицы в латиницу
+function transliterate(text) {
+  const map = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+  };
+  return text.toLowerCase().split('').map(char => map[char] || char).join('')
+    .replace(/[^a-z0-9_-]/g, '').toUpperCase();
+}
+
+// Генерация уникального алиаса для промокода
+function generatePromoAlias(promoName) {
+  const baseAlias = transliterate(promoName);
+  if (!baseAlias) return null; // Если после транслитерации пусто (например, только эмодзи)
+  
+  // Проверяем, занят ли базовый алиас
+  const existing = db.prepare('SELECT promo_name FROM promo_link_aliases WHERE alias = ?').get(baseAlias);
+  if (!existing) return baseAlias;
+  if (existing.promo_name === promoName) return baseAlias; // Уже наш
+  
+  // Ищем свободный с суффиксом
+  for (let i = 2; i <= 100; i++) {
+    const candidate = `${baseAlias}_${i}`;
+    const check = db.prepare('SELECT promo_name FROM promo_link_aliases WHERE alias = ?').get(candidate);
+    if (!check) return candidate;
+    if (check.promo_name === promoName) return candidate;
+  }
+  return `${baseAlias}_${Date.now()}`; // Fallback с timestamp
+}
+
+// Сохранение алиаса
+function savePromoAlias(alias, promoName) {
+  try {
+    db.prepare('INSERT OR REPLACE INTO promo_link_aliases (alias, promo_name) VALUES (?, ?)').run(alias, promoName);
+    return { success: true, alias };
+  } catch (e) {
+    console.error('[DB] savePromoAlias:', e.message);
+    return { success: false };
+  }
+}
+
+// Получение оригинального имени промокода по алиасу
+function getPromoNameByAlias(alias) {
+  try {
+    const row = db.prepare('SELECT promo_name FROM promo_link_aliases WHERE alias = ?').get(alias.toUpperCase());
+    return row?.promo_name || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Удаление алиаса при удалении промокода
+function deletePromoAlias(promoName) {
+  try {
+    db.prepare('DELETE FROM promo_link_aliases WHERE promo_name = ?').run(promoName);
+  } catch (e) {}
+}
+
+
+
 // Экспортируем функции
 module.exports = {
   getUserById,
@@ -6268,5 +6338,5 @@ module.exports = {
   incrementGameWins, resetAllDoubleStatistics,
   updateMaxBetIfGreater, updateMaxWinIfGreater, incrementMultiplierCount, getMultiplierStats, updateWinStreak,
   getActivePlayersCount,
-  
+  generatePromoAlias, savePromoAlias, getPromoNameByAlias, deletePromoAlias, transliterate,
 };

@@ -604,6 +604,7 @@ async function handleCallback(ctx) {
 async function finalizePromoCreation(ctx, session) {
   const d = session.data;
   const adminId = ctx.from.id.toString();
+  
   try {
     const existingPromo = await getPromoByName(d.name);
     if (existingPromo) {
@@ -613,34 +614,82 @@ async function finalizePromoCreation(ctx, session) {
       });
       return;
     }
+
     let activationsLeft = d.isTimeBased ? -1 : d.activations;
     let expiresAt = null;
     if (d.isTimeBased) {
       const now = Math.floor(Date.now() / 1000);
       expiresAt = now + (d.durationMinutes * 60);
     }
+
+    // Передаем expiresAt в createPromo, если функция в db.js обновлена, 
+    // иначе он сохранится как NULL (проверь db.js ниже)
     const result = await createPromo(d.name, activationsLeft, d.prize_type, d.prize_amount, adminId, d.min_status_id, expiresAt);
+
     if (!result.success) {
       promoSessions.delete(ctx.from.id.toString());
       return ctx.reply(`❌ Ошибка: ${result.message}`);
     }
+
+    // --- ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЯ ---
     let photoPath = null;
     try {
-      const templateHint = session.forceImageTemplate; // null = авто
+      const templateHint = session.forceImageTemplate;
       photoPath = await generatePromoImage(d.name, d.isTimeBased ? d.durationMinutes : d.activations, d.prize_amount, d.prize_type, templateHint, d.isTimeBased, expiresAt);
     } catch (imgErr) {
       console.error('[PROMO IMG ERROR]', imgErr);
     }
+
+    // --- ФОРМИРОВАНИЕ ССЫЛКИ ---
+    // Берем юзернейм бота из env или дефолтный
+    const botUsername = process.env.BOT_USERNAME || 'F_roobot'; 
+    // Формируем deep link: https://t.me/BOT?start=promo_NAME
+    // Важно: имя промокода не должно содержать пробелов для корректной работы ссылки, 
+    // но так как мы используем его как аргумент, лучше закодировать или убедиться, что валидно.
+    // Telegram start payload допускает A-Z, a-z, 0-9, _ и -. 
+    // Если в названии промо есть другие символы, ссылка может не сработать.
+    // Для надежности используем encodeURIComponent, хотя Telegram требует специфический формат.
+    // Лучше всего работают латиница и цифры.
+    const { generatePromoAlias, savePromoAlias } = require('../db');
+    const alias = generatePromoAlias(d.name);
+    if (alias) {
+      savePromoAlias(alias, d.name);
+    }
+    const linkPayload = alias ? `promo_${alias}` : `promo_${d.name}`;
+    const promoLink = `https://t.me/${botUsername}?start=${linkPayload}`;
+
     let limitStr = d.isTimeBased
       ? `⏳ Время: ${formatDuration(d.durationMinutes)} (до ${new Date(expiresAt * 1000).toLocaleTimeString()})`
       : `🔢 Активаций: ${formatNumber(d.activations)}`;
-    const successMsg = `✅ <b>Промокод создан!</b>\n\n🏷 Название: <code>${escapeHtml(d.name)}</code>\n${limitStr}\n🎁 Приз: ${formatNumber(d.prize_amount)} ${prizeTypeMapping[d.prize_type]}\n🔒 Статус: ${getStatusNameById(d.min_status_id)}`;
+
+    const successMsg = `✅ <b>Промокод создан!</b>\n\n` +
+      `🏷 Название: <code>${escapeHtml(d.name)}</code>\n` +
+      `${limitStr}\n` +
+      `🎁 Приз: ${formatNumber(d.prize_amount)} ${prizeTypeMapping[d.prize_type]}\n` +
+      `🔒 Статус: ${getStatusNameById(d.min_status_id)}\n\n` +
+      `🔗 <b>Ссылка для активации:</b>\n${promoLink}`;
+
+    // Клавиатура с кнопкой "Поделиться" или просто ссылкой
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.url('🚀 Активировать промокод', promoLink)],
+      [Markup.button.callback(' Создать ещё', 'promo_create_another')] // Если есть такой обработчик, или убери строку
+    ]);
+
     if (photoPath) {
-      await ctx.replyWithPhoto({ source: photoPath }, { caption: successMsg, parse_mode: 'HTML' });
+      await ctx.replyWithPhoto({ source: photoPath }, { 
+        caption: successMsg, 
+        parse_mode: 'HTML',
+        reply_markup: keyboard.reply_markup 
+      });
     } else {
-      await ctx.reply(successMsg, { parse_mode: 'HTML' });
+      await ctx.reply(successMsg, { 
+        parse_mode: 'HTML',
+        reply_markup: keyboard.reply_markup 
+      });
     }
+
     promoSessions.delete(ctx.from.id.toString());
+
   } catch (error) {
     console.error('[PROMO FINALIZE ERROR]', error);
     await ctx.reply('❌ Ошибка при сохранении.');
