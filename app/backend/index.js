@@ -32,16 +32,11 @@ try {
   process.exit(1);
 }
 
-// Путь к собранному React приложению
-const frontendBuildPath = path.join(__dirname, '../frontend/react/dist'); 
+// === ПРАВИЛЬНЫЙ ПУТЬ К ФРОНТЕНДУ ===
+const frontendBuildPath = path.join(__dirname, '../frontend/react/dist');
 
-// Для совместимости: если папки dist нет, проверяем старую папку out
-const frontendOutPath = fs.existsSync(frontendBuildPath) 
-    ? frontendBuildPath 
-    : path.join(__dirname, '../frontend/out');
-
-if (!fs.existsSync(frontendOutPath)) {
-  console.warn(`[BACKEND] ⚠️ Папка фронтенда не найдена: ${frontendOutPath}`);
+if (!fs.existsSync(frontendBuildPath)) {
+  console.warn(`[BACKEND] ⚠️ Папка фронтенда не найдена: ${frontendBuildPath}`);
   console.warn(`[BACKEND] Выполните: cd app/frontend/react && npm run build`);
 }
 
@@ -53,8 +48,6 @@ app.use(cors());
 app.use(express.json());
 
 // === 4. API маршруты ===
-
-// Получить данные пользователя по Telegram ID
 app.get('/api/user/:id', (req, res) => {
   const userId = req.params.id.toString();
   try {
@@ -70,12 +63,10 @@ app.get('/api/user/:id', (req, res) => {
   }
 });
 
-// Здоровье сервера
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Счётчик онлайна (демо-формула)
 app.get('/api/online', (req, res) => {
   const hour = new Date().getHours();
   const base = 40 + Math.round(60 * Math.pow(Math.sin(((hour - 6) / 24) * Math.PI * 2), 2));
@@ -83,7 +74,6 @@ app.get('/api/online', (req, res) => {
   res.json({ online: base + jitter });
 });
 
-// === Мониторинг туннеля ===
 let lastRequestTime = Date.now();
 app.use((req, res, next) => {
   lastRequestTime = Date.now();
@@ -95,7 +85,7 @@ app.get('/api/tunnel-status', (req, res) => {
   const diffSeconds = Math.floor((now - lastRequestTime) / 1000);
   let status = '🟢 ONLINE';
   if (diffSeconds > 60) status = '🟡 IDLE (Нет запросов > 1 мин)';
-  if (diffSeconds > 180) status = '🔴 OFFLINE (Нет запросов > 3 мин)';
+  if (diffSeconds > 180) status = ' OFFLINE (Нет запросов > 3 мин)';
   res.json({
     status: status,
     lastActivitySecondsAgo: diffSeconds,
@@ -103,15 +93,12 @@ app.get('/api/tunnel-status', (req, res) => {
   });
 });
 
-// Белый список админов из .env
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
 
-// Проверка админа (ВРЕМЕННО ДОСТУПНО ВСЕМ)
 app.get('/api/admin/check/:userId', (req, res) => {
   res.json({ isAdmin: true });
 });
 
-// Количество билетов
 app.get('/api/fortune/tickets/:userId', (req, res) => {
   try {
     const user = getUserById(req.params.userId.toString());
@@ -122,7 +109,6 @@ app.get('/api/fortune/tickets/:userId', (req, res) => {
   }
 });
 
-// Вращение колеса фортуны
 const PRIZES = [
   { title: '1 000 000 PF', weight: 50, type: 'pf', amount: 1000000 },
   { title: '50 ⭐️ звёзд', weight: 20, type: 'stars', amount: 5000 },
@@ -160,10 +146,8 @@ app.post('/api/fortune/spin', (req, res) => {
   }
 });
 
-// === Админские логи ===
 const LOGS_PAGE_SIZE = 42;
 
-// Разбор query-параметров логов: страница, поиск и момент времени (targetTs)
 function parseLogsQuery(req) {
   const rawTs = parseInt(req.query.targetTs, 10);
   return {
@@ -173,12 +157,10 @@ function parseLogsQuery(req) {
   };
 }
 
-// Ограничиваем offset допустимыми пределами
 function clampOffset(offset, total, limit) {
   return Math.max(0, Math.min(offset, Math.max(0, total - limit)));
 }
 
-// --- РЕЖИМ «ОБЩЕЕ»: finance_log ---
 function getFinancePage({ targetTs = null, types = null, searchIds = null, limit = 50, offset = 0 }) {
   const where = [];
   const params = [];
@@ -205,7 +187,6 @@ function getFinancePage({ targetTs = null, types = null, searchIds = null, limit
   return { rows, total, offset: off };
 }
 
-// --- РЕЖИМ «ДАБЛ → РАУНДЫ» ---
 function getRoundsPage({ targetTs = null, hash = null, limit = 50, offset = 0 }) {
   const where = [];
   const params = [];
@@ -225,7 +206,6 @@ function getRoundsPage({ targetTs = null, hash = null, limit = 50, offset = 0 })
   return { rows, total, offset: off };
 }
 
-// --- РЕЖИМ «ДАБЛ → СТАВКИ» ---
 function getBetsPage({ targetTs = null, searchIds = null, hash = null, limit = 50, offset = 0 }) {
   let searchSql = '';
   const searchParams = [];
@@ -317,7 +297,6 @@ app.get('/api/admin/logs/double', (req, res) => {
   }
 });
 
-// Детали конкретного раунда
 app.get('/api/admin/logs/double/round/:roundId', (req, res) => {
   try {
     const details = getDoubleRoundDetails(req.params.roundId);
@@ -329,7 +308,6 @@ app.get('/api/admin/logs/double/round/:roundId', (req, res) => {
   }
 });
 
-// Эндпоинт для визуализации физики
 app.get('/api/physics/users', (req, res) => {
   try {
     const stmt = db.prepare(`SELECT id, numeric_id, username, balance FROM users ORDER BY balance DESC LIMIT 2000`);
@@ -342,8 +320,8 @@ app.get('/api/physics/users', (req, res) => {
 });
 
 // === 5. Статика и роутинг фронтенда ===
-if (fs.existsSync(frontendOutPath)) {
-  app.use(express.static(frontendOutPath, {
+if (fs.existsSync(frontendBuildPath)) {
+  app.use(express.static(frontendBuildPath, {
     setHeaders: (res, filePath) => {
       if (filePath.endsWith('.js')) {
         res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
@@ -352,49 +330,26 @@ if (fs.existsSync(frontendOutPath)) {
     }
   }));
   
-  // SPA-роутинг: любой GET, который не /api, возвращает index.html
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api')) {
       return res.status(404).json({ error: 'API route not found' });
     }
-    res.sendFile(path.join(frontendOutPath, 'index.html'));
+    res.sendFile(path.join(frontendBuildPath, 'index.html'));
   });
 } else {
   app.get('/', (req, res) => {
-    res.send(`<h1>Mini App Backend</h1><p>Фронтенд не найден в ${frontendOutPath}. Запустите npm run build в папке react.</p>`);
+    res.send(`<h1>Mini App Backend</h1><p>Фронтенд не найден в ${frontendBuildPath}. Запустите npm run build в папке react.</p>`);
   });
 }
 
-// === 6. Запуск сервера с обработкой занятости порта ===
+// === 6. Запуск сервера ===
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[BACKEND] Сервер запущен на порту ${PORT}`);
 });
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`[BACKEND] Порт ${PORT} занят! Попытка убить процесс...`);
-    const { exec } = require('child_process');
-    
-    if (process.platform === 'win32') {
-      // Команда для Windows для убийства процесса на порту
-      exec(`for /f "tokens=5" %a in ('netstat -aon ^| find ":${PORT}" ^| find "LISTENING"') do taskkill /F /PID %a`,
-        (error, stdout) => {
-          if (!error && stdout.trim()) {
-            console.log('[BACKEND] Процесс убит. Перезапуск сервера через 2 секунды...');
-            setTimeout(() => {
-              app.listen(PORT, '0.0.0.0', () => {
-                console.log(`[BACKEND] Сервер перезапущен на порту ${PORT}`);
-              });
-            }, 2000);
-          } else {
-            console.error(`[BACKEND] Не удалось освободить порт. Закройте вручную процесс на порту ${PORT}.`);
-          }
-        }
-      );
-    } else {
-      // Команда для Linux
-      console.error(`[BACKEND] На Linux освободите порт вручную: fuser -k ${PORT}/tcp`);
-    }
+    console.error(`[BACKEND] Порт ${PORT} занят!`);
   } else {
     console.error('[BACKEND] Критическая ошибка сервера:', err);
   }
@@ -403,11 +358,8 @@ server.on('error', (err) => {
 server.keepAliveTimeout = 60000;
 server.headersTimeout = 65000;
 
-// Keep-Alive пинг самого себя каждые 15 секунд
 setInterval(() => {
   http.get(`http://127.0.0.1:${PORT}/api/health`, (res) => {
     res.on('data', () => {});
-  }).on('error', (err) => {
-    // Тихо игнорируем ошибки пинга при перезапуске
-  });
+  }).on('error', () => {});
 }, 15000);
