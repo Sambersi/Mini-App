@@ -71,7 +71,7 @@ const { helpHandler, handleHelpNavigation } = require('./handlers/help');
 const { registerCardHandler, handleRegisterCardAction, handleCardInfoButton, handleShowUpgradeGrid, handleUpgradeCardLevel, cardInfoHandler, handleManageCardButton, performLevelUpgrade } = require('./handlers/cardInfo');
 const { changeNicknameHandler } = require('./handlers/changeNickname');
 const { forbesHandler } = require('./handlers/top'); // Обработчик "форбс"
-const { referralLinkHandler, topReferralsHandler, referralsListHandler, handleMyReferrals, handleRefInfo, changeReferralBonus, setReferralBonusForAllUsers, handleBackToRefMenu, topSeasonalReferralsHandler, handleContestInfo } = require('./handlers/referralSystem'); // Реферальная ссылка
+const { referralLinkHandler, topReferralsHandler, referralsListHandler, handleMyReferrals, handleRefInfo, changeReferralBonus, setReferralBonusForAllUsers, handleBackToRefMenu, topSeasonalReferralsHandler, handleContestInfo, handleWithdrawReferrerBank } = require('./handlers/referralSystem'); // Реферальная ссылка
 const { showAdminPanel, handleListAdmins, handleAdminCommands, handleClosePanel, isTechAdmin } = require('./admin/adminPanel');
 const { 
   startPromoCreationSession, 
@@ -837,7 +837,7 @@ async function checkUserStatus(ctx) {
   return true; // Пользователь не забанен и не замучен
 }
 
-// Команда /start с передачей экземпляра бота// Команда /start с передачей экземпляра бота
+// Команда /start с передачей экземпляра бота
 bot.start(async (ctx) => {
   // Получаем параметр из deep link (то, что после ?start=)
   const startPayload = ctx.startPayload;
@@ -851,14 +851,20 @@ bot.start(async (ctx) => {
       const { getPromoNameByAlias } = require('./db');
       
       // Сначала пробуем найти по алиасу (транслит), потом по прямому имени
-      const promoName = getPromoNameByAlias(rawName) || rawName;
+      let promoName = null;
+      try {
+        promoName = await getPromoNameByAlias(rawName) || rawName;
+      } catch (e) {
+        console.error('[PROMO LINK] Ошибка поиска промокода по алиасу:', e);
+        promoName = rawName;
+      }
       
       if (promoName) {
         // Проверяем, зарегистрирован ли пользователь
         const userId = ctx.from.id.toString();
         const user = await getUserById(userId);
 
-        if (user) {
+        if (user && user.is_registered) {
           // --- ПОЛЬЗОВАТЕЛЬ ЗАРЕГИСТРИРОВАН ---
           // Активируем промокод сразу
           
@@ -893,11 +899,15 @@ bot.start(async (ctx) => {
         } else {
           // --- ПОЛЬЗОВАТЕЛЬ НЕ ЗАРЕГИСТРИРОВАН ---
           console.log(`[PROMO LINK] Незарегистрированный пользователь ${userId} перешел по промо-ссылке "${promoName}". Запуск стандартной регистрации.`);
+          // Передаём промо-код как реферальный аргумент для registerHandler если нужно,
+          // либо просто запускаем регистрацию. В текущей архитектуре registerHandler
+          // сам парсит аргументы из ctx.message.text, но для deep link текст может быть "/start promo_xxx"
+          // Убедимся, что registerHandler корректно обработает это или сохраним промо в сессию.
           await registerHandler(ctx, bot);
           return;
         }
       }
-    } // <--- ЭТА СКОБКА БЫЛА ПРОПУЩЕНА В ТВОЕМ ФРАГМЕНТЕ
+    }
 
     // 2. Стандартная логика для обычных ссылок или если промо не сработало/не найдено
     // Сюда попадаем, если нет payload, или если промо не найдено, или если была ошибка активации
@@ -2661,15 +2671,17 @@ bot.use(async (ctx, next) => {
 // Обработчик текстовых сообщений
 bot.on('text', async (ctx) => {
   try {
-      const userId = ctx.from.id.toString();      
-      const chatId = ctx.chat?.id;
-      const chatType = ctx.chat?.type;
-      const currentTime = Date.now();
-      const text = ctx.message.text.trim();
-      const { logMessage } = require('./db');
-      logMessage(userId, chatType, chatId, ctx.chat?.title || null, text, text.startsWith('/'));
-      const lowerText = text.toLowerCase();
-    // ✅ ЛОГИРОВАНИЕ СООБЩЕНИЙ (вставить сюда)
+    const userId = ctx.from.id.toString();
+    const chatId = ctx.chat?.id;
+    const chatType = ctx.chat?.type;
+    const currentTime = Date.now();
+    const text = ctx.message.text.trim();
+    const { logMessage } = require('./db');
+    logMessage(userId, chatType, chatId, ctx.chat?.title || null, text, text.startsWith('/'));
+
+    const lowerText = text.toLowerCase();
+
+    // ЛОГИРОВАНИЕ СООБЩЕНИЙ
     if (ctx.message && ctx.message.text) {
       await logFinance({
         type: 'message',
@@ -2687,160 +2699,172 @@ bot.on('text', async (ctx) => {
         success: 1,
       });
     }
-      // ПРОВЕРКА: Если пользователь в процессе создания промокода
-      const { handlePromoCreationMessage } = require('./handlers/promoHandler');
-      const handledByPromoFlow = await handlePromoCreationMessage(ctx);
-      if (handledByPromoFlow) {
-        return; // Прерываем дальнейшую обработку, сообщение ушло в сессию
+
+    // ПРОВЕРКА: Если пользователь в процессе создания промокода
+    const { handlePromoCreationMessage } = require('./handlers/promoHandler');
+    const handledByPromoFlow = await handlePromoCreationMessage(ctx);
+    if (handledByPromoFlow) {
+      return;
+    }
+
+    // Проверяем, является ли текущий чат игровым чатом "Угадай число"
+    const isGuessNumberChat = chatId === GUESS_NUMBER_CHAT_ID;
+    if (isGuessNumberChat) {
+      if (
+        !/^\d+$/.test(lowerText) &&
+        !lowerText.startsWith('начать_игру') &&
+        lowerText !== 'завершить_игру'
+      ) {
+        console.log(`[ИГРА] Игнорируется сообщение в игровом чате: ${text}`);
+        return;
       }
+    }
 
-      // Проверяем, является ли текущий чат игровым чатом "Угадай число"
-      const isGuessNumberChat = chatId === GUESS_NUMBER_CHAT_ID;
+    // Проверяем общий cooldown (0.5 секунды)
+    const globalCooldownDuration = 500;
+    if (cooldowns.global[userId] && currentTime - cooldowns.global[userId] < globalCooldownDuration) {
+      return;
+    }
+    cooldowns.global[userId] = currentTime;
 
-      // Если это игровой чат, игнорируем все команды, кроме игры "Угадай число"
-      if (isGuessNumberChat) {
-          // Разрешаем только числовые сообщения и команды управления игрой
-          if (
-              !/^\d+$/.test(lowerText) && // Числа (для угадывания)
-              !lowerText.startsWith('начать_игру') && // Команда запуска игры
-              lowerText !== 'завершить_игру' // Команда завершения игры
-          ) {
-              console.log(`[ИГРА] Игнорируется сообщение в игровом чате: ${text}`);
-              return; // Игнорируем сообщение
-          }
+    // Проверяем специфические cooldown'ы
+    let specificCooldownDuration = 0;
+    if (/^(2|3|5|х2|х3|х5)$/i.test(lowerText)) {
+      specificCooldownDuration = 3000;
+      const lastTime = cooldowns.specific.multiplier[userId];
+      if (lastTime && currentTime - lastTime < specificCooldownDuration) {
+        return;
       }
-
-      // Продолжаем стандартную обработку для других чатов
-      // Проверяем общий cooldown (0.5 секунды)
-      const globalCooldownDuration = 500; // 0.5 секунды
-      if (cooldowns.global[userId] && currentTime - cooldowns.global[userId] < globalCooldownDuration) {
-          return; // Просто игнорируем сообщение без ответа
+      cooldowns.specific.multiplier[userId] = currentTime;
+    } else if (/^игра|game/i.test(lowerText)) {
+      specificCooldownDuration = 3000;
+      const lastTime = cooldowns.specific.game[userId];
+      if (lastTime && currentTime - lastTime < specificCooldownDuration) {
+        return;
       }
-
-      // Обновляем время последнего сообщения
-      cooldowns.global[userId] = currentTime;
-
-      // Проверяем специфические cooldown'ы
-      let specificCooldownDuration = 0;
-
-      if (/^(2|3|5|х2|х3|х5)$/i.test(lowerText)) {
-          specificCooldownDuration = 3000; // 3 секунды для множителей
-          const lastTime = cooldowns.specific.multiplier[userId];
-          if (lastTime && currentTime - lastTime < specificCooldownDuration) {
-              return; // Игнорируем повторные запросы
-          }
-          cooldowns.specific.multiplier[userId] = currentTime;
-      } else if (/^игра|game/i.test(lowerText)) {
-          specificCooldownDuration = 3000; // 3 секунды для игры
-          const lastTime = cooldowns.specific.game[userId];
-          if (lastTime && currentTime - lastTime < specificCooldownDuration) {
-              return; // Игнорируем повторные запросы
-          }
-          cooldowns.specific.game[userId] = currentTime;
-      } else if (/^банк$/i.test(lowerText)) {
-          specificCooldownDuration = 3000; // 3 секунды для банка
-          const lastTime = cooldowns.specific.bank[userId];
-          if (lastTime && currentTime - lastTime < specificCooldownDuration) {
-              return; // Игнорируем повторные запросы
-          }
-          cooldowns.specific.bank[userId] = currentTime;
-      } else if (/^баланс$/i.test(lowerText)) {
-          specificCooldownDuration = 3000; // 3 секунды для баланса
-          const lastTime = cooldowns.specific.balance[userId];
-          if (lastTime && currentTime - lastTime < specificCooldownDuration) {
-              return; // Игнорируем повторные запросы
-          }
-          cooldowns.specific.balance[userId] = currentTime;
-      } else if (/^донат$/i.test(lowerText)) {
-          specificCooldownDuration = 3000; // 3 секунды для доната
-          const lastTime = cooldowns.specific.donate[userId];
-          if (lastTime && currentTime - lastTime < specificCooldownDuration) {
-              return; // Игнорируем повторные запросы
-          }
-          cooldowns.specific.donate[userId] = currentTime;
-      } else if (/^бонус$/i.test(lowerText)) {
-          specificCooldownDuration = 3000; // 3 секунды для бонуса
-          const lastTime = cooldowns.specific.bonus[userId];
-          if (lastTime && currentTime - lastTime < specificCooldownDuration) {
-              return; // Игнорируем повторные запросы
-          }
-          cooldowns.specific.bonus[userId] = currentTime;
+      cooldowns.specific.game[userId] = currentTime;
+    } else if (/^банк$/i.test(lowerText)) {
+      specificCooldownDuration = 3000;
+      const lastTime = cooldowns.specific.bank[userId];
+      if (lastTime && currentTime - lastTime < specificCooldownDuration) {
+        return;
       }
-
-      // Получаем сессию регистрации
-      const registrationSession = getRegistrationSession(userId);
-
-      // Проверяем время отправки сообщения
-      const messageDate = ctx.message.date * 1000; // Время отправки сообщения в миллисекундах
-      const now = Date.now();
-
-      if (now - messageDate > MAX_MESSAGE_AGE) {
-          return;
+      cooldowns.specific.bank[userId] = currentTime;
+    } else if (/^баланс$/i.test(lowerText)) {
+      specificCooldownDuration = 3000;
+      const lastTime = cooldowns.specific.balance[userId];
+      if (lastTime && currentTime - lastTime < specificCooldownDuration) {
+        return;
       }
-
-      // Проверяем, существует ли пользователь в базе данных
-      const user = await getUserById(userId);
-      if (!user) {
-          // Если пользователь не зарегистрирован и не начал процесс регистрации
-          if (!registrationSession || !registrationSession.registrationInProgress) {
-              await logAction(ctx, null, chatType, null, text, false); // Логируем ошибку
-              return ctx.reply(
-                  '🕹 Вы ещё не зарегистрированы. Для игры в нашего бота, необходимо зарегистрироваться через команду "/start"!',
-                  { parse_mode: 'HTML' }
-              );
-          }
+      cooldowns.specific.balance[userId] = currentTime;
+    } else if (/^донат$/i.test(lowerText)) {
+      specificCooldownDuration = 3000;
+      const lastTime = cooldowns.specific.donate[userId];
+      if (lastTime && currentTime - lastTime < specificCooldownDuration) {
+        return;
       }
+      cooldowns.specific.donate[userId] = currentTime;
+    } else if (/^бонус$/i.test(lowerText)) {
+      specificCooldownDuration = 3000;
+      const lastTime = cooldowns.specific.bonus[userId];
+      if (lastTime && currentTime - lastTime < specificCooldownDuration) {
+        return;
+      }
+      cooldowns.specific.bonus[userId] = currentTime;
+    }
 
-      // Если пользователь находится на этапе решения капчи
+    // Получаем сессию регистрации
+    const registrationSession = getRegistrationSession(userId);
+
+    // Проверяем время отправки сообщения
+    const messageDate = ctx.message.date * 1000;
+    const now = Date.now();
+    if (now - messageDate > MAX_MESSAGE_AGE) {
+      return;
+    }
+
+    // Проверяем, существует ли пользователь в базе данных
+    const user = await getUserById(userId);
+
+    // ИСПРАВЛЕННАЯ ЛОГИКА ПРОВЕРОК РЕГИСТРАЦИИ
+    if (!user) {
+      // Пользователь не существует в БД
+      if (!registrationSession || !registrationSession.registrationInProgress) {
+        await logAction(ctx, null, chatType, null, text, false);
+        return ctx.reply(
+          '🕹 Вы ещё не зарегистрированы. Для игры в нашего бота, необходимо зарегистрироваться через команду "/start"!',
+          { parse_mode: 'HTML' }
+        );
+      }
+      // Пользователь в процессе регистрации, но ещё не создан в БД
+      // Проверяем капчу
       if (registrationSession?.captchaPending) {
-          await logAction(ctx, user, chatType, null, text, false); // Логируем ошибку
-          return ctx.reply(
-              '📚 Для завершения регистрации необходимо пройти капчу!',
-              { parse_mode: 'HTML' }
-          );
+        await logAction(ctx, null, chatType, null, text, false);
+        return ctx.reply(
+          '📚 Для завершения регистрации необходимо пройти капчу!',
+          { parse_mode: 'HTML' }
+        );
       }
-
-      // Если пользователь должен принять пользовательское соглашение
+      // Проверяем политику
       if (!registrationSession?.policyAccepted) {
-          await logAction(ctx, user, chatType, null, text, false); // Логируем ошибку
-          return ctx.reply(
-              '📚 Для завершения регистрации необходимо принять пользовательское соглашение(обязательно к прочтению)!',
-              { parse_mode: 'HTML' }
-          );
+        await logAction(ctx, null, chatType, null, text, false);
+        return ctx.reply(
+          '📚 Для завершения регистрации необходимо принять пользовательское соглашение(обязательно к прочтению)!',
+          { parse_mode: 'HTML' }
+        );
       }
-
-      const parts = lowerText.split(/\s+/);
-      const command = parts[0];
-
-      await addChat(chatId);
-
-      if (chatType === 'private') {
-          await handlePrivateChat(ctx, command);
-      } else if (chatType === 'group' || chatType === 'supergroup') {
-          if (!chatId) {
-              await logAction(ctx, user, chatType, null, text, false); // Логируем ошибку
-              return ctx.reply('Произошла ошибка с определением чата.');
-          }
-
-          const isDoubleChatEnabled = await isDoubleChat(chatId);
-          if (isDoubleChatEnabled && /^(2|3|5)\s+(\d+)([к]*)$/i.test(lowerText)) {
-              await doubleHandler(ctx);
-              await logAction(ctx, user, chatType, ctx.chat.title, text, true); // Логируем успешное выполнение
-              return;
-          }
-
-          await handlePublicChat(ctx, chatId, lowerText, command);
+    } else if (!user.is_registered) {
+      // Пользователь существует, но не завершил регистрацию
+      // Проверяем капчу
+      if (registrationSession?.captchaPending) {
+        await logAction(ctx, user, chatType, null, text, false);
+        return ctx.reply(
+          '📚 Для завершения регистрации необходимо пройти капчу!',
+          { parse_mode: 'HTML' }
+        );
       }
+      // Проверяем политику
+      if (!registrationSession?.policyAccepted) {
+        await logAction(ctx, user, chatType, null, text, false);
+        return ctx.reply(
+          '📚 Для завершения регистрации необходимо принять пользовательское соглашение(обязательно к прочтению)!',
+          { parse_mode: 'HTML' }
+        );
+      }
+    }
+    // ИСПРАВЛЕНИЕ: Если user.is_registered === true, пропускаем все проверки капчи и политики
+    // Это позволяет зарегистрированным пользователям нормально использовать бота
+    // даже после удаления сессии регистрации
 
-      // Логируем успешное выполнение команды
-      await logAction(ctx, user, chatType, ctx.chat?.title, text, true);
+    const parts = lowerText.split(/\s+/);
+    const command = parts[0];
+    await addChat(chatId);
+
+    if (chatType === 'private') {
+      await handlePrivateChat(ctx, command);
+    } else if (chatType === 'group' || chatType === 'supergroup') {
+      if (!chatId) {
+        await logAction(ctx, user, chatType, null, text, false);
+        return ctx.reply('Произошла ошибка с определением чата.');
+      }
+      const isDoubleChatEnabled = await isDoubleChat(chatId);
+      if (isDoubleChatEnabled && /^(2|3|5)\s+(\d+)([к]*)$/i.test(lowerText)) {
+        await doubleHandler(ctx);
+        await logAction(ctx, user, chatType, ctx.chat.title, text, true);
+        return;
+      }
+      await handlePublicChat(ctx, chatId, lowerText, command);
+    }
+
+    // Логируем успешное выполнение команды
+    await logAction(ctx, user, chatType, ctx.chat?.title, text, true);
   } catch (error) {
-      // Логируем ошибку
-      const user = await getUserById(ctx.from.id);
-      const chatTitle = ctx.chat?.title || 'Неизвестный чат';
-      await logAction(ctx, user, ctx.chat?.type, chatTitle, ctx.message.text.trim(), false);
-      logError(error);
-      await ctx.reply('Произошла ошибка. Попробуйте через несколько секунд.');
+    // Логируем ошибку
+    const user = await getUserById(ctx.from.id);
+    const chatTitle = ctx.chat?.title || 'Неизвестный чат';
+    await logAction(ctx, user, ctx.chat?.type, chatTitle, ctx.message.text.trim(), false);
+    logError(error);
+    await ctx.reply('Произошла ошибка. Попробуйте через несколько секунд.');
   }
 });
 
@@ -3175,7 +3199,8 @@ bot.on('message', async (ctx) => {
           // Проверяем, является ли пользователь рефералом
           const referrerId = await getReferrerId(userId); // Получаем ID реферера
           if (referrerId) {
-              const referrerBonus = Math.floor(rewardAmount * 0.1); // 10% от награды
+              const CONFIG = require('./config');
+              const referrerBonus = Math.floor(rewardAmount * (CONFIG.REFERRAL_DONATION_PERCENT_DF / 100));
               updateUserDFBalance(referrerId, referrerBonus);
 
               // Уведомляем реферера о бонусе
@@ -4954,6 +4979,38 @@ bot.action('confirm_action', handleConfirmAction);
 bot.action(/^promo_/, async (ctx) => {
   const { handleCallback } = require('./handlers/promoHandler');
   await handleCallback(ctx);
+});
+
+// Обработчик кнопки "Снять из банка реферовода"
+bot.action('withdraw_referrer_bank', async (ctx) => {
+  if (await checkUserStatus(ctx)) {
+      await handleCallbackWithErrorHandling(ctx, async () => {
+          const userId = ctx.from.id.toString();
+          // Импортируем функции прямо здесь или убедись, что они импортированы сверху
+          const { withdrawReferrerBank, getReferrerBank } = require('./db');
+
+          const currentBank = getReferrerBank(userId);
+          if (currentBank <= 0) {
+              return ctx.answerCbQuery('❌ Банк реферовода пуст!', { show_alert: true });
+          }
+
+          const result = withdrawReferrerBank(userId);
+          if (result.success) {
+              await ctx.answerCbQuery(`✅ Снято ${result.amount.toLocaleString('ru-RU')} PF из банка!`, { show_alert: true });
+              
+              // Отправляем отдельное сообщение для надежности (иногда answerCbQuery скрывается быстро)
+              await ctx.replyWithHTML(
+                  `✅ <b>Банк реферовода:</b> снято ${result.amount.toLocaleString('ru-RU')} PF на основной баланс!`
+              );
+              
+              // Опционально: обновить меню рефералов, чтобы цифра на кнопке обнулилась
+              // Для этого нужно вызвать функцию показа меню заново, но это сложнее реализовать в простом action.
+              // Пока просто сообщаем об успехе.
+          } else {
+              await ctx.answerCbQuery(`❌ ${result.message || 'Ошибка снятия.'}`, { show_alert: true });
+          }
+      });
+  }
 });
 
 

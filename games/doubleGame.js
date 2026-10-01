@@ -25,6 +25,8 @@ const {
   updateMaxWinIfGreater,
   incrementMultiplierCount,
   updateWinStreak,
+  getReferrerId,     
+  addToReferrerBank 
 } = require('../db');
 
 // === КОНСТАНТЫ ===
@@ -510,6 +512,21 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
             }
           }
           try { updateUserBalance(userId, winAmount); } catch (e) { console.error(`[DoubleGame] Выплата ${userId}:`, e.message); }
+
+          // === БАНК РЕФЕРОВОДА: начисляем % от победы реферала ===
+          try {
+            const referrerId = getReferrerId(userId);
+            if (referrerId) {
+              const bankResult = addToReferrerBank(referrerId, winAmount);
+              if (bankResult.added > 0) {
+                console.log(`[DoubleGame] Банк реферовода ${referrerId}: +${bankResult.added} PF (сожжено: ${bankResult.burned}, итого: ${bankResult.newBank})`);
+              }
+            }
+          } catch (bankErr) {
+            console.error('[DoubleGame] Ошибка банка реферовода:', bankErr.message);
+          }
+          // === КОНЕЦ БАНКА РЕФЕРОВОДА ===
+
         } else {
           msg += `❌ ${userLink} ставка ${group.amount.toLocaleString('ru-RU')} PF на ${multiplier} проиграла\n`;
         }

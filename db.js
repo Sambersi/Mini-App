@@ -101,6 +101,30 @@ try {
 } catch (error) {
   console.error("Ошибка при добавлении колонок:", error);
 }
+// ========== МИГРАЦИИ: БАНК РЕФЕРОВОДА И БИЛЕТИКИ ФОРТУНЫ ==========
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN referrer_bank REAL DEFAULT 0`);
+  console.log('[DB] Migration: added column referrer_bank');
+} catch (e) {
+  if (!e.message.includes('duplicate column')) console.error('[DB] Migration referrer_bank:', e.message);
+}
+
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN fortune_tickets INTEGER DEFAULT 0`);
+  console.log('[DB] Migration: added column fortune_tickets');
+} catch (e) {
+  if (!e.message.includes('duplicate column')) console.error('[DB] Migration fortune_tickets:', e.message);
+}
+
+// Сброс индивидуальных referral_bonus_amount — всем одинаковый из конфига
+try {
+  const { REFERRAL_BONUS_REFERRER_PF } = require('./config');
+  db.prepare('UPDATE users SET referral_bonus_amount = ?').run(REFERRAL_BONUS_REFERRER_PF);
+  console.log(`[DB] Migration: reset all referral_bonus_amount to ${REFERRAL_BONUS_REFERRER_PF}`);
+} catch (e) {
+  console.error('[DB] Migration reset referral_bonus_amount:', e.message);
+}
+// ========== КОНЕЦ МИГРАЦИЙ ==========
 
 // Функция для обновления ника пользователя
 function updateUsername(userId, newUsername) {
@@ -2381,20 +2405,24 @@ function getActiveChatIdsByRoundHash(roundHash) {
 }
 
 // Функция для обновления суммы бонуса рефералу
+// Функция для обновления суммы бонуса рефералу (теперь использует конфиг)
 function updateReferralBonusAmount(numericId, bonusAmount) {
+  const { REFERRAL_BONUS_REFERRER_PF } = require('./config');
+  // Игнорируем переданное значение, всегда ставим из конфига
+  const finalBonus = REFERRAL_BONUS_REFERRER_PF;
   try {
-    const stmt = db.prepare('UPDATE users SET referral_bonus_amount = ? WHERE numeric_id = ?');
-    const info = stmt.run(bonusAmount, numericId);
-    if (info.changes > 0) {
-      console.log(`[DEBUG] Сумма бонуса для пользователя с numeric_id=${numericId} успешно обновлена на ${bonusAmount}.`);
-      return { success: true };
-    } else {
-      console.error(`[DEBUG] Не удалось обновить сумму бонуса для пользователя с numeric_id=${numericId}.`);
-      return { success: false, message: 'Пользователь с указанным numeric_id не найден.' };
-    }
+      const stmt = db.prepare('UPDATE users SET referral_bonus_amount = ? WHERE numeric_id = ?');
+      const info = stmt.run(finalBonus, numericId);
+      if (info.changes > 0) {
+          console.log(`[DEBUG] Сумма бонуса для пользователя с numeric_id=${numericId} установлена на ${finalBonus} (из конфига).`);
+          return { success: true };
+      } else {
+          console.error(`[DEBUG] Не удалось обновить сумму бонуса для пользователя с numeric_id=${numericId}.`);
+          return { success: false, message: 'Пользователь с указанным numeric_id не найден.' };
+      }
   } catch (error) {
-    console.error('[DB] Ошибка при обновлении суммы бонуса рефералу:', error);
-    return { success: false, message: 'Произошла ошибка при обновлении суммы бонуса.' };
+      console.error('[DB] Ошибка при обновлении суммы бонуса рефералу:', error);
+      return { success: false, message: 'Произошла ошибка при обновлении суммы бонуса.' };
   }
 }
 
@@ -2649,21 +2677,23 @@ function getTotalBalance(userId) {
 }
 
 
-// Функция для установки referral_bonus_amount всем пользователям
+// Функция для установки referral_bonus_amount всем пользователям (из конфига)
 function setReferralBonusForAllUsers(bonusAmount) {
+  const { REFERRAL_BONUS_REFERRER_PF } = require('./config');
+  const finalBonus = REFERRAL_BONUS_REFERRER_PF; // всегда из конфига
   try {
-    const stmt = db.prepare('UPDATE users SET referral_bonus_amount = ?');
-    const info = stmt.run(bonusAmount);
-    if (info.changes > 0) {
-      console.log(`[DEBUG] Успешно обновлено referral_bonus_amount для всех пользователей. Новое значение: ${bonusAmount}`);
-      return { success: true };
-    } else {
-      console.error(`[DEBUG] Не удалось обновить referral_bonus_amount для пользователей.`);
-      return { success: false, message: 'Нет пользователей для обновления.' };
-    }
+      const stmt = db.prepare('UPDATE users SET referral_bonus_amount = ?');
+      const info = stmt.run(finalBonus);
+      if (info.changes > 0) {
+          console.log(`[DEBUG] Успешно обновлено referral_bonus_amount для всех пользователей. Значение: ${finalBonus} (из конфига)`);
+          return { success: true };
+      } else {
+          console.error(`[DEBUG] Не удалось обновить referral_bonus_amount для пользователей.`);
+          return { success: false, message: 'Нет пользователей для обновления.' };
+      }
   } catch (error) {
-    console.error('[DB] Ошибка при обновлении referral_bonus_amount для всех пользователей:', error);
-    return { success: false, message: 'Произошла ошибка при обновлении данных.' };
+      console.error('[DB] Ошибка при массовом обновлении бонуса:', error);
+      return { success: false, message: error.message };
   }
 }
 
@@ -6073,6 +6103,177 @@ function deletePromoAlias(promoName) {
   } catch (e) {}
 }
 
+// ============================================================
+// === БАНК РЕФЕРОВОДА И ФОРТУНА-ТИКЕТЫ ===
+// ============================================================
+
+/**
+ * Получить ID реферера (пригласившего) для пользователя.
+ * @param {string|number} userId
+ * @returns {string|null} ID реферера или null
+ */
+function getReferrerId(userId) {
+  try {
+      const row = db.prepare('SELECT referrer_id FROM users WHERE id = ?').get(userId.toString());
+      return row?.referrer_id || null;
+  } catch (e) {
+      console.error('[DB] getReferrerId:', e.message);
+      return null;
+  }
+}
+
+/**
+* Получить количество рефералов у пользователя.
+* @param {string|number} referrerId
+* @returns {number}
+*/
+function getReferralCount(referrerId) {
+  try {
+      const row = db.prepare('SELECT COUNT(*) as cnt FROM users WHERE referrer_id = ?').get(referrerId.toString());
+      return row?.cnt || 0;
+  } catch (e) {
+      console.error('[DB] getReferralCount:', e.message);
+      return 0;
+  }
+}
+
+/**
+* Получить процент для банка реферовода на основе количества рефералов.
+* Возвращает число в процентах (например, 0.1 = 0.1%).
+* @param {number} referralCount
+* @returns {number}
+*/
+function getReferrerBankPercent(referralCount) {
+  const { REFERRER_BANK_TIERS } = require('./config');
+  for (const tier of REFERRER_BANK_TIERS) {
+      if (referralCount >= tier.minRefs && referralCount <= tier.maxRefs) {
+          return tier.percent;
+      }
+  }
+  return REFERRER_BANK_TIERS[0].percent; // fallback на минимальный
+}
+
+/**
+* Добавить сумму в банк реферовода (с учётом лимита).
+* Если банк полон — бонус сгорает.
+* @param {string|number} referrerId — ID реферовода
+* @param {number} winAmount — сумма победы реферала
+* @returns {{ added: number, burned: number, newBank: number }}
+*/
+function addToReferrerBank(referrerId, winAmount) {
+  const { REFERRER_BANK_LIMIT } = require('./config');
+  try {
+      if (!referrerId || winAmount <= 0) return { added: 0, burned: 0, newBank: 0 };
+
+      const referralCount = getReferralCount(referrerId);
+      const percent = getReferrerBankPercent(referralCount);
+      const bonusAmount = Math.floor(winAmount * (percent / 100));
+
+      if (bonusAmount <= 0) return { added: 0, burned: 0, newBank: 0 };
+
+      const user = db.prepare('SELECT referrer_bank FROM users WHERE id = ?').get(referrerId.toString());
+      const currentBank = user?.referrer_bank || 0;
+
+      const newBank = Math.min(currentBank + bonusAmount, REFERRER_BANK_LIMIT);
+      const added = newBank - currentBank;
+      const burned = bonusAmount - added;
+
+      if (added > 0) {
+          db.prepare('UPDATE users SET referrer_bank = ? WHERE id = ?').run(newBank, referrerId.toString());
+      }
+
+      return { added, burned, newBank };
+  } catch (e) {
+      console.error('[DB] addToReferrerBank:', e.message);
+      return { added: 0, burned: 0, newBank: 0 };
+  }
+}
+
+/**
+* Получить текущий баланс банка реферовода.
+* @param {string|number} userId
+* @returns {number}
+*/
+function getReferrerBank(userId) {
+  try {
+      const row = db.prepare('SELECT referrer_bank FROM users WHERE id = ?').get(userId.toString());
+      return row?.referrer_bank || 0;
+  } catch (e) {
+      console.error('[DB] getReferrerBank:', e.message);
+      return 0;
+  }
+}
+
+/**
+* Снять всю сумму из банка реферовода на основной баланс PF.
+* @param {string|number} userId
+* @returns {{ success: boolean, amount: number, message?: string }}
+*/
+function withdrawReferrerBank(userId) {
+  try {
+      const user = db.prepare('SELECT referrer_bank FROM users WHERE id = ?').get(userId.toString());
+      const bankAmount = user?.referrer_bank || 0;
+
+      if (bankAmount <= 0) {
+          return { success: false, amount: 0, message: 'Банк пуст.' };
+      }
+
+      db.exec('BEGIN TRANSACTION;');
+      try {
+          db.prepare('UPDATE users SET referrer_bank = 0 WHERE id = ?').run(userId.toString());
+          db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').run(bankAmount, userId.toString());
+          db.exec('COMMIT;');
+
+          // Логирование
+          try {
+              db.prepare(
+                  'INSERT INTO finance_log (actor_user_id, type, amount, success, ref) VALUES (?, ?, ?, 1, ?)'
+              ).run(userId.toString(), 'referrer_bank_withdraw', bankAmount, 'referrer_bank');
+          } catch (logErr) {
+              console.error('[DB] withdrawReferrerBank log:', logErr.message);
+          }
+
+          return { success: true, amount: bankAmount };
+      } catch (e) {
+          db.exec('ROLLBACK;');
+          throw e;
+      }
+  } catch (e) {
+      console.error('[DB] withdrawReferrerBank:', e.message);
+      return { success: false, amount: 0, message: e.message };
+  }
+}
+
+/**
+* Выдать билетики фортуны пользователю.
+* @param {string|number} userId
+* @param {number} amount
+* @returns {number} количество изменённых строк
+*/
+function giveFortuneTicket(userId, amount) {
+  try {
+      return db.prepare('UPDATE users SET fortune_tickets = fortune_tickets + ? WHERE id = ?')
+          .run(amount, userId.toString()).changes;
+  } catch (e) {
+      console.error('[DB] giveFortuneTicket:', e.message);
+      return 0;
+  }
+}
+
+/**
+* Получить количество билетиков фортуны у пользователя.
+* @param {string|number} userId
+* @returns {number}
+*/
+function getFortuneTickets(userId) {
+  try {
+      const row = db.prepare('SELECT fortune_tickets FROM users WHERE id = ?').get(userId.toString());
+      return row?.fortune_tickets || 0;
+  } catch (e) {
+      console.error('[DB] getFortuneTickets:', e.message);
+      return 0;
+  }
+}
 
 
 // Экспортируем функции
@@ -6339,4 +6540,12 @@ module.exports = {
   updateMaxBetIfGreater, updateMaxWinIfGreater, incrementMultiplierCount, getMultiplierStats, updateWinStreak,
   getActivePlayersCount,
   generatePromoAlias, savePromoAlias, getPromoNameByAlias, deletePromoAlias, transliterate,
+  getReferrerId,
+  getReferralCount,
+  getReferrerBankPercent,
+  addToReferrerBank,
+  getReferrerBank,
+  withdrawReferrerBank,
+  giveFortuneTicket,
+  getFortuneTickets,
 };

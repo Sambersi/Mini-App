@@ -8,8 +8,14 @@ const {
   isHyperlinkDisabled,
   updateReferralBonusAmount,
   getAllUsers,
-  getTopSeasonalReferrers, getCardDetails, getSelectedSkinFileName
+  getTopSeasonalReferrers, getCardDetails, getSelectedSkinFileName,
+  getReferrerBank,
+  withdrawReferrerBank,
+  getReferralCount,
+  getReferrerBankPercent
 } = require('../db');
+
+const CONFIG = require('../config');
 const { Markup } = require('telegraf');
 const { isAdmin } = require('../admin/addBalance'); // Из папки admin
 const { handlePartnershipCommand } = require('../handlers/rules');
@@ -25,8 +31,8 @@ function createUserLink(userId, username, disableHyperlink) {
   const escapedUsername = username
     ? username.replace(/([<>&"'])/g, (match) => {
         const escapeMap = {
-          '<': '<',
-          '>': '>',
+          '<': '&lt;',
+          '>': '&gt;',
           '&': '&amp;',
           '"': '&quot;',
           "'": '&#39;',
@@ -67,25 +73,32 @@ async function referralLinkHandler(ctx) {
       return ctx.reply('Произошла ошибка при генерации реферальной ссылки.');
     }
 
-    // Создаем клавиатуру с кнопками (в 3 ряда)
+    // === ПОЛУЧЕНИЕ ДАННЫХ БАНКА РЕФЕРОВОДА ===
+    const currentBank = getReferrerBank(userId);
+    const formattedBank = Math.floor(currentBank).toLocaleString('ru-RU');
+    
+    // Создаем клавиатуру с кнопками
     const keyboard = Markup.inlineKeyboard([
       [
         Markup.button.callback('Мои рефералы', 'my_referrals'),
         Markup.button.callback('Реф инфо', 'ref_info')
       ],
       [
-        Markup.button.callback('🤝 Сотрудничество', 'partnership_info') // Третья кнопка
+        // Кнопка снятия средств из банка (активна всегда, проверка внутри обработчика)
+        Markup.button.callback(`🏦 Снять банк (${formattedBank} PF)`, 'withdraw_referrer_bank')
+      ],
+      [
+        Markup.button.callback('🤝 Сотрудничество', 'partnership_info')
       ]
-      // ,
-      // [
-      //   Markup.button.callback('🏆 ЗАРАБОТАТЬ РУБЛИ', 'contest_info') // Новая кнопка "КОНКУРС"
-      // ]
     ]);
 
-    // Отправляем сообщение с моноширинным шрифтом для ссылки и кнопками
+    // Отправляем сообщение
     await ctx.replyWithHTML(
-      `🌟 Ваша реферальная ссылка:\n\n👉 <code>${referralLink}</code>\n\n`
-      + `💲 За каждого приведенного друга вы получите по 30.000 PF + 10% с каждого доната вашего реферала!`,
+      `🌟 <b>Ваша реферальная ссылка:</b>\n\n` +
+      `👉 <code>${referralLink}</code>\n\n` +
+      `💲 За каждого приведенного друга вы получите по ${CONFIG.REFERRAL_BONUS_REFERRER_PF.toLocaleString('ru-RU')} PF + ${CONFIG.REFERRAL_BONUS_REFERRER_TICKETS} 🎟 + 10% DF с каждого доната вашего реферала!\n\n` +
+      `🏦 <b>Банк реферовода:</b> ${formattedBank} PF\n` +
+      `<i>(Накапливается % от побед ваших рефералов в Double)</i>`,
       keyboard
     );
   } catch (error) {
@@ -146,19 +159,6 @@ async function handleContestInfo(ctx) {
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 }
-// async function referralLinkHandler(ctx) {
-//     try {
-//         // Отправляем сообщение о том, что функция временно недоступна
-//         return ctx.replyWithHTML(
-//             `🚧 <b>Реферальная система временно недоступна</b>\n\n`
-//             +`Данная функция находится в разработке и будет доступна после завершения ОБТ.\n\n`
-//             +`Следите за обновлениями в официальном канале!`
-//         );
-//     } catch (error) {
-//         console.error('Ошибка при обработке запроса реферальной ссылки:', error);
-//         ctx.reply('Произошла ошибка. Попробуйте позже.');
-//     }
-// }
 
 // Обработчик кнопки "Мои рефералы"
 async function handleMyReferrals(ctx) {
@@ -218,10 +218,10 @@ async function handleMyReferrals(ctx) {
 
       // Отправляем каждое сообщение отдельно
       for (const message of messages) {
-          await ctx.replyWithHTML(
-              `🌟 <b>Ваши рефералы:</b>\n\n${message}\n\n` +
-              `💲 За каждого реферала вы получаете бонус в размере 30.000 PF!`
-          );
+        await ctx.replyWithHTML(
+          `🌟 <b>Ваши рефералы:</b>\n\n${message}\n\n` +
+          `💲 За каждого реферала вы получаете бонус в размере ${CONFIG.REFERRAL_BONUS_REFERRER_PF.toLocaleString('ru-RU')} PF + ${CONFIG.REFERRAL_BONUS_REFERRER_TICKETS} 🎟!`
+      );
       }
   } catch (error) {
       console.error('Ошибка при получении списка рефералов:', error);
@@ -229,29 +229,31 @@ async function handleMyReferrals(ctx) {
   }
 }
 
-// async function handleMyReferrals(ctx) {
-//     try {
-//         // Отправляем сообщение о том, что функция временно недоступна
-//         return ctx.replyWithHTML(
-//             `🚧 <b>Реферальная система временно недоступна</b>\n\n`
-//             +`Данная функция будет доступна после завершения ОБТ.\n\n`
-//             +`Следите за обновлениями в официальном канале!`
-//         );
-//     } catch (error) {
-//         console.error('Ошибка при обработке запроса рефералов:', error);
-//         ctx.reply('Произошла ошибка. Попробуйте позже.');
-//     }
-// }
-
 // Обработчик кнопки "Реф инфо"
 async function handleRefInfo(ctx) {
   try {
+      const userId = ctx.from.id.toString();
+      const refsCount = getReferralCount(userId);
+      const currentPercent = getReferrerBankPercent(refsCount);
+
       ctx.replyWithHTML(
           `ℹ️ <b>Информация о реферальной системе:</b>\n\n` +
-          `• Для участия в реферальной программе используйте свою уникальную ссылку.\n` +
-          `• За каждого приведенного пользователя вы получите <b>30.000 PF</b>.\n` +
-          `• Приведенный пользователь также получит <b>10.000 PF</b> за регистрацию.\n\n` +
-          `🌟 Чтобы получить вашу реферальную ссылку, используйте команду /реф.`
+          `• За каждого приведенного пользователя вы получаете <b>${CONFIG.REFERRAL_BONUS_REFERRER_PF.toLocaleString('ru-RU')} PF</b> + <b>${CONFIG.REFERRAL_BONUS_REFERRER_TICKETS} 🎟</b>.\n` +
+          `• Приведенный пользователь получает <b>${CONFIG.REFERRAL_BONUS_NEW_USER_PF.toLocaleString('ru-RU')} PF</b> + <b>${CONFIG.REFERRAL_BONUS_NEW_USER_TICKETS} 🎟</b>.\n` +
+          `• Вы получаете <b>${CONFIG.REFERRAL_DONATION_PERCENT_DF}% DF</b> с каждого доната реферала.\n\n` +
+          
+          `🏦 <b>БАНК РЕФЕРОВОДА (Пассивный доход):</b>\n` +
+          `С каждой победы вашего реферала в игре <b>Double</b>, процент от выигрыша капает в ваш личный банк. Лимит банка: <b>${CONFIG.REFERRER_BANK_LIMIT.toLocaleString('ru-RU')} PF</b>.\n\n` +
+          
+          `📊 <b>Ваш текущий уровень:</b> ${refsCount} рефералов → <b>${currentPercent}%</b> с побед.\n\n` +
+          `📈 <b>Шкала процентов:</b>\n` +
+          `• 0 - 20 рефералов: 0.1%\n` +
+          `• 21 - 40 рефералов: 0.2%\n` +
+          `• 41 - 60 рефералов: 0.3%\n` +
+          `• 61 - 80 рефералов: 0.4%\n` +
+          `• 81+ рефералов: 0.5%\n\n` +
+          
+          `🌟 Чтобы получить вашу реферальную ссылку, используйте команду реф.`
       );
   } catch (error) {
       console.error('Ошибка при обработке информации о реферальной системе:', error);
@@ -304,7 +306,7 @@ async function handleReferralRegistration(ctx, referralCode) {
   }
 }
 
-// Функция для изменения бонуса рефералу
+// Функция для изменения бонуса рефералу (теперь использует конфиг)
 async function changeReferralBonus(ctx, parts) {
   try {
       // Проверка прав администратора
@@ -318,9 +320,8 @@ async function changeReferralBonus(ctx, parts) {
       }
 
       const numericId = parseInt(parts[1], 10);
-      const newBonusAmount = parseInt(parts[2], 10);
 
-      if (isNaN(numericId) || isNaN(newBonusAmount)) {
+      if (isNaN(numericId)) {
           return ctx.reply('Некорректные аргументы. Использование: сменить_реф [numeric_id] [новая сумма бонуса]');
       }
 
@@ -330,15 +331,15 @@ async function changeReferralBonus(ctx, parts) {
           return ctx.reply('Пользователь с указанным numeric_id не найден.');
       }
 
-      // Обновляем сумму бонуса рефералу с использованием новой функции
-      const result = await updateReferralBonusAmount(numericId, newBonusAmount);
+      // Обновляем сумму бонуса рефералу с использованием конфига (игнорируем переданное значение)
+      const result = await updateReferralBonusAmount(numericId, CONFIG.REFERRAL_BONUS_REFERRER_PF);
       if (result.success) {
-          ctx.reply(`Сумма бонуса для пользователя ${createUserLink(user.id, user.username)} успешно изменена на ${newBonusAmount} PF.`);
+          ctx.reply(`Сумма бонуса для пользователя ${createUserLink(user.id, user.username)} установлена на ${CONFIG.REFERRAL_BONUS_REFERRER_PF.toLocaleString('ru-RU')} PF (из конфига).`);
 
           // Отправляем уведомление пользователю
           const userMessage = `
-👥 Ваша реферальная награда за приведенного пользователя, была изменена администрацией бота!
-💰 Новая сумма бонуса: ${newBonusAmount} PF
+👥 Ваша реферальная награда за приведенного пользователя, была обновлена администрацией бота!
+💰 Новая сумма бонуса: ${CONFIG.REFERRAL_BONUS_REFERRER_PF.toLocaleString('ru-RU')} PF
 `.trim();
           await ctx.telegram.sendMessage(user.id, userMessage, { parse_mode: 'HTML' }).catch((error) => {
               console.error(`Не удалось отправить сообщение пользователю ${user.id}:`, error);
@@ -356,31 +357,29 @@ async function changeReferralBonus(ctx, parts) {
 // Функция для массового изменения бонуса рефералу у всех пользователей
 async function setReferralBonusForAllUsers(ctx) {
   try {
-    // Проверка прав администратора
-    if (!(await isAdmin(ctx))) {
-      return ctx.reply('У вас нет прав для использования этой команды.');
-    }
-
-    // Задаем новое значение бонуса рефералу
-    const newBonusAmount = 30000;
-
-    // Получаем всех пользователей
-    const allUsers = getAllUsers();
-
-    // Обновляем бонус рефералу для каждого пользователя
-    for (const user of allUsers) {
-      const result = await updateReferralBonusAmount(user.numeric_id, newBonusAmount);
-      if (!result.success) {
-        console.error(`Не удалось обновить бонус рефералу для пользователя с numeric_id=${user.numeric_id}`);
+      // Проверка прав администратора
+      if (!(await isAdmin(ctx))) {
+          return ctx.reply('У вас нет прав для использования этой команды.');
       }
-    }
 
-    // Отправляем подтверждение
-    ctx.reply(`✅ Сумма бонуса рефералу успешно изменена на ${newBonusAmount} PF для всех пользователей.`);
+      const newBonusAmount = CONFIG.REFERRAL_BONUS_REFERRER_PF;
+
+      // Получаем всех пользователей
+      const allUsers = getAllUsers();
+
+      // Обновляем бонус рефералу для каждого пользователя
+      for (const user of allUsers) {
+          const result = await updateReferralBonusAmount(user.numeric_id, newBonusAmount);
+          if (!result.success) {
+              console.error(`Не удалось обновить бонус рефералу для пользователя с numeric_id=${user.numeric_id}`);
+          }
+      }
+
+      // Отправляем подтверждение
+      ctx.reply(`✅ Сумма бонуса рефералу успешно установлена на ${newBonusAmount.toLocaleString('ru-RU')} PF для всех пользователей (из конфига).`);
   } catch (error) {
-    // Обработка ошибок
-    console.error('Ошибка при массовом изменении бонуса рефералу:', error);
-    ctx.reply('Произошла ошибка. Попробуйте позже.');
+      console.error('Ошибка при массовом изменении бонуса рефералу:', error);
+      ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 }
 
@@ -922,6 +921,33 @@ async function handleBackToRefMenu(ctx) {
   }
 }
 
+// Обработчик кнопки "Снять банк реферовода"
+async function handleWithdrawReferrerBank(ctx) {
+  try {
+    const userId = ctx.from.id.toString();
+    
+    // Пытаемся снять средства
+    const result = withdrawReferrerBank(userId);
+
+    if (result.success) {
+      const formattedAmount = Math.floor(result.amount).toLocaleString('ru-RU');
+      
+      // Обновляем сообщение или отправляем новое (зависит от того, откуда вызов)
+      // Если это callback, лучше ответить alert-ом и обновить меню
+      await ctx.answerCbQuery(`✅ Успешно снято ${formattedAmount} PF!`, { show_alert: true });
+      
+      // Перерисовываем главное меню рефералки, чтобы обновилась цифра на кнопке
+      await referralLinkHandler(ctx); 
+      
+    } else {
+      await ctx.answerCbQuery(`❌ ${result.message || 'Ошибка снятия.'}`, { show_alert: true });
+    }
+  } catch (error) {
+    console.error('Ошибка при снятии банка реферовода:', error);
+    await ctx.answerCbQuery('Произошла ошибка. Попробуйте позже.', { show_alert: true });
+  }
+}
+
 module.exports = {
   referralLinkHandler,
   referralsListHandler: handleMyReferrals,
@@ -936,5 +962,6 @@ module.exports = {
   getPlural,
   topSeasonalReferralsHandler,
   handleContestInfo,
-  handleBackToRefMenu
+  handleBackToRefMenu,
+  handleWithdrawReferrerBank
 };
