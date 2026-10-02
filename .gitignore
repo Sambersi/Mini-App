@@ -33,10 +33,3 @@ logs/
 npm-debug.log*
 .DS_Store
 Thumbs.db
-
-# Сборка фронтенда (если пушишь только исходники)
-# app/frontend/out/ 
-# app/frontend/react/dist/
-# Разрешаем папку сборки фронтенда, даже если родительские папки игнорируются
-!app/frontend/out/
-!app/frontend/out/**

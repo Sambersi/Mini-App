@@ -1,0 +1,57 @@
+/* === БЕЗ РАМКИ ТЕЛЕФОНА: экран на весь viewport === */
+html, body { height: 100%; overflow: hidden; }
+body { background-color: #03011d; }
+.mobile-screen { width: 100vw; height: 100vh; border-radius: 0; }
+
+/* === Страницы === */
+.page-view { width: 100%; display: flex; flex-direction: column; gap: 16px; align-items: center; }
+.hidden { display: none !important; }
+.info-card { width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.info-card__title { font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -0.05em; text-transform: uppercase; color: #f5f3ff; margin: 0; }
+.info-card__text { font-family: 'Montserrat', sans-serif; font-size: 12px; line-height: 1.5; color: rgba(255,255,255,.7); margin: 0; }
+
+/* === Колёса: слои дизайнера, рамка и стрелка статичны === */
+.bonus-card__wheel-wrap { transform: rotate(0deg); }
+.bonus-card__frame-img { transform: rotate(0deg); }
+.bonus-card__pointer-img { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 20%; height: auto; z-index: 3; pointer-events: none; }
+
+/* === Админ-логи (дизайн в стиле glass) === */
+.logs-controls { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.logs-row { display: flex; gap: 8px; align-items: center; }
+.seg { display: flex; background: rgba(0,0,0,.4); border-radius: 10px; padding: 4px; gap: 4px; }
+.seg-btn { border: none; background: transparent; color: rgba(245,243,255,.6); font-family: 'Montserrat', sans-serif; font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.seg-btn.active { background: #DCCDFF; color: #180F2A; font-weight: 600; }
+.input, .select { background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; color: #f5f3ff; font-family: 'Montserrat', sans-serif; font-size: 12px; padding: 8px; }
+.logs-search { flex: 1; min-width: 0; }
+.btn-mini { background: #DCCDFF; border: none; border-radius: 10px; color: #180F2A; font-family: 'Montserrat', sans-serif; font-size: 12px; font-weight: 600; padding: 8px 12px; cursor: pointer; white-space: nowrap; }
+.btn-mini.ghost { background: transparent; color: rgba(245,243,255,.7); border: 1px solid rgba(255,255,255,.2); }
+.logs-table-wrap { width: 100%; padding: 12px; }
+.logs-scroll { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; max-height: 44vh; }
+.logs-scroll::-webkit-scrollbar { width: 0; }
+.logs-head, .logs-rowline { display: grid; gap: 8px; }
+.cols-4 { grid-template-columns: 1.1fr 1.1fr 1.6fr .8fr; }
+.cols-5 { grid-template-columns: 1fr 1fr 1.1fr 1fr .9fr; }
+.logs-head { font-family: 'Unbounded', sans-serif; font-size: 9px; text-transform: uppercase; color: rgba(245,243,255,.5); padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.logs-rowline { padding: 8px; border-radius: 12px; background: rgba(0,0,0,.25); font-size: 11px; color: rgba(245,243,255,.85); }
+.logs-cell-name { font-weight: 600; }
+.logs-cell-sub { color: rgba(245,243,255,.5); font-size: 10px; }
+.logs-cell-action { font-size: 11px; word-break: break-word; }
+.logs-stat-link { cursor: pointer; color: #DCCDFF; }
+.bet-win { color: #7DFFAF; }
+.bet-loss { color: #ff4d6d; }
+.bet-pend { color: rgba(245,243,255,.5); }
+.status-badge { font-size: 10px; padding: 2px 8px; border-radius: 8px; }
+.status-finished { background: rgba(125,255,175,.15); color: #7DFFAF; }
+.status-active { background: rgba(251,251,51,.15); color: #FBFB33; }
+.logs-pager { display: flex; gap: 10px; align-items: center; color: rgba(245,243,255,.6); font-size: 12px; }
+.logs-empty { padding: 20px; text-align: center; color: rgba(245,243,255,.5); font-size: 12px; }
+
+/* === Модалка === */
+.modal { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: rgba(3,1,29,.7); }
+.modal[hidden] { display: none; }
+.modal__box { padding: 20px; width: min(92vw, 420px); display: flex; flex-direction: column; gap: 12px; align-items: stretch; z-index: 1; }
+.modal__title { font-family: 'Unbounded', sans-serif; font-size: 13px; color: #f5f3ff; text-align: center; margin: 0; }
+.modal__body { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
+.modal__body::-webkit-scrollbar { width: 0; }
+.modal__body .row { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: rgba(245,243,255,.75); }
+.modal__body .row .val { color: #f5f3ff; text-align: right; }

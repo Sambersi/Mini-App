@@ -319,6 +319,16 @@ app.get('/api/physics/users', (req, res) => {
   }
 });
 
+// === 4.9 API нового фронтенда (дизайн) ===
+app.use('/api/v2', require('./plainApi'));
+// === 4.10 Статика нового фронтенда на /v2, параллельно старому ===
+const plainFrontendPath = path.join(__dirname, '../frontend/plain');
+if (fs.existsSync(plainFrontendPath)) {
+  app.use('/v2', express.static(plainFrontendPath));
+} else {
+  console.warn('[BACKEND] Новый фронтенд не найден: ' + plainFrontendPath);
+}
+
 // === 5. Статика и роутинг фронтенда ===
 if (fs.existsSync(frontendBuildPath)) {
   app.use(express.static(frontendBuildPath, {
