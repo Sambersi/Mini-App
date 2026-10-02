@@ -3,8 +3,64 @@ html, body { height: 100%; overflow: hidden; }
 body { background-color: #03011d; }
 .mobile-screen { width: 100vw; height: 100vh; border-radius: 0; }
 
+/* === Верхняя плашка профиля: непрозрачная, полностью перекрывает контент === */
+.profile-card--opaque {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #0f0a2a; /* сплошной цвет фона, без прозрачности */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Ник и ID не вылезают за границы плашки */
+.profile-card__info {
+  min-width: 0;
+  max-width: calc(100% - 130px);
+  overflow: hidden;
+}
+.profile-card__nickname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.profile-card__id {
+  min-width: 0;
+  overflow: hidden;
+}
+.profile-card__id-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* === Нижняя навигация: непрозрачная, полностью перекрывает контент === */
+.bottom-nav--opaque {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #0f0a2a; /* сплошной цвет фона */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* === Основной скролл-контент: отступы под фиксированные плашки === */
+.scroll-content {
+  padding-top: 95px;   /* высота profile-card + небольшой зазор */
+  padding-bottom: 115px; /* высота bottom-nav + небольшой зазор */
+  overflow-y: auto;
+  height: 100vh;
+  box-sizing: border-box;
+}
+
 /* === Страницы === */
-.page-view { width: 100%; display: flex; flex-direction: column; gap: 16px; align-items: center; }
+.page-view { width: 100%; display: flex; flex-direction: column; gap: 16px; align-items: center; padding: 0 16px; }
 .hidden { display: none !important; }
 .info-card { width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
 .info-card__title { font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -0.05em; text-transform: uppercase; color: #f5f3ff; margin: 0; }
@@ -14,6 +70,16 @@ body { background-color: #03011d; }
 .bonus-card__wheel-wrap { transform: rotate(0deg); }
 .bonus-card__frame-img { transform: rotate(0deg); }
 .bonus-card__pointer-img { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 20%; height: auto; z-index: 3; pointer-events: none; }
+
+/* === Онлайн как элемент в потоке страницы (не поверх блоков) === */
+.online-status--inline {
+  position: static;
+  transform: none;
+  width: auto;
+  height: auto;
+  margin-top: 4px;
+  padding-bottom: 8px;
+}
 
 /* === Админ-логи (дизайн в стиле glass) === */
 .logs-controls { width: 100%; display: flex; flex-direction: column; gap: 8px; }

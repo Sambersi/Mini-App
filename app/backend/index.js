@@ -130,6 +130,52 @@ function selectWeightedPrize() {
   return PRIZES[0];
 }
 
+
+// === WebSocket для онлайна ===
+const { WebSocketServer } = require('ws');
+const wss = new WebSocketServer({ noServer: true });
+
+// Счетчик подключенных клиентов мини-аппа
+let miniAppClients = 0;
+
+// Обработка upgrade для WebSocket
+server.on('upgrade', (request, socket, head) => {
+  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+  if (pathname === '/ws/online') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
+wss.on('connection', (ws) => {
+  miniAppClients++;
+  // Отправляем текущий онлайн новому клиенту
+  ws.send(JSON.stringify({ type: 'online_count', count: miniAppClients }));
+  
+  // Рассылаем обновленный онлайн всем клиентам
+  const broadcast = () => {
+    wss.clients.forEach(client => {
+      if (client.readyState === 1) { // OPEN
+        client.send(JSON.stringify({ type: 'online_count', count: miniAppClients }));
+      }
+    });
+  };
+  
+  ws.on('close', () => {
+    miniAppClients--;
+    broadcast();
+  });
+  
+  ws.on('error', () => {
+    miniAppClients--;
+    broadcast();
+  });
+});
+
+
 app.post('/api/fortune/spin', (req, res) => {
   const userId = req.body.userId?.toString();
   if (!userId) return res.status(400).json({ error: 'userId required' });

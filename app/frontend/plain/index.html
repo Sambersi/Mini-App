@@ -10,12 +10,11 @@
 </head>
 <body>
 <div class="mobile-screen">
-  <header class="profile-card glass-card">
+  <header class="profile-card glass-card profile-card--opaque">
     <button class="profile-card__help" data-help="profile">?</button>
     <div class="profile-card__avatar"><img class="profile-card__avatar-img" id="avatar-img" alt="" style="display:none"></div>
     <div class="profile-card__info">
       <p class="profile-card__nickname" id="nickname">—</p>
-      <div class="profile-card__status"><span class="profile-card__status-label">статус:</span><span class="profile-card__status-value" id="status-value">—</span></div>
       <div class="profile-card__id"><span class="profile-card__id-label">id:</span><span class="profile-card__id-value" id="id-value">—</span></div>
     </div>
     <div class="profile-card__tickets">
@@ -65,6 +64,9 @@
           </div>
         </div>
       </section>
+
+      <!-- Онлайн как отдельный элемент в потоке страницы -->
+      <div class="online-status online-status--inline"><span class="online-status__dot"></span><span class="online-status__text" id="online-text">онлайн: 0</span></div>
     </section>
 
     <!-- СТРАНИЦА: РЕФЕРАЛ -->
@@ -73,6 +75,7 @@
         <h2 class="info-card__title">реферал</h2>
         <p class="info-card__text">Реферальная система живёт в боте: команда «реф» — ссылка, «рефы» — список, «топ_рефералов» — рейтинг.</p>
       </div>
+      <div class="online-status online-status--inline"><span class="online-status__dot"></span><span class="online-status__text online-text-mirror">онлайн: 0</span></div>
     </section>
 
     <!-- СТРАНИЦА: ДОНАТ -->
@@ -82,14 +85,16 @@
         <p class="info-card__text">Донат проходит через Telegram Stars. Взамен — DF и статусы.</p>
         <button class="bonus-card__btn" id="donate-open"><span class="bonus-card__btn-text">открыть в боте</span></button>
       </div>
+      <div class="online-status online-status--inline"><span class="online-status__dot"></span><span class="online-status__text online-text-mirror">онлайн: 0</span></div>
     </section>
 
     <!-- СТРАНИЦА: ИГРАТЬ -->
     <section class="page-view hidden" id="page-играть">
       <div class="info-card glass-card">
         <h2 class="info-card__title">игровые режимы</h2>
-        <p class="info-card__text">DOUBLE PLUS и DICE играются в чатах: «активировать дабл» / «активировать дабл» стоит 100 000 PF, «активировать дайс» — 50 000 PF (скидки по статусам). Казино: «казино [ставка]».</p>
+        <p class="info-card__text">DOUBLE PLUS и DICE играются в чатах: «активировать дабл» / «активировать дайс». Казино: «казино [ставка]».</p>
       </div>
+      <div class="online-status online-status--inline"><span class="online-status__dot"></span><span class="online-status__text online-text-mirror">онлайн: 0</span></div>
     </section>
 
     <!-- СТРАНИЦА: ЕЩЁ -->
@@ -103,6 +108,7 @@
         <p class="info-card__text">Команда «репорт [текст]» в боте — и админы ответят в течение суток.</p>
       </div>
       <button class="bonus-card__btn hidden" id="admin-enter"><span class="bonus-card__btn-text">админ-панель</span></button>
+      <div class="online-status online-status--inline"><span class="online-status__dot"></span><span class="online-status__text online-text-mirror">онлайн: 0</span></div>
     </section>
 
     <!-- СТРАНИЦА: АДМИН-ЛОГИ -->
@@ -141,9 +147,7 @@
     </section>
   </main>
 
-  <div class="online-status"><span class="online-status__dot"></span><span class="online-status__text" id="online-text">онлайн: 0</span></div>
-
-  <nav class="bottom-nav glass-card">
+  <nav class="bottom-nav glass-card bottom-nav--opaque">
     <div class="bottom-nav__item" data-nav="реферал"><button class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="icons/реферал_off.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label">реферал</span></div>
     <div class="bottom-nav__item" data-nav="донат"><button class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="icons/донат_off.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label">донат</span></div>
     <div class="bottom-nav__item" data-nav="играть"><button class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="icons/играть_off.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label">играть</span></div>
