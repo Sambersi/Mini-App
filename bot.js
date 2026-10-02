@@ -72,8 +72,11 @@ const { registerCardHandler, handleRegisterCardAction, handleCardInfoButton, han
 const { changeNicknameHandler } = require('./handlers/changeNickname');
 const { forbesHandler } = require('./handlers/top'); // Обработчик "форбс"
 const { referralLinkHandler, topReferralsHandler, referralsListHandler, handleMyReferrals, handleRefInfo, changeReferralBonus, setReferralBonusForAllUsers, handleBackToRefMenu, topSeasonalReferralsHandler, handleContestInfo, handleWithdrawReferrerBank } = require('./handlers/referralSystem'); // Реферальная ссылка
-const { showAdminPanel, handleListAdmins, handleAdminCommands, handleClosePanel, isTechAdmin } = require('./admin/adminPanel');
-const { 
+const { showAdminPanel, handleListAdmins, handleAdminCommands, handleClosePanel, isTechAdmin,  handleTechAdminPanelButton,
+  handleBackToAdminPanel } = require('./admin/adminPanel');
+const {handleTechAdminCallback, handleTechAdminMessage } = require('./admin/techAdminPanel');
+  
+  const { 
   startPromoCreationSession, 
   handlePromoCreationMessage, 
   handleCallback, 
@@ -109,7 +112,7 @@ const { listAllPrefixes, assignPrefix, removePrefix,   listUserPrefixes, setActi
  } = require('./handlers/prefixes');
 const { rulesHandler, handlePartnershipCommand } = require('./handlers/rules');
 const { testerKitHandler } = require('./handlers/testerKit');
-const { sendPostToChannel } = require('./postToChannel');
+const { handlePostCallback, handlePostMessage} = require('./postToChannel');
 const { handleTopUpAll, handleWithdrawAll, showWithdrawInstruction, showTopUpInstruction } = require('./bank/cardTopUp');
 const { toggleHyperlinkHandler } = require('./handlers/top');
 const { handleChatModeKeyboard } = require('./handlers/buttons');
@@ -2719,7 +2722,13 @@ bot.on('text', async (ctx) => {
         success: 1,
       });
     }
+    // === НОВОЕ: Перехват текста для техадминки и постинга ===
+    const { handleTechAdminMessage } = require('./admin/techAdminPanel');
+    if (await handleTechAdminMessage(ctx)) return;
 
+    const { handlePostMessage } = require('./postToChannel');
+    if (await handlePostMessage(ctx)) return;
+    // =========================================================
     // ПРОВЕРКА: Если пользователь в процессе создания промокода
     const { handlePromoCreationMessage } = require('./handlers/promoHandler');
     const handledByPromoFlow = await handlePromoCreationMessage(ctx);
@@ -5031,6 +5040,28 @@ bot.action('withdraw_referrer_bank', async (ctx) => {
           }
       });
   }
+});
+
+
+bot.action('tech_admin_panel', async (ctx) => {
+  await handleCallbackWithErrorHandling(ctx, async () => {
+    await handleTechAdminPanelButton(ctx);
+  });
+});
+
+bot.action('back_to_admin_panel', async (ctx) => {
+  await handleCallbackWithErrorHandling(ctx, async () => {
+    await handleBackToAdminPanel(ctx);
+  });
+});
+
+
+bot.action(/^tech_ref_/, async (ctx) => {
+  await handleTechAdminCallback(ctx);
+});
+
+bot.action(/^tech_post_/, async (ctx) => {
+  await handlePostCallback(ctx);
 });
 
 

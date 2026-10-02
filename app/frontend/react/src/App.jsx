@@ -66,8 +66,9 @@ export default function App() {
       )}
 
       <Routes>
-        <Route path="/" element={<Navigate to="/profile" replace />} />
-        <Route path="/profile" element={<Profile user={user} tgUser={tgUser} />} />
+        {/* Рендерим Profile сразу на корне И на /profile */}
+        <Route index element={<Profile user={user} tgUser={tgUser} />} />
+        <Route path="profile" element={<Profile user={user} tgUser={tgUser} />} />
         <Route path="/fortune" element={<Fortune user={user} tgUser={tgUser} />} />
         <Route path="/donate" element={<Donate />} />
         <Route path="/help" element={<Help />} />

@@ -42,7 +42,7 @@ if (!fs.existsSync(frontendBuildPath)) {
 
 // === 3. Инициализация Express ===
 const app = express();
-const PORT = process.env.PORT || 25071;
+const PORT = process.env.PORT || 25067;
 
 app.use(cors());
 app.use(express.json());

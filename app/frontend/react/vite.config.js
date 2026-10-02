@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:25071', // dev-сервер проксирует API в твой Express
+      '/api': 'http://localhost:25067', // dev-сервер проксирует API в твой Express
     },
   },
 });
