@@ -15,197 +15,202 @@
 <link rel="stylesheet" href="pages/admin/admin.css">
 </head>
 <body>
-<div class="mobile-screen">
-  <!-- ВЕРХНЯЯ ПЛАШКА ПРОФИЛЯ: только на вкладке «профиль» -->
-  <header class="profile-card glass-card hidden" id="header-profile">
-    <button class="profile-card__help" data-help="profile"><img class="help-icon" src="icons/what.svg" alt=""></button>
-    <div class="profile-card__avatar"><img class="profile-card__avatar-img" id="avatar-img" alt="" style="display:none"></div>
-    <div class="profile-card__info">
-      <p class="profile-card__nickname" id="nickname">—</p>
-      <div class="profile-card__status"><span class="profile-card__status-label">статус:</span><span class="profile-card__status-value" id="status-value">—</span></div>
-      <div class="profile-card__id"><span class="profile-card__id-label">id:</span><span class="profile-card__id-value" id="id-value">—</span></div>
+
+  <!-- Убираем phone-frame, оставляем только mobile-screen как корень -->
+  <div class="mobile-screen">
+
+    <!-- ВЕРХНЯЯ ПЛАШКА (только профиль) -->
+    <header class="profile-card glass-card hidden" id="header-profile">
+      <button class="profile-card__help" data-help="profile"><img class="help-icon" src="icons/what.svg" alt=""></button>
+      <div class="profile-card__avatar"><img class="profile-card__avatar-img" id="avatar-img" alt="" style="display:none"></div>
+      <div class="profile-card__info">
+        <p class="profile-card__nickname" id="nickname">—</p>
+        <div class="profile-card__status"><span class="profile-card__status-label">статус:</span><span class="profile-card__status-value" id="status-value">—</span></div>
+        <div class="profile-card__id"><span class="profile-card__id-label">id:</span><span class="profile-card__id-value" id="id-value">—</span></div>
+      </div>
+      <div class="profile-card__tickets">
+        <span class="ticket-badge"><img class="ticket-badge__img" src="icons/тикет.svg" alt=""><span class="ticket-badge__count" id="ticket-count">0</span></span>
+      </div>
+    </header>
+
+    <!-- МИНИ-ПЛАШКА БАЛАНСА (все страницы кроме профиля и админки) -->
+    <header class="mini-header glass-card hidden" id="header-mini">
+      <img class="mini-header__icon" src="icons/PF.svg" alt="">
+      <p class="mini-header__amount" id="header-pf-amount">—</p>
+    </header>
+
+    <main class="scroll-content">
+      <!-- СТРАНИЦА: ПРОФИЛЬ -->
+      <section class="page-view" id="page-профиль">
+        <section class="currency-card glass-card">
+          <div class="currency-card__content">
+            <img class="currency-card__icon" src="icons/PF.svg" alt="">
+            <p class="currency-card__amount" id="pf-amount">—</p>
+          </div>
+          <button class="currency-card__buy" data-buy="PF"><img class="currency-card__buy-icon" src="icons/plus.svg" alt=""></button>
+        </section>
+        <section class="currency-card glass-card">
+          <div class="currency-card__content">
+            <img class="currency-card__icon" src="icons/DF.svg" alt="">
+            <p class="currency-card__amount" id="df-amount">—</p>
+          </div>
+          <button class="currency-card__buy" data-buy="DF"><img class="currency-card__buy-icon" src="icons/plus.svg" alt=""></button>
+        </section>
+
+        <section class="bonus-shell">
+          <button class="bonus-card__help" data-help="bonus"><img class="help-icon" src="icons/what.svg" alt=""></button>
+          <div class="bonus-card glass-card">
+            <div class="bonus-card__wheel-wrap">
+              <img class="bonus-card__wheel-img" src="img/КОЛЕСО.png" alt="">
+              <img class="bonus-card__frame-img" src="img/bonus-frame.png" alt="">
+              <img class="bonus-card__pointer-img" src="img/стрелка.png" alt="">
+            </div>
+            <div class="bonus-card__header"><h2 class="bonus-card__title">колесо<br>бонус</h2></div>
+            <p class="bonus-card__description">Крути бонусное колесо каждые 2 часа и лутай PF! А на каждый 6-й прокрут забирай МЕГА бонус с удвоенными призами!</p>
+            <div class="bonus-card__footer">
+              <div class="bonus-card__progress" id="bonus-progress"></div>
+              <button class="bonus-card__btn" id="bonus-btn"><span class="bonus-card__btn-text">забрать бонус</span></button>
+            </div>
+          </div>
+        </section>
+
+        <section class="bonus-shell">
+          <div class="bonus-card glass-card">
+            <div class="bonus-card__wheel-wrap">
+              <img class="bonus-card__wheel-img" src="img/fortune-wheel.png" alt="">
+            </div>
+            <div class="bonus-card__header"><h2 class="bonus-card__title">колесо<br>фортуны</h2></div>
+            <p class="bonus-card__description">Крути колесо фортуны за билеты и выигрывай СУПЕР призы!</p>
+            <div class="bonus-card__footer">
+              <div class="ticket-badge"><span class="ticket-badge__count" id="fortune-count">0</span><img class="ticket-badge__img" src="icons/тикет.svg" alt=""></div>
+              <button class="bonus-card__btn" id="fortune-btn"><span class="bonus-card__btn-text">прокрутить за билет</span><span class="bonus-card__btn-x">x</span></button>
+            </div>
+          </div>
+        </section>
+
+        <section class="action-card glass-card">
+          <img class="action-card__icon" src="icons/promo.svg" alt="">
+          <div class="action-card__content">
+            <p class="action-card__title">промокод</p>
+            <p class="action-card__text">Введите код</p>
+          </div>
+          <button class="action-card__btn" id="promo-open"><img class="action-card__btn-icon" src="icons/arrow.svg" alt=""></button>
+        </section>
+
+        <section class="action-card glass-card">
+          <img class="action-card__icon" src="icons/channel.svg" alt="">
+          <div class="action-card__content">
+            <p class="action-card__title">наш канал</p>
+            <p class="action-card__text">Подписывайтесь</p>
+          </div>
+          <button class="action-card__btn" id="channel-open"><img class="action-card__btn-icon" src="icons/arrow.svg" alt=""></button>
+        </section>
+      </section>
+
+      <!-- СТРАНИЦА: РЕФЕРАЛ -->
+      <section class="page-view hidden" id="page-реферал">
+        <div class="info-card glass-card">
+          <h2 class="info-card__title">реферал</h2>
+          <p class="info-card__text">Реферальная система живёт в боте: команда «реф» — ссылка, «рефы» — список, «топ_рефералов» — рейтинг.</p>
+        </div>
+      </section>
+
+      <!-- СТРАНИЦА: ДОНАТ -->
+      <section class="page-view hidden" id="page-донат">
+        <div class="info-card glass-card">
+          <h2 class="info-card__title">поддержать проект</h2>
+          <p class="info-card__text">Донат проходит через Telegram Stars. Взамен — DF и статусы.</p>
+          <button class="bonus-card__btn" id="donate-open"><span class="bonus-card__btn-text">открыть в боте</span></button>
+        </div>
+      </section>
+
+      <!-- СТРАНИЦА: ИГРАТЬ -->
+      <section class="page-view hidden" id="page-играть">
+        <div class="info-card glass-card">
+          <h2 class="info-card__title">игровые режимы</h2>
+          <p class="info-card__text">DOUBLE PLUS и DICE играются в чатах: «активировать дабл» / «активировать дайс». Казино: «казино [ставка]».</p>
+        </div>
+      </section>
+
+      <!-- СТРАНИЦА: ЕЩЁ -->
+      <section class="page-view hidden" id="page-еще">
+        <div class="info-card glass-card">
+          <h2 class="info-card__title">валюты</h2>
+          <p class="info-card__text">PF — игровая валюта. DF — донатная валюта.</p>
+        </div>
+        <div class="info-card glass-card">
+          <h2 class="info-card__title">поддержка</h2>
+          <p class="info-card__text">Команда «репорт [текст]» в боте — и админы ответят в течение суток.</p>
+        </div>
+        <button class="bonus-card__btn hidden" id="admin-enter"><span class="bonus-card__btn-text">админ-панель</span></button>
+      </section>
+
+      <!-- СТРАНИЦА: АДМИН-ЛОГИ -->
+      <section class="page-view hidden" id="page-admin">
+        <div class="logs-controls">
+          <div class="logs-row">
+            <button class="btn-mini ghost" id="admin-back">← назад</button>
+            <div class="seg">
+              <button class="seg-btn" id="mode-double">дабл</button>
+              <button class="seg-btn active" id="mode-finance">общее</button>
+            </div>
+          </div>
+          <div class="logs-row">
+            <input class="input logs-search" id="logs-search" placeholder="поиск по ID...">
+            <button class="btn-mini" id="logs-find">найти</button>
+          </div>
+          <div class="logs-row">
+            <button class="btn-mini" id="logs-date-btn">📅 выбрать время</button>
+            <button class="btn-mini ghost hidden" id="logs-date-reset">⏱ последние</button>
+            <select class="select" id="logs-types"></select>
+            <select class="select hidden" id="logs-view">
+              <option value="rounds">Раунды</option>
+              <option value="bets">Ставки</option>
+            </select>
+          </div>
+          <input type="datetime-local" class="select hidden" id="logs-date-input">
+        </div>
+        <div class="logs-table-wrap glass-card">
+          <div class="logs-scroll" id="logs-body"><div class="logs-empty">Загрузка…</div></div>
+        </div>
+        <div class="logs-pager">
+          <button class="btn-mini" id="logs-prev">←</button>
+          <span id="logs-page">стр. 1 из 1</span>
+          <button class="btn-mini" id="logs-next">→</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- ОНЛАЙН: фиксированный, выше нижней плашки на 16px -->
+    <div class="online-status online-status--fixed hidden" id="online-status">
+      <span class="online-status__dot"></span>
+      <span class="online-status__text" id="online-text">онлайн: 0</span>
     </div>
-    <div class="profile-card__tickets">
-      <span class="ticket-badge"><img class="ticket-badge__img" src="icons/тикет.svg" alt=""><span class="ticket-badge__count" id="ticket-count">0</span></span>
-    </div>
-  </header>
 
-  <!-- МИНИ-ПЛАШКА БАЛАНСА: на всех страницах кроме профиля и админки -->
-  <header class="mini-header glass-card hidden" id="header-mini">
-    <img class="mini-header__icon" src="icons/PF.svg" alt="">
-    <p class="mini-header__amount" id="header-pf-amount">—</p>
-  </header>
+    <nav class="bottom-nav glass-card">
+      <div class="bottom-nav__item" data-nav="реферал"><button class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="icons/реферал_off.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label">реферал</span></div>
+      <div class="bottom-nav__item" data-nav="донат"><button class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="icons/донат_off.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label">донат</span></div>
+      <div class="bottom-nav__item" data-nav="играть"><button class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="icons/играть_off.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label">играть</span></div>
+      <div class="bottom-nav__item bottom-nav__item--active" data-nav="профиль"><button class="bottom-nav__btn bottom-nav__btn--active"><img class="bottom-nav__btn-icon" src="icons/профиль.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label bottom-nav__label--active">профиль</span></div>
+      <div class="bottom-nav__item" data-nav="еще"><button class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="icons/еще_off.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label">еще</span></div>
+    </nav>
 
-  <main class="scroll-content">
-    <!-- СТРАНИЦА: ПРОФИЛЬ -->
-    <section class="page-view" id="page-профиль">
-      <section class="currency-card glass-card">
-        <div class="currency-card__content">
-          <img class="currency-card__icon" src="icons/PF.svg" alt="">
-          <p class="currency-card__amount" id="pf-amount">—</p>
-        </div>
-        <button class="currency-card__buy" data-buy="PF"><img class="currency-card__buy-icon" src="icons/plus.svg" alt=""></button>
-      </section>
-      <section class="currency-card glass-card">
-        <div class="currency-card__content">
-          <img class="currency-card__icon" src="icons/DF.svg" alt="">
-          <p class="currency-card__amount" id="df-amount">—</p>
-        </div>
-        <button class="currency-card__buy" data-buy="DF"><img class="currency-card__buy-icon" src="icons/plus.svg" alt=""></button>
-      </section>
-
-      <section class="bonus-shell">
-        <button class="bonus-card__help" data-help="bonus"><img class="help-icon" src="icons/what.svg" alt=""></button>
-        <div class="bonus-card glass-card">
-          <div class="bonus-card__wheel-wrap">
-            <img class="bonus-card__wheel-img" src="img/КОЛЕСО.png" alt="">
-            <img class="bonus-card__frame-img" src="img/bonus-frame.png" alt="">
-            <img class="bonus-card__pointer-img" src="img/стрелка.png" alt="">
-          </div>
-          <div class="bonus-card__header"><h2 class="bonus-card__title">колесо<br>бонус</h2></div>
-          <p class="bonus-card__description">Крути бонусное колесо каждые 2 часа и лутай PF! А на каждый 6-й прокрут забирай МЕГА бонус с удвоенными призами!</p>
-          <div class="bonus-card__footer">
-            <div class="bonus-card__progress" id="bonus-progress"></div>
-            <button class="bonus-card__btn" id="bonus-btn"><span class="bonus-card__btn-text">забрать бонус</span></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="bonus-shell">
-        <div class="bonus-card glass-card">
-          <div class="bonus-card__wheel-wrap">
-            <img class="bonus-card__wheel-img" src="img/fortune-wheel.png" alt="">
-          </div>
-          <div class="bonus-card__header"><h2 class="bonus-card__title">колесо<br>фортуны</h2></div>
-          <p class="bonus-card__description">Крути колесо фортуны за билеты и выигрывай СУПЕР призы!</p>
-          <div class="bonus-card__footer">
-            <div class="bonus-card__progress"><span class="ticket-badge__count" id="fortune-count">0</span></div>
-            <button class="bonus-card__btn" id="fortune-btn"><span class="bonus-card__btn-text">прокрутить за билет</span><span class="bonus-card__btn-x">x</span></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="action-card glass-card">
-        <img class="action-card__icon" src="icons/promo.svg" alt="">
-        <div class="action-card__content">
-          <p class="action-card__title">промокод</p>
-          <p class="action-card__text">Введите код</p>
-        </div>
-        <button class="action-card__btn" id="promo-open"><img class="action-card__btn-icon" src="icons/arrow.svg" alt=""></button>
-      </section>
-
-      <section class="action-card glass-card">
-        <img class="action-card__icon" src="icons/channel.svg" alt="">
-        <div class="action-card__content">
-          <p class="action-card__title">наш канал</p>
-          <p class="action-card__text">Подписывайтесь</p>
-        </div>
-        <button class="action-card__btn" id="channel-open"><img class="action-card__btn-icon" src="icons/arrow.svg" alt=""></button>
-      </section>
-    </section>
-
-    <!-- СТРАНИЦА: РЕФЕРАЛ -->
-    <section class="page-view hidden" id="page-реферал">
-      <div class="info-card glass-card">
-        <h2 class="info-card__title">реферал</h2>
-        <p class="info-card__text">Реферальная система живёт в боте: команда «реф» — ссылка, «рефы» — список, «топ_рефералов» — рейтинг.</p>
-      </div>
-    </section>
-
-    <!-- СТРАНИЦА: ДОНАТ -->
-    <section class="page-view hidden" id="page-донат">
-      <div class="info-card glass-card">
-        <h2 class="info-card__title">поддержать проект</h2>
-        <p class="info-card__text">Донат проходит через Telegram Stars. Взамен — DF и статусы.</p>
-        <button class="bonus-card__btn" id="donate-open"><span class="bonus-card__btn-text">открыть в боте</span></button>
-      </div>
-    </section>
-
-    <!-- СТРАНИЦА: ИГРАТЬ -->
-    <section class="page-view hidden" id="page-играть">
-      <div class="info-card glass-card">
-        <h2 class="info-card__title">игровые режимы</h2>
-        <p class="info-card__text">DOUBLE PLUS и DICE играются в чатах: «активировать дабл» / «активировать дайс». Казино: «казино [ставка]».</p>
-      </div>
-    </section>
-
-    <!-- СТРАНИЦА: ЕЩЁ -->
-    <section class="page-view hidden" id="page-еще">
-      <div class="info-card glass-card">
-        <h2 class="info-card__title">валюты</h2>
-        <p class="info-card__text">PF — игровая валюта. DF — донатная валюта.</p>
-      </div>
-      <div class="info-card glass-card">
-        <h2 class="info-card__title">поддержка</h2>
-        <p class="info-card__text">Команда «репорт [текст]» в боте — и админы ответят в течение суток.</p>
-      </div>
-      <button class="bonus-card__btn hidden" id="admin-enter"><span class="bonus-card__btn-text">админ-панель</span></button>
-    </section>
-
-    <!-- СТРАНИЦА: АДМИН-ЛОГИ -->
-    <section class="page-view hidden" id="page-admin">
-      <div class="logs-controls">
-        <div class="logs-row">
-          <button class="btn-mini ghost" id="admin-back">← назад</button>
-          <div class="seg">
-            <button class="seg-btn" id="mode-double">дабл</button>
-            <button class="seg-btn active" id="mode-finance">общее</button>
-          </div>
-        </div>
-        <div class="logs-row">
-          <input class="input logs-search" id="logs-search" placeholder="поиск по ID...">
-          <button class="btn-mini" id="logs-find">найти</button>
-        </div>
-        <div class="logs-row">
-          <button class="btn-mini" id="logs-date-btn">📅 выбрать время</button>
-          <button class="btn-mini ghost hidden" id="logs-date-reset">⏱ последние</button>
-          <select class="select" id="logs-types"></select>
-          <select class="select hidden" id="logs-view">
-            <option value="rounds">Раунды</option>
-            <option value="bets">Ставки</option>
-          </select>
-        </div>
-        <input type="datetime-local" class="select hidden" id="logs-date-input">
-      </div>
-      <div class="logs-table-wrap glass-card">
-        <div class="logs-scroll" id="logs-body"><div class="logs-empty">Загрузка…</div></div>
-      </div>
-      <div class="logs-pager">
-        <button class="btn-mini" id="logs-prev">←</button>
-        <span id="logs-page">стр. 1 из 1</span>
-        <button class="btn-mini" id="logs-next">→</button>
-      </div>
-    </section>
-  </main>
-
-  <!-- ОНЛАЙН: фиксированный элемент, виден только в профиле и «ещё» -->
-  <div class="online-status online-status--fixed hidden" id="online-status">
-    <span class="online-status__dot"></span>
-    <span class="online-status__text" id="online-text">онлайн: 0</span>
   </div>
 
-  <nav class="bottom-nav glass-card">
-    <div class="bottom-nav__item" data-nav="реферал"><button class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="icons/реферал_off.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label">реферал</span></div>
-    <div class="bottom-nav__item" data-nav="донат"><button class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="icons/донат_off.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label">донат</span></div>
-    <div class="bottom-nav__item" data-nav="играть"><button class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="icons/играть_off.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label">играть</span></div>
-    <div class="bottom-nav__item bottom-nav__item--active" data-nav="профиль"><button class="bottom-nav__btn bottom-nav__btn--active"><img class="bottom-nav__btn-icon" src="icons/профиль.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label bottom-nav__label--active">профиль</span></div>
-    <div class="bottom-nav__item" data-nav="еще"><button class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="icons/еще_off.svg" alt="" onerror="this.style.display='none'"></button><span class="bottom-nav__label">еще</span></div>
-  </nav>
-</div>
-
-<div class="modal" id="modal" hidden>
-  <div class="modal__box glass-card">
-    <p class="modal__title" id="modal-title"></p>
-    <div class="modal__body" id="modal-body"></div>
-    <button class="bonus-card__btn" id="modal-close"><span class="bonus-card__btn-text">ок</span></button>
+  <div class="modal" id="modal" hidden>
+    <div class="modal__box glass-card">
+      <p class="modal__title" id="modal-title"></p>
+      <div class="modal__body" id="modal-body"></div>
+      <button class="bonus-card__btn" id="modal-close"><span class="bonus-card__btn-text">ок</span></button>
+    </div>
   </div>
-</div>
-<script src="app.js"></script>
-<script src="pages/profile/profile.js"></script>
-<script src="pages/play/play.js"></script>
-<script src="pages/donate/donate.js"></script>
-<script src="pages/referrals/referrals.js"></script>
-<script src="pages/more/more.js"></script>
-<script src="pages/admin/admin.js"></script>
+
+  <script src="app.js"></script>
+  <script src="pages/profile/profile.js"></script>
+  <script src="pages/play/play.js"></script>
+  <script src="pages/donate/donate.js"></script>
+  <script src="pages/referrals/referrals.js"></script>
+  <script src="pages/more/more.js"></script>
+  <script src="pages/admin/admin.js"></script>
 </body>
 </html>

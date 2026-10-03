@@ -1,93 +1,36 @@
-/* === ГЛОБАЛЬНО: экран на весь viewport === */
+/* === ВЕБ-АДАПТАЦИЯ: убираем phone-frame, растягиваем на весь экран === */
 html, body { height: 100%; overflow: hidden; }
-body { background-color: #03011d; }
+body { background-color: #03011d; display: block; } /* Перебиваем flex центрирование дизайнера */
 
 .mobile-screen {
-  width: 100%;
-  height: 100%;
-  background-color: #7672a7;
-  border-radius: 40px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0; /* Убираем скругления телефона */
+  /* Blur и ::before/::after уже есть в style.css дизайнера, они сработают автоматически */
 }
 
-/* === СЛОИ РАЗМЫТИЯ (точные стили из ТЗ) === */
-.mobile-screen::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 120px;
-  z-index: 5;
-  pointer-events: none;
-  background: linear-gradient(to bottom, rgba(3, 1, 29, 0.95) 0%, rgba(3, 1, 29, 0.85) 40%, rgba(3, 1, 29, 0) 100%);
-  backdrop-filter: blur(50px);
-  -webkit-backdrop-filter: blur(50px);
-  mask-image: linear-gradient(to bottom, black 0%, black 50%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 50%, transparent 100%);
-}
-
-.mobile-screen::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 120px;
-  z-index: 5;
-  pointer-events: none;
-  background: linear-gradient(to top, rgba(3, 1, 29, 0.95) 0%, rgba(3, 1, 29, 0.85) 40%, rgba(3, 1, 29, 0) 100%);
-  backdrop-filter: blur(50px);
-  -webkit-backdrop-filter: blur(50px);
-  mask-image: linear-gradient(to top, black 0%, black 50%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to top, black 0%, black 50%, transparent 100%);
-}
-
-/* === СЛОЙ КОНТЕНТА === */
-.scroll-content {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  width: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 20px 20px 122px 20px;
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
-  touch-action: pan-y;
-}
-.scroll-content::-webkit-scrollbar { width: 0; }
-
-/* Отступы под плашки по страницам */
-.mobile-screen[data-page="профиль"] .scroll-content { padding-top: 106px; }
-.mobile-screen[data-page="играть"] .scroll-content,
-.mobile-screen[data-page="донат"] .scroll-content,
-.mobile-screen[data-page="реферал"] .scroll-content,
-.mobile-screen[data-page="еще"] .scroll-content { padding-top: 84px; }
-
-/* === ПЛАШКИ: макс ширина 300px, центрирование === */
+/* === ФИКС ШИРИНЫ ПЛАШЕК (макс 300px, центрирование) === */
 .profile-card {
-  position: absolute;
-  top: 30px;
   left: 50%;
+  right: auto;
   transform: translateX(-50%);
   width: calc(100% - 40px);
   max-width: 300px;
-  height: 60px;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  padding: 0 0 0 20px;
 }
 
+.bottom-nav {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: calc(100% - 40px);
+  max-width: 300px;
+}
+
+.currency-card, .bonus-shell, .action-card, .info-card {
+  max-width: 300px;
+}
+
+/* === МИНИ-ПЛАШКА БАЛАНСА (для страниц кроме профиля) === */
 .mini-header {
   position: absolute;
   top: 20px;
@@ -111,79 +54,46 @@ body { background-color: #03011d; }
   margin: 0;
 }
 
-.bottom-nav {
-  position: absolute;
-  bottom: 30px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 40px);
-  max-width: 300px;
-  height: 80px;
-  z-index: 30;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
-  padding: 7.5px;
-}
+/* === ОТСТУПЫ КОНТЕНТА ПОД ПЛАШКИ === */
+.scroll-content { padding-top: 20px; } /* По умолчанию (без верхней плашки) */
+.mobile-screen[data-page="профиль"] .scroll-content { padding-top: 106px; } /* Под profile-card */
+.mobile-screen[data-page="играть"] .scroll-content,
+.mobile-screen[data-page="донат"] .scroll-content,
+.mobile-screen[data-page="реферал"] .scroll-content,
+.mobile-screen[data-page="еще"] .scroll-content { padding-top: 84px; } /* Под mini-header */
 
-.currency-card, .bonus-shell, .action-card, .info-card { max-width: 300px; }
-
-/* Ник и ID не вылезают за плашку */
+/* === НИК И ID НЕ ВЫЛЕЗАЮТ === */
 .profile-card__info { min-width: 0; max-width: calc(100% - 130px); overflow: hidden; }
 .profile-card__nickname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .profile-card__id { min-width: 0; overflow: hidden; }
 .profile-card__id-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 
-/* help-кнопки: фрейм 20, иконка what 5x8 */
+/* === HELP-КНОПКИ: фрейм 20, иконка what 5x8 === */
 .profile-card__help, .bonus-card__help { width: 20px; height: 20px; padding: 0; }
 .help-icon { width: 5px; height: 8px; display: block; }
 
-/* === Онлайн: фиксированный, выше нижней плашки на 16px === */
+/* === ОНЛАЙН: фиксированный, выше нижней плашки на 16px === */
 .online-status--fixed {
   position: absolute;
-  bottom: 126px;
+  bottom: 126px; /* 30 (bottom nav) + 80 (height) + 16 = 126 */
   left: 50%;
   transform: translateX(-50%);
   width: auto;
   height: auto;
-  z-index: 6;
+  z-index: 20; /* Выше контента (1), ниже плашек (30) */
   display: flex;
   align-items: center;
   gap: 5px;
 }
-.online-status__dot { width: 5px; height: 5px; border-radius: 50%; background: #7DFFAF; flex-shrink: 0; }
-.online-status__text {
-  font-family: 'Montserrat', sans-serif;
-  font-weight: 400;
-  font-size: 12px;
-  line-height: 10px;
-  color: rgba(245, 243, 255, 0.5);
-  white-space: nowrap;
-}
 
-/* === Страницы и утилиты === */
+/* === УТИЛИТЫ === */
 .page-view { width: 100%; display: flex; flex-direction: column; gap: 16px; align-items: center; }
 .hidden { display: none !important; }
 .info-card { width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
-.info-card__title {
-  font-family: 'Unbounded', sans-serif;
-  font-weight: 700;
-  font-size: 16px;
-  letter-spacing: -0.05em;
-  text-transform: uppercase;
-  color: #f5f3ff;
-  margin: 0;
-}
-.info-card__text {
-  font-family: 'Montserrat', sans-serif;
-  font-size: 12px;
-  line-height: 1.5;
-  color: rgba(255,255,255,.7);
-  margin: 0;
-}
+.info-card__title { font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -0.05em; text-transform: uppercase; color: #f5f3ff; margin: 0; }
+.info-card__text { font-family: 'Montserrat', sans-serif; font-size: 12px; line-height: 1.5; color: rgba(255,255,255,.7); margin: 0; }
 
-/* === Модалка (глобальная) === */
+/* === МОДАЛКА === */
 .modal { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: rgba(3,1,29,.7); }
 .modal[hidden] { display: none; }
 .modal__box { padding: 20px; width: min(92vw, 420px); display: flex; flex-direction: column; gap: 12px; align-items: stretch; z-index: 1; }

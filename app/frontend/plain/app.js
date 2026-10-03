@@ -15,11 +15,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!userId && isLocal) userId = '768451950';
   bindCoreUI();
   connectOnlineWS();
-  // Инициализация страницы по умолчанию (профиль)
-  switchPage('профиль');
+  switchPage('профиль'); // Стартуем с профиля
 });
 
-// --- Онлайн (WebSocket + фолбэк REST) ---
+// --- Онлайн ---
 function updateOnlineText(count) {
   const el = $('online-text');
   if (el) el.textContent = `онлайн: ${count}`;
@@ -29,56 +28,46 @@ function connectOnlineWS() {
   const wsUrl = `${protocol}//${window.location.host}/ws/online`;
   try {
     ws = new WebSocket(wsUrl);
-    ws.onopen = () => console.log('[WS] Подключено к серверу онлайна');
+    ws.onopen = () => console.log('[WS] Connected');
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'online_count') updateOnlineText(data.count);
-      } catch (e) { console.error('[WS] Ошибка парсинга:', e); }
+      } catch (e) { console.error('[WS] Parse error', e); }
     };
-    ws.onerror = (err) => console.error('[WS] Ошибка соединения:', err);
-    ws.onclose = () => { console.log('[WS] Переподключение через 5 сек...'); setTimeout(connectOnlineWS, 5000); };
-  } catch (e) {
-    console.error('[WS] Не удалось создать WebSocket:', e);
-    fallbackOnlinePolling();
-  }
+    ws.onerror = (err) => console.error('[WS] Error', err);
+    ws.onclose = () => setTimeout(connectOnlineWS, 5000);
+  } catch (e) { fallbackOnlinePolling(); }
 }
 async function fallbackOnlinePolling() {
   try {
     const d = await (await fetch(`${API}/api/online`)).json();
     updateOnlineText(d.online);
-  } catch (e) { console.error('[REST] Ошибка онлайна:', e); }
+  } catch (e) {}
   setTimeout(fallbackOnlinePolling, 30000);
 }
 
-// --- Хром страницы: верхние плашки, зона размытия, видимость онлайна ---
+// --- Хром страницы ---
 function applyPageChrome(name) {
   const headerProfile = $('header-profile');
   const headerMini = $('header-mini');
   const onlineStatus = $('online-status');
   const screen = document.querySelector('.mobile-screen');
 
-  // Профиль: полная плашка + онлайн
   if (name === 'профиль') {
     headerProfile.classList.remove('hidden');
     headerMini.classList.add('hidden');
     onlineStatus.classList.remove('hidden');
-  }
-  // Админка: без плашек, без онлайна
-  else if (name === 'admin') {
+  } else if (name === 'admin') {
     headerProfile.classList.add('hidden');
     headerMini.classList.add('hidden');
     onlineStatus.classList.add('hidden');
-  }
-  // Остальные страницы: мини-плашка баланса
-  else {
+  } else {
     headerProfile.classList.add('hidden');
     headerMini.classList.remove('hidden');
-    // Онлайн только в «ещё»
     if (name === 'еще') onlineStatus.classList.remove('hidden');
     else onlineStatus.classList.add('hidden');
   }
-
   screen.setAttribute('data-page', name);
 }
 
@@ -95,7 +84,7 @@ function switchPage(name) {
 function setNavActive(name) {
   const items = document.querySelectorAll('.bottom-nav__item');
   items.forEach(i => {
-    const itemName = i.getAttribute('data-nav'); // ФИКС БАГА: берём имя каждой кнопки отдельно
+    const itemName = i.getAttribute('data-nav'); // ФИКС: берем имя конкретной кнопки
     const active = itemName === name;
     i.classList.toggle('bottom-nav__item--active', active);
     i.querySelector('.bottom-nav__btn').classList.toggle('bottom-nav__btn--active', active);
