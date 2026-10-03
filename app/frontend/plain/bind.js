@@ -1,9 +1,8 @@
-// bind.js — клей между дизайнерской страницей и бэкендом (plainApi: /api/v2/*, WS /ws/online)
+// bind.js — связь дизайнерской страницы с бэкендом (plainApi: /api/v2/*, WS /ws/online)
 const API = '';
 const TG = window.Telegram?.WebApp;
 const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-const $ = (s) => document.querySelector(s);
-const $$ = (s) => document.querySelectorAll(s);
+const $ = (id) => document.getElementById(id);
 let userId = null;
 let bonusReady = false;
 let bonusTimer = null;
@@ -14,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     userId = TG.initDataUnsafe?.user?.id || null;
     const photo = TG.initDataUnsafe?.user?.photo_url;
     if (photo) {
-      const img = $('.profile-card__avatar-img');
+      const img = document.querySelector('.profile-card__avatar-img');
       if (img) { img.src = photo; img.style.display = 'block'; }
     }
   }
@@ -36,24 +35,24 @@ async function loadUser() {
     const r = await fetch(`${API}/api/v2/user/${userId}`);
     if (!r.ok) return;
     const u = await r.json();
-    const nick = $('.profile-card__nickname'); if (nick) nick.textContent = u.username || '—';
-    const st = $('.profile-card__status-value'); if (st) st.textContent = u.topStatus || '—';
-    const idv = $('.profile-card__id-value'); if (idv) idv.textContent = u.numeric_id ?? '—';
-    const amounts = $$('.currency-card__amount');
-    if (amounts[0]) amounts[0].textContent = fmtMoney(u.balance);
-    if (amounts[1]) amounts[1].textContent = fmtMoney(u.df_balance);
+    $('nickname').textContent = u.username || '—';
+    $('status-value').textContent = u.topStatus || '—';
+    $('id-value').textContent = u.numeric_id ?? '—';
+    $('pf-amount').textContent = fmtMoney(u.balance);
+    $('df-amount').textContent = fmtMoney(u.df_balance);
   } catch (e) { console.error('[bind] user:', e); }
 }
 
-// --- билеты фортуны: /api/fortune/tickets/:userId ---
+// --- билеты: /api/fortune/tickets/:userId ---
 async function loadTickets() {
   try {
     const d = await (await fetch(`${API}/api/fortune/tickets/${userId}`)).json();
-    $$('.ticket-badge__count').forEach(el => { el.textContent = d.tickets; });
+    $('ticket-count').textContent = d.tickets;
+    $('fortune-count').textContent = d.tickets;
   } catch (e) { console.error('[bind] tickets:', e); }
 }
 
-// --- бонус: статус и прогресс ---
+// --- бонус: статус (кулдаун 2 часа задаёт plainApi: BONUS_COOLDOWN_SEC) ---
 async function loadBonusStatus() {
   try {
     const d = await (await fetch(`${API}/api/v2/bonus/status/${userId}`)).json();
@@ -63,7 +62,7 @@ async function loadBonusStatus() {
 }
 
 function renderProgress(filled, total) {
-  const box = $('.bonus-card__progress');
+  const box = $('bonus-progress');
   if (!box) return;
   box.innerHTML = '';
   for (let i = 0; i < total; i++) {
@@ -73,46 +72,51 @@ function renderProgress(filled, total) {
   }
 }
 
+// --- таймер 2 часа: формат Ч:ММ:СС (или ММ:СС меньше часа) ---
+function fmtTimer(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  const pad = (v) => String(v).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
 function startBonusTimer(sec) {
-  const btn = $$('.bonus-card__btn')[0];
+  const btn = $('bonus-btn');
   if (!btn) return;
   const text = btn.querySelector('.bonus-card__btn-text');
   if (!text) return;
-  if (bonusTimer) clearInterval(bonusTimer);
+  if (bonusTimer) { clearInterval(bonusTimer); bonusTimer = null; }
   if (sec <= 0) {
     bonusReady = true;
     text.textContent = 'забрать бонус';
     return;
   }
   bonusReady = false;
+  let left = sec;
   const tick = () => {
-    if (sec <= 0) {
+    if (left <= 0) {
       clearInterval(bonusTimer); bonusTimer = null;
       bonusReady = true;
       text.textContent = 'забрать бонус';
       return;
     }
-    const m = String(Math.floor(sec / 60)).padStart(2, '0');
-    const s = String(sec % 60).padStart(2, '0');
-    text.textContent = `доступно через ${m}:${s}`;
-    sec--;
+    text.textContent = `доступно через ${fmtTimer(left)}`;
+    left--;
   };
   tick();
   bonusTimer = setInterval(tick, 1000);
 }
 
-// Кнопка бонуса: клонируем узел, чтобы снять дизайнерский listener (модалка)
-// и повесить реальное обращение к /api/v2/bonus/spin
+// Кнопку бонуса клонируем: снимаем дизайнерский listener (модалка)
+// и вешаем реальный спин. Модалка на кулдауне НЕ открывается — только отсчёт на кнопке.
 function setupBonusButton() {
-  const btn = $$('.bonus-card__btn')[0];
+  const btn = $('bonus-btn');
   if (!btn) return;
   const clone = btn.cloneNode(true);
   btn.parentNode.replaceChild(clone, btn);
   clone.addEventListener('click', async () => {
-    if (!bonusReady) {
-      openInfo('Бонус ещё не готов: дождитесь таймера.');
-      return;
-    }
+    if (!bonusReady) return; // таймер уже идёт на кнопке
     try {
       const r = await fetch(`${API}/api/v2/bonus/spin`, {
         method: 'POST',
@@ -122,7 +126,6 @@ function setupBonusButton() {
       if (r.status === 425) {
         const d = await r.json();
         startBonusTimer(d.availableIn || 0);
-        openInfo('Бонус ещё не готов: дождитесь таймера.');
         return;
       }
       if (!r.ok) { openInfo('Ошибка получения бонуса.'); return; }
@@ -141,9 +144,9 @@ function setupBonusButton() {
 }
 
 function openInfo(text) {
-  const t = $('.modal-text');
+  const t = $('modalText');
   if (t) t.textContent = text;
-  const o = $('#modalOverlay');
+  const o = $('modalOverlay');
   if (o) o.classList.add('active');
 }
 
@@ -157,7 +160,7 @@ function connectOnlineWS() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'online_count') {
-          const el = $('.online-status__text');
+          const el = $('online-text');
           if (el) el.textContent = `онлайн: ${data.count}`;
         }
       } catch (e) { console.error('[bind] ws parse:', e); }
