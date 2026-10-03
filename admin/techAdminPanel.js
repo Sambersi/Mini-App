@@ -1,10 +1,10 @@
 // admin/techAdminPanel.js
 const { Markup } = require('telegraf');
 const CONFIG = require('../config');
+const { calculateLoadDetails, getHealthStatus } = require('../botMonitoring');
 
 // =====================================================
 // ДОСТУП К ТЕХАДМИН-ПАНЕЛИ
-// Доступ только для ID из ADMIN_IDS в .env
 // =====================================================
 function getTechSuperAdminIds() {
   return String(process.env.ADMIN_IDS || '')
@@ -56,6 +56,7 @@ function getTechAdminKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('💰 Реф бонусы', 'tech_ref_menu')],
     [Markup.button.callback('📢 Пост в канал', 'tech_post_menu')],
+    [Markup.button.callback('📊 Нагрузка сервера', 'tech_server_load')],
     [Markup.button.callback('⬅️ Назад', 'back_to_admin_panel')],
   ]);
 }
@@ -81,7 +82,6 @@ async function showTechAdminPanel(ctx) {
     if (ctx.callbackQuery) {
       return ctx.answerCbQuery('❌ Нет доступа.', true);
     }
-
     return ctx.reply('❌ Нет доступа.');
   }
 
@@ -118,15 +118,15 @@ async function showRefBonusMenu(ctx) {
     if (ctx.callbackQuery) {
       return ctx.answerCbQuery('❌ Нет доступа.', true);
     }
-
     return ctx.reply('❌ Нет доступа.');
   }
 
   const text =
     '💰 <b>Настройка реф бонусов</b>\n\n' +
     'Нажмите на пункт, чтобы изменить значение.\n\n' +
-    '⚠️ Изменения действуют в памяти запущенного бота до перезапуска.\n' +
-    'Для постоянного сохранения нужно будет добавить хранилище настроек.';
+    '⚠️ <b>ВНИМАНИЕ:</b> Изменения действуют только в памяти запущенного бота.\n' +
+    'При перезапуске все значения сбросятся на дефолтные из <code>config.js</code>.\n' +
+    'Для постоянного сохранения нужно добавить хранилище настроек (БД или файл).';
 
   const keyboard = getRefBonusKeyboard();
 
@@ -140,6 +140,60 @@ async function showRefBonusMenu(ctx) {
       parse_mode: 'HTML',
       ...keyboard,
     });
+  }
+
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery();
+  }
+
+  return true;
+}
+
+// =====================================================
+// МЕНЮ НАГРУЗКИ СЕРВЕРА (ПЕРЕНЕСЕНО СЮДА)
+// =====================================================
+async function showServerLoad(ctx) {
+  if (!isTechSuperAdmin(ctx.from.id)) {
+    if (ctx.callbackQuery) {
+      return ctx.answerCbQuery('❌ Нет доступа.', true);
+    }
+    return ctx.reply('❌ Нет доступа.');
+  }
+
+  try {
+    const load = calculateLoadDetails();
+    const health = getHealthStatus();
+    const emoji = health.level === 'ok' ? '🟢' : health.level === 'warning' ? '🟡' : '🔴';
+
+    const text = `
+💻 <b>Нагрузка сервера</b>
+
+${emoji} Состояние: ${health.reason}
+⚡ CPU: ${load.cpu.toFixed(1)}%
+🧠 Heap: ${load.heap.toFixed(1)}% (${load.rssMB} MB RSS)
+🔄 Event loop lag: ${load.eventLoopLagMs} ms (пик ${load.maxEventLoopLagMs} ms)
+📨 RPS: ${load.rps} / RPM: ${load.rpm} (пик ${load.peakRPS})
+`.trim();
+
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('🔄 Обновить', 'tech_server_load')],
+      [Markup.button.callback('⬅️ Назад', 'tech_admin_panel')],
+    ]);
+
+    try {
+      await ctx.editMessageText(text, {
+        parse_mode: 'HTML',
+        ...keyboard,
+      });
+    } catch (error) {
+      await ctx.reply(text, {
+        parse_mode: 'HTML',
+        ...keyboard,
+      });
+    }
+  } catch (error) {
+    console.error('[TechAdmin] Ошибка при получении нагрузки:', error);
+    await ctx.reply('❌ Ошибка при получении данных о нагрузке.');
   }
 
   if (ctx.callbackQuery) {
@@ -174,7 +228,8 @@ async function startEditTechConfigField(ctx, fieldKey) {
     `✏️ Поле: <b>${field.label}</b>\n\n` +
       `Текущее значение: <code>${CONFIG[fieldKey]}</code>\n\n` +
       'Отправьте новое значение числом.\n' +
-      'Для отмены отправьте: <code>отмена</code>',
+      'Для отмены отправьте: <code>отмена</code>\n\n' +
+      '⚠️ Напоминание: изменение не сохранится после перезапуска.',
     {
       parse_mode: 'HTML',
     }
@@ -185,7 +240,6 @@ async function startEditTechConfigField(ctx, fieldKey) {
 
 // =====================================================
 // ПРИЁМ ТЕКСТА ДЛЯ РЕДАКТИРОВАНИЯ НАСТРОЕК
-// Вызывать в bot.js до обычных команд
 // =====================================================
 async function handleTechAdminMessage(ctx) {
   const userId = String(ctx.from.id);
@@ -227,7 +281,7 @@ async function handleTechAdminMessage(ctx) {
   techSessions.delete(userId);
 
   await ctx.reply(
-    `✅ Значение обновлено.\n\n` +
+    `✅ Значение обновлено (в памяти).\n\n` +
       `${field.label}: <b>${CONFIG[fieldKey]}</b>\n\n` +
       '⚠️ Изменение действует до перезапуска бота.',
     {
@@ -259,6 +313,10 @@ async function handleTechAdminCallback(ctx) {
 
   if (data === 'tech_ref_menu') {
     return showRefBonusMenu(ctx);
+  }
+
+  if (data === 'tech_server_load') {
+    return showServerLoad(ctx);
   }
 
   if (data.startsWith('tech_ref_edit_')) {

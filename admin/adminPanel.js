@@ -1,14 +1,8 @@
-// adminPanel.js
+// admin/adminPanel.js
 const { Markup } = require('telegraf');
-const { getAllUsers, getUsersByStatuses, getUserStatuses, getActivePlayersCount } = require('../db'); // Импортируем необходимые функции
+const { getAllUsers, getUsersByStatuses, getUserStatuses, getActivePlayersCount } = require('../db');
 const { isModerator } = require('./muteManagement');
-const { calculateLoadDetails, getHealthStatus } = require('../botMonitoring');
-const load = calculateLoadDetails();
-const health = getHealthStatus();
-const emoji = health.level === 'ok' ? '🟢' : health.level === 'warning' ? '🟡' : '🔴';
 
-// === ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ID ТЕХ-СУПЕРАДМИНОВ ИЗ .env ===
-// Читает ADMIN_IDS из .env и возвращает массив строк
 function getTechSuperAdminIds() {
   return String(process.env.ADMIN_IDS || '')
     .split(',')
@@ -16,113 +10,79 @@ function getTechSuperAdminIds() {
     .filter(Boolean);
 }
 
-// === ФУНКЦИЯ ПРОВЕРКИ ДОСТУПА К ТЕХАДМИНКЕ ===
-// Доступ только пользователям из ADMIN_IDS (768451950,7330982735)
 function isTechSuperAdmin(userId) {
   return getTechSuperAdminIds().includes(String(userId));
 }
 
-// Функция для создания клавиатуры админ-панели
 function getAdminPanelKeyboard(userId) {
   const rows = [
     [Markup.button.callback('Список админов', 'list_admins')],
     [Markup.button.callback('Админские команды', 'admin_commands')],
   ];
-
-  // === КНОПКА ТЕХАДМИНКИ ТОЛЬКО ДЛЯ ADMIN_IDS ===
   if (isTechSuperAdmin(userId)) {
     rows.push([Markup.button.callback('🛠 Тех админ панель', 'tech_admin_panel')]);
   }
-
   rows.push([Markup.button.callback('Закрыть', 'close_panel')]);
-
   return Markup.inlineKeyboard(rows);
 }
 
-// Функция для проверки, является ли пользователь главным администратором
 function isMainAdmin(userId) {
   return process.env.MAIN_ADMIN === userId.toString();
 }
 
-// Функция для проверки, является ли пользователь "Тех администратор"
 async function isTechAdmin(userId) {
-  const statuses = await getUserStatuses(userId); // Получаем статусы пользователя
-  return statuses.includes('Тех администратор'); // Проверяем наличие статуса
+  const statuses = await getUserStatuses(userId);
+  return statuses.includes('Тех администратор');
 }
 
-// Функция для проверки, является ли пользователь "Администратор"
 async function isRegularAdmin(userId) {
-  const statuses = await getUserStatuses(userId); // Получаем статусы пользователя
-  return statuses.includes('Администратор'); // Проверяем наличие статуса
+  const statuses = await getUserStatuses(userId);
+  return statuses.includes('Администратор');
 }
 
-// Функция для проверки, является ли пользователь администратором
 async function isAdmin(userId) {
   return (
-    isMainAdmin(userId) || // Проверка на главного администратора
-    await isTechAdmin(userId) || // Проверка на "Тех администратор"
-    await isRegularAdmin(userId) || // Проверка на обычного администратора
-    await isModerator(userId) // Проверка на модератора
+    isMainAdmin(userId) ||
+    await isTechAdmin(userId) ||
+    await isRegularAdmin(userId) ||
+    await isModerator(userId)
   );
 }
 
-// Функция для форматирования чисел с разделителями
 function formatNumber(num) {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
-// Функция для вывода админ-панели
 async function showAdminPanel(ctx) {
   try {
     const userId = ctx.from.id.toString();
-
-    // Проверяем права администратора или модератора
     if (!(await isAdmin(userId))) {
       return ctx.reply('❌ У вас нет прав для использования админ-панели.');
     }
-
-    // Получаем всех пользователей
     const users = await getAllUsers();
-
-    // Исключаем админов из общего подсчета балансов
-    // Предполагается, что numeric_id админов известны (например, 1, 2, 3)
-    const adminNumericIds = [1, 2, 3]; // Список numeric_id админов
+    const adminNumericIds = [1, 2, 3];
     const regularUsers = users.filter(user => !adminNumericIds.includes(user.numeric_id));
-
     const totalPlayers = regularUsers.length;
     const totalPF = regularUsers.reduce((sum, user) => sum + user.balance, 0);
     const totalDF = regularUsers.reduce((sum, user) => sum + (user.df_balance || 0), 0);
     const totalCardBalance = regularUsers.reduce((sum, user) => sum + (user.card_balance || 0), 0);
-
-    // Форматируем числа
-    const formattedTotalPF = formatNumber(totalPF);
-    const formattedTotalDF = formatNumber(totalDF);
-    const formattedCardBalance = formatNumber(totalCardBalance);
-
-    // Получаем подробную информацию о нагрузке
-    const loadDetails = calculateLoadDetails();
     const online5m = getActivePlayersCount(5 * 60 * 1000);
     const active24h = getActivePlayersCount(24 * 60 * 60 * 1000);
 
-    // Формируем сообщение для админ-панели
     const adminPanelMessage = `
 📊 <b>Админ-панель</b> 📊
+
 Количество игроков: ${formatNumber(totalPlayers)}
-🟢 Онлайн: ${formatNumber(online5m)}
-📈 Активны за сутки: ${formatNumber(active24h)}\n
-💰 Общий баланс PF: ${formattedTotalPF}
-💳 Общий баланс карт: ${formattedCardBalance}
-🍩 Общее количество DF: ${formattedTotalDF}\n
-💻 <b>Нагрузка:</b>
-${emoji} Состояние: ${health.reason}
-⚡ CPU: ${load.cpu.toFixed(1)}%
-🧠 Heap: ${load.heap.toFixed(1)}% (${load.rssMB} MB RSS)
-🔄 Event loop lag: ${load.eventLoopLagMs} ms (пик ${load.maxEventLoopLagMs} ms)
-📨 RPS: ${load.rps} / RPM: ${load.rpm} (пик ${load.peakRPS})
+🟢 Онлайн (5 мин): ${formatNumber(online5m)}
+📈 Активны за сутки: ${formatNumber(active24h)}
+
+💰 Общий баланс PF: ${formatNumber(totalPF)}
+💳 Общий баланс карт: ${formatNumber(totalCardBalance)}
+🍩 Общее количество DF: ${formatNumber(totalDF)}
+
 Выберите действие:
 `.trim();
 
-    // Отправляем сообщение с клавиатурой (передаем userId для условной кнопки)
     await ctx.replyWithHTML(adminPanelMessage, getAdminPanelKeyboard(userId));
   } catch (error) {
     console.error('Ошибка при выводе админ-панели:', error);
@@ -130,35 +90,26 @@ ${emoji} Состояние: ${health.reason}
   }
 }
 
-// Обработчик кнопки "Список админов"
 async function handleListAdmins(ctx) {
   try {
     const userId = ctx.from.id.toString();
-
-    // Проверяем права администратора или модератора
     if (!(await isAdmin(userId))) {
-      return ctx.answerCbQuery('У вас нет прав для выполнения этого действия.'); // Ответ на callback
+      return ctx.answerCbQuery('У вас нет прав для выполнения этого действия.');
     }
-
-    // Получаем всех пользователей со статусами "Администратор", "Тех администратор" и "Модератор"
-    const admins = await getUsersByStatuses(['Администратор', 'Тех администратор', 'Модератор']);
-
+    const admins = await getUsersByStatuses([
+      'Тех администратор', 'Главный админ', 'Администратор',
+      'Руководитель партнёрки', 'Модератор'
+    ]);
     if (admins.length === 0) {
       return ctx.reply('Список администраторов пуст.', { parse_mode: 'HTML' });
     }
-
-    // Формируем список администраторов с гиперссылками и отметкой статусов
     const adminList = admins.map(admin => {
       const username = admin.username || `User${admin.numeric_id}`;
       const userLink = `<a href="tg://user?id=${admin.id}">${username}</a>`;
       const statusLabel = `(${admin.status_names})`;
       return `- ${userLink} ${statusLabel} (${admin.numeric_id})`;
     });
-
-    // Объединяем все строки в один список
     const adminListMessage = `<b>Список администраторов:</b>\n${adminList.join('\n')}`;
-
-    // Отправляем сообщение
     await ctx.replyWithHTML(adminListMessage);
   } catch (error) {
     console.error('Ошибка при получении списка администраторов:', error);
@@ -168,47 +119,22 @@ async function handleListAdmins(ctx) {
 
 async function handleAdminCommands(ctx) {
   try {
-    // Проверяем права администратора
     const userId = ctx.from.id.toString();
     if (!(await isAdmin(userId))) {
-      return ctx.answerCbQuery('У вас нет прав для выполнения этого действия.'); // Ответ на callback
+      return ctx.answerCbQuery('У вас нет прав для выполнения этого действия.');
     }
-
-    // Определяем роль пользователя
     const isTechAdminUser = await isTechAdmin(userId);
     const isRegularAdminUser = await isRegularAdmin(userId);
     const isModeratorUser = await isModerator(userId);
 
-    // Формируем список команд для модератора
     const moderatorCommands = `
 📄 <b>Список команд для модератора:</b>
 🛡️  <b>Управление мутами:</b>
 • Мут [id] [время в часах(по умолчанию)/мин]  [причина](необязательно)  - Замьютить пользователя
-◦ Примеры использования:
-▪ мут 12345 2 причина - Мут на 2 часа с причиной
-▪ мут 12345 30 мин причина - Мут на 30 минут с причиной
-▪ мут 12345 навсегда причина - Мут навсегда с причиной
-▪ мут 12345 2 - Мут на 2 часа без причины
-▪ мут 12345 30 мин - Мут на 30 минут без причины
-▪ мут 12345 навсегда - Мут навсегда без указания причины
-◦  При использовании ответом на сообщение:
-▪ мут 2 причина - Мут пользователя, которому принадлежит сообщение, на 2 часа с причиной
-▪ мут 30 мин причина - Мут пользователя, которому  принадлежит сообщение, на 30 минут с причиной
-▪ мут навсегда причина - Мут пользователя навсегда с причиной
-▪ мут 2 - Мут пользователя на 2 часа без причины
-▪ мут 30 мин - Мут пользователя на 30 минут без причины
-▪ мут навсегда - Мут пользователя навсегда без указания причины
-▪ мут - Мут пользователя навсегда без указания причины и времени
-Примечание: Время мута можно по умолчанию в часах, но можно указать и в минутах. Если указано слово "мин", время интерпретируется как минуты. Слово "часов" писать НЕ нужно.
 • Размут [id] - Размьютить пользователя
-◦ Примеры использования:
-▪ размут 12345 - Снять мут с пользователя с id 12345
-◦ При использовании ответом на сообщение:
-▪  размут - Снять мут с пользователя, которому принадлежит сообщение
 • Мутлист - Просмотреть список замьюченных пользователей
 `;
 
-    // Формируем список команд для обычного администратора
     const adminCommands = `
 📄 <b>Список команд для администратора:</b>
 📣 <b>Управление репортами:</b>
@@ -216,30 +142,13 @@ async function handleAdminCommands(ctx) {
 • Ответить [номер_репорта] [текст_ответа] - Ответить на репорт
 📛 <b>Управление черным списком:</b>
 • Бан [id] [время в часах] или "навсегда" [причина] - Заблокировать пользователя
-◦ Примеры использования:
-▪ бан 12345 24 причина - Бан на 24 часа с причиной
-▪ бан 12345 навсегда причина - Бан навсегда с причиной
-▪ бан 12345 24 - Бан на 24 часа без причины
-▪ бан 12345 навсегда - Бан навсегда без указания причины
-◦ При использовании ответом на сообщение:
-▪ бан 24 причина - Бан пользователя, которому принадлежит сообщение
-▪ бан навсегда причина - Бан навсегда с причиной
-▪ бан 24 - Бан на 24 часа без причины
-▪ бан навсегда - Бан навсегда без указания причины
-▪ бан - Бан навсегда без указания причины и времени
-Время бана указывается строго в часах либо словом "навсегда"
 • Разбан [id] - Разблокировать пользователя
-◦ Примеры использования:
-▪ разбан 12345 - Снять бан с пользователя с id 12345
-◦ При использовании ответом на сообщение:
-▪ разбан - Снять бан с пользователя, которому принадлежит сообщение
 • ЧС - Просмотреть список заблокированных пользователей
 🎮 <b>Игровые привилегии:</b>
 •  <code>/id</code> либо <code>ид</code> [телеграм ид]/ответом на сообщение
 •  <code>/prof</code> либо <code>гет</code> либо <code>чек</code> [id]/ответом на сообщение
 `;
 
-    // Формируем список команд для технического администратора
     const techAdminCommands = `
 ⚙️ <b>Для технических админов:</b>
 💰  <b>Управление профилем пользователей:</b>
@@ -250,47 +159,11 @@ async function handleAdminCommands(ctx) {
 •  <code>Забрать префикс [ID игрока] [номер]</code> - Удалить префикс у пользователя
 📛  <b>Управление черным списком:</b>
 •  <code>Бан [id] [время в часах] или "навсегда" [причина]</code> - Заблокировать пользователя
-◦ Примеры использования:
-▪  <code>бан 12345 24 причина</code> - Бан на 24 часа с причиной
-▪  <code>бан 12345 навсегда причина</code> - Бан навсегда с причиной
-▪  <code>бан 12345 24</code> - Бан на 24 часа без причины
-▪  <code>бан 12345 навсегда</code> - Бан навсегда без указания причины
-◦ При использовании ответом на сообщение:
-▪  <code>бан 24 причина</code> - Бан пользователя, которому принадлежит сообщение
-▪  <code>бан навсегда причина</code> - Бан навсегда с причиной
-▪  <code>бан 24</code> - Бан на 24 часа без причины
-▪  <code>бан навсегда</code> - Бан навсегда без указания причины
-▪  <code>бан</code> - Бан навсегда без указания причины и времени
-Время бана указывается строго в часах либо словом "навсегда"
 •  <code>Разбан [id]</code> - Разблокировать пользователя
-◦ Примеры использования:
-▪  <code>разбан 12345</code> - Снять бан с пользователя с id 12345
-◦ При использовании ответом на сообщение:
-▪  <code>разбан</code> - Снять бан с пользователя, которому принадлежит сообщение
 •  <code>ЧС</code> - Просмотреть список заблокированных пользователей
 🛡️  <b>Управление мутами:</b>
 •  <code>Мут [id] [время в часах(по умолчанию)/мин]  [причина](необязательно)</code> - Замьютить пользователя
-◦ Примеры использования:
-▪  <code>мут 12345 2 причина</code> - Мут на 2 часа с причиной
-▪  <code>мут 12345 30 мин причина</code> - Мут на 30 минут с причиной
-▪  <code>мут 12345 навсегда причина</code> - Мут навсегда с причиной
-▪  <code>мут 12345 2</code> - Мут на 2 часа без причины
-▪  <code>мут 12345 30 мин</code> - Мут на 30 минут без причины
-▪  <code>мут 12345 навсегда</code> - Мут навсегда без указания причины
-◦ При использовании ответом на сообщение:
-▪  <code>мут 2 причина</code> - Мут пользователя, которому принадлежит сообщение, на 2 часа с причиной
-▪  <code>мут 30 мин причина</code> - Мут пользователя, которому принадлежит сообщение, на 30 минут с причиной
-▪  <code>мут навсегда причина</code> - Мут пользователя навсегда с причиной
-▪  <code>мут 2</code> - Мут пользователя на 2 часа без причины
-▪  <code>мут 30 мин</code> - Мут пользователя на 30 минут без причины
-▪  <code>мут навсегда</code> - Мут пользователя навсегда без указания причины
-▪  <code>мут</code> - Мут пользователя навсегда без указания причины и времени
-Примечание: Время мута можно по умолчанию в часах, но можно указать и в минутах. Если указано слово "мин", время интерпретируется как минуты. Слово "часов" писать НЕ нужно.
 •  <code>Размут [id]</code> - Размьютить пользователя
-◦ Примеры использования:
-▪  <code>размут 12345</code> - Снять мут с пользователя с id 12345
-◦ При использовании ответом на сообщение:
-▪  <code>размут</code> - Снять мут с пользователя, которому принадлежит сообщение
 •  <code>Мутлист</code> - Просмотреть список замьюченных пользователей
 🎟  <b>Управление промокодами:</b>
 •  <code>Создать [количество] [название] [тип] [число]</code> - Создать новый промокод
@@ -299,10 +172,6 @@ async function handleAdminCommands(ctx) {
 📧 <b>Управление рассылками:</b>
 • <code>Рассылка текст [текст]</code> - Отправить текстовую рассылку всем пользователям
 • Рассылка цитата - Отправить цитату всем пользователям
-◦ Для отправки цитаты необходимо ответить на сообщение в чате
-◦ Доступные варианты:
-▪ <code>Рассылка цитата</code> - Переслать сообщение с указанием автора
-▪ Рассылка цитата - Отправить только текст сообщения без указания автора
 💭  <b>Управление режимами чатов:</b>
 •  <code>Деактивировать дабл/дайс</code> - Деактивировать режим в чате
  <b>Управление репортами:</b>
@@ -366,7 +235,6 @@ async function handleAdminCommands(ctx) {
 • <code>забрать_конфеты</code> [id] [количество] - забрать конфеты
 `;
 
-    // Отправляем соответствующий список команд
     let commandsMessage;
     if (isTechAdminUser) {
       commandsMessage = techAdminCommands;
@@ -378,13 +246,9 @@ async function handleAdminCommands(ctx) {
       return ctx.reply('❌ У вас нет доступа к списку админских команд.');
     }
 
-    // Максимальная длина сообщения в Telegram
     const maxMessageLength = 4096;
-
-    // Разбиваем сообщение на части, если оно слишком длинное
     for (let i = 0; i < commandsMessage.length; i += maxMessageLength) {
       const chunk = commandsMessage.slice(i, i + maxMessageLength);
-      // Отправляем каждую часть как отдельное сообщение
       await ctx.replyWithHTML(chunk);
     }
   } catch (error) {
@@ -393,17 +257,13 @@ async function handleAdminCommands(ctx) {
   }
 }
 
-// Обработчик кнопки "Закрыть"
 async function handleClosePanel(ctx) {
   try {
-    // Проверяем права администратора
     const userId = ctx.from.id.toString();
     if (!(await isAdmin(userId))) {
-      return ctx.answerCbQuery('У вас нет прав для выполнения этого действия.'); // Ответ на callback
+      return ctx.answerCbQuery('У вас нет прав для выполнения этого действия.');
     }
-
-    // Удаляем клавиатуру
-    await ctx.editMessageReplyMarkup(undefined); // Убираем кнопки
+    await ctx.editMessageReplyMarkup(undefined);
     await ctx.reply('Админ-панель закрыта.');
   } catch (error) {
     console.error('Ошибка при закрытии админ-панели:', error);
@@ -411,18 +271,12 @@ async function handleClosePanel(ctx) {
   }
 }
 
-// === ОБРАБОТЧИК КНОПКИ ТЕХАДМИНКИ ===
-// Проверяет ADMIN_IDS и отправляет пользователя в техадмин-панель
 async function handleTechAdminPanelButton(ctx) {
   try {
     const userId = ctx.from.id.toString();
-
     if (!isTechSuperAdmin(userId)) {
       return ctx.answerCbQuery('❌ У вас нет доступа к тех админ панели.', { show_alert: true });
     }
-
-    // Импортируем и вызываем функцию показа техадмин-панели
-    // (функция будет в отдельном файле techAdminPanel.js, см. следующий шаг)
     try {
       const { showTechAdminPanel } = require('./techAdminPanel');
       await showTechAdminPanel(ctx);
@@ -430,8 +284,7 @@ async function handleTechAdminPanelButton(ctx) {
       console.error('[TechAdminPanel] Не удалось импортировать техадмин-панель:', importErr.message);
       await ctx.editMessageText(
         '🛠 <b>Тех админ панель</b>\n\n' +
-        '⚠️ Модуль техадмин-панели ещё не подключён.\n' +
-        'Создайте файл <code>admin/techAdminPanel.js</code> и экспортируйте <code>showTechAdminPanel</code>.',
+        '⚠️ Модуль техадмин-панели ещё не подключён.',
         {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
@@ -440,7 +293,6 @@ async function handleTechAdminPanelButton(ctx) {
         }
       );
     }
-
     return ctx.answerCbQuery();
   } catch (error) {
     console.error('Ошибка при открытии тех админ панели:', error);
@@ -448,16 +300,12 @@ async function handleTechAdminPanelButton(ctx) {
   }
 }
 
-// === ОБРАБОТЧИК КНОПКИ "НАЗАД" ИЗ ТЕХАДМИНКИ ===
 async function handleBackToAdminPanel(ctx) {
   try {
     const userId = ctx.from.id.toString();
-
     if (!(await isAdmin(userId))) {
       return ctx.answerCbQuery('У вас нет прав для выполнения этого действия.');
     }
-
-    // Удаляем старое сообщение и показываем админ-панель заново
     await ctx.deleteMessage().catch(() => {});
     await showAdminPanel(ctx);
     return ctx.answerCbQuery();
@@ -467,7 +315,6 @@ async function handleBackToAdminPanel(ctx) {
   }
 }
 
-// Экспортируем функции
 module.exports = {
   showAdminPanel,
   handleListAdmins,
