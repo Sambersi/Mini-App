@@ -1,12 +1,44 @@
-/* === ВЕБ-АДАПТАЦИЯ: убираем phone-frame, растягиваем на весь экран === */
+/* === ВЕБ-АДАПТАЦИЯ: без рамки телефона, на весь экран === */
 html, body { height: 100%; overflow: hidden; }
-body { background-color: #03011d; display: block; } /* Перебиваем flex центрирование дизайнера */
+body { background-color: #03011d; display: block; }
 
 .mobile-screen {
   width: 100vw;
   height: 100vh;
-  border-radius: 0; /* Убираем скругления телефона */
-  /* Blur и ::before/::after уже есть в style.css дизайнера, они сработают автоматически */
+  border-radius: 0;
+}
+
+/* === ЗОНЫ РАЗМЫТИЯ: дословно из кода дизайнера === */
+.mobile-screen::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 120px;
+  z-index: 5;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(3, 1, 29, 0.95) 0%, rgba(3, 1, 29, 0.85) 40%, rgba(3, 1, 29, 0) 100%);
+  backdrop-filter: blur(50px);
+  -webkit-backdrop-filter: blur(50px);
+  mask-image: linear-gradient(to bottom, black 0%, black 50%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 50%, transparent 100%);
+}
+
+.mobile-screen::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 120px;
+  z-index: 5;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(3, 1, 29, 0.95) 0%, rgba(3, 1, 29, 0.85) 40%, rgba(3, 1, 29, 0) 100%);
+  backdrop-filter: blur(50px);
+  -webkit-backdrop-filter: blur(50px);
+  mask-image: linear-gradient(to top, black 0%, black 50%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, black 0%, black 50%, transparent 100%);
 }
 
 /* === ФИКС ШИРИНЫ ПЛАШЕК (макс 300px, центрирование) === */
@@ -17,7 +49,6 @@ body { background-color: #03011d; display: block; } /* Перебиваем flex
   width: calc(100% - 40px);
   max-width: 300px;
 }
-
 .bottom-nav {
   left: 50%;
   right: auto;
@@ -25,12 +56,9 @@ body { background-color: #03011d; display: block; } /* Перебиваем flex
   width: calc(100% - 40px);
   max-width: 300px;
 }
+.currency-card, .bonus-shell, .action-card, .info-card { max-width: 300px; }
 
-.currency-card, .bonus-shell, .action-card, .info-card {
-  max-width: 300px;
-}
-
-/* === МИНИ-ПЛАШКА БАЛАНСА (для страниц кроме профиля) === */
+/* === МИНИ-ПЛАШКА БАЛАНСА (страницы кроме профиля) === */
 .mini-header {
   position: absolute;
   top: 20px;
@@ -55,14 +83,14 @@ body { background-color: #03011d; display: block; } /* Перебиваем flex
 }
 
 /* === ОТСТУПЫ КОНТЕНТА ПОД ПЛАШКИ === */
-.scroll-content { padding-top: 20px; } /* По умолчанию (без верхней плашки) */
-.mobile-screen[data-page="профиль"] .scroll-content { padding-top: 106px; } /* Под profile-card */
+.scroll-content { padding-top: 20px; }
+.mobile-screen[data-page="профиль"] .scroll-content { padding-top: 106px; }
 .mobile-screen[data-page="играть"] .scroll-content,
 .mobile-screen[data-page="донат"] .scroll-content,
 .mobile-screen[data-page="реферал"] .scroll-content,
-.mobile-screen[data-page="еще"] .scroll-content { padding-top: 84px; } /* Под mini-header */
+.mobile-screen[data-page="еще"] .scroll-content { padding-top: 84px; }
 
-/* === НИК И ID НЕ ВЫЛЕЗАЮТ === */
+/* === НИК И ID НЕ ВЫЛЕЗАЮТ ЗА ПЛАШКУ === */
 .profile-card__info { min-width: 0; max-width: calc(100% - 130px); overflow: hidden; }
 .profile-card__nickname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .profile-card__id { min-width: 0; overflow: hidden; }
@@ -72,15 +100,15 @@ body { background-color: #03011d; display: block; } /* Перебиваем flex
 .profile-card__help, .bonus-card__help { width: 20px; height: 20px; padding: 0; }
 .help-icon { width: 5px; height: 8px; display: block; }
 
-/* === ОНЛАЙН: фиксированный, выше нижней плашки на 16px === */
+/* === ОНЛАЙН: прикреплён к нижней плашке, выше на 16px === */
 .online-status--fixed {
   position: absolute;
-  bottom: 126px; /* 30 (bottom nav) + 80 (height) + 16 = 126 */
+  bottom: 126px; /* 30 (отступ меню) + 80 (высота меню) + 16 */
   left: 50%;
   transform: translateX(-50%);
   width: auto;
   height: auto;
-  z-index: 20; /* Выше контента (1), ниже плашек (30) */
+  z-index: 20;
   display: flex;
   align-items: center;
   gap: 5px;
