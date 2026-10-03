@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>F Bot — Профиль</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="../../style.css">
+  <link rel="stylesheet" href="../../tg.css">
+  <link rel="stylesheet" href="profile.css">
+</head>
+<body>
+<div class="mobile-screen" data-page="профиль">
+
+  <!-- ВЕРХНЯЯ ПЛАШКА: только на этой странице -->
+  <header id="header-profile" class="profile-card glass-card">
+    <button class="profile-card__help" data-help>?</button>
+    <div class="profile-card__avatar">
+      <img id="avatar-img" class="profile-card__avatar-img" src="" alt="" style="display:none">
+    </div>
+    <div class="profile-card__info">
+      <p id="nickname" class="profile-card__nickname">—</p>
+      <div class="profile-card__status">
+        <span class="profile-card__status-label">статус:</span>
+        <span id="status-value" class="profile-card__status-value">—</span>
+      </div>
+      <div class="profile-card__id">
+        <span class="profile-card__id-label">id:</span>
+        <span id="id-value" class="profile-card__id-value">—</span>
+      </div>
+    </div>
+    <div class="profile-card__tickets">
+      <div class="ticket-badge">
+        <img class="ticket-badge__img" src="../../icons/тикет.svg" alt="">
+        <span id="ticket-count" class="ticket-badge__count">0</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="scroll-content">
+
+    <div class="currency-card glass-card currency-card--to-wheels">
+      <div class="currency-card__content">
+        <img class="currency-card__icon" src="../../icons/Pf.svg" alt="">
+        <p id="pf-amount" class="currency-card__amount">—</p>
+      </div>
+      <button class="currency-card__buy" data-buy>
+        <img class="currency-card__buy-icon" src="../../icons/plus.svg" alt="">
+      </button>
+    </div>
+
+    <div class="currency-card glass-card currency-card--to-wheels">
+      <div class="currency-card__content">
+        <img class="currency-card__icon" src="../../icons/DF.svg" alt="">
+        <p id="df-amount" class="currency-card__amount">—</p>
+      </div>
+      <button class="currency-card__buy" data-buy>
+        <img class="currency-card__buy-icon" src="../../icons/plus.svg" alt="">
+      </button>
+    </div>
+
+    <div class="bonus-shell">
+      <div class="bonus-card glass-card">
+        <button class="bonus-card__help" data-help>?</button>
+        <div class="bonus-card__wheel-wrap">
+          <img class="bonus-card__wheel-img" src="../../img/bonus-wheel.png" alt="">
+          <img class="bonus-card__frame-img" src="../../img/bonus-frame.png" alt="">
+          <img class="bonus-card__pointer-img" src="../../img/стрелка.png" alt="">
+        </div>
+        <div class="bonus-card__header">
+          <p class="bonus-card__title">колесо бонус</p>
+        </div>
+        <p class="bonus-card__description">Крути бонусное колесо каждые 2 часа и лутай PF! А на каждый 6-й прокрут забирай МЕГА бонус с удвоенными призами!</p>
+        <div class="bonus-card__footer">
+          <div id="bonus-progress" class="bonus-card__progress"></div>
+          <button id="bonus-btn" class="bonus-card__btn">
+            <span class="bonus-card__btn-text">забрать бонус</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="bonus-shell">
+      <div class="bonus-card glass-card">
+        <div class="bonus-card__header">
+          <p class="bonus-card__title">колесо фортуны</p>
+        </div>
+        <p class="bonus-card__description">Крути колесо фортуны за билеты и выигрывай СУПЕР призы!</p>
+        <div class="bonus-card__footer">
+          <span id="fortune-count" class="ticket-badge__count">0</span>
+          <button id="fortune-btn" class="bonus-card__btn">
+            <span class="bonus-card__btn-text">прокрутить за билет</span>
+            <img class="bonus-card__btn-ticket" src="../../icons/тикет.svg" alt="">
+            <span class="bonus-card__btn-x">x</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-card glass-card">
+      <img class="action-card__icon" src="../../icons/promo.svg" alt="">
+      <div class="action-card__content">
+        <p class="action-card__title">промокод</p>
+        <input id="promo-input" class="input" placeholder="Введите код">
+      </div>
+      <button id="promo-open" class="action-card__btn">
+        <img class="action-card__btn-icon" src="../../icons/arrow.svg" alt="">
+      </button>
+    </div>
+
+    <div class="action-card glass-card">
+      <img class="action-card__icon" src="../../icons/channel.svg" alt="">
+      <div class="action-card__content">
+        <p class="action-card__title">наш канал</p>
+        <p class="action-card__text">Подписывайтесь</p>
+      </div>
+      <button id="channel-open" class="action-card__btn">
+        <img class="action-card__btn-icon" src="../../icons/arrow.svg" alt="">
+      </button>
+    </div>
+
+  </div><!-- /scroll-content -->
+
+  <div id="online-status" class="online-status online-status--fixed">
+    <span class="online-status__dot"></span>
+    <span id="online-text" class="online-status__text">онлайн: 0</span>
+  </div>
+
+  <!-- НИЖНЕЕ МЕНЮ: своё на каждой странице, иконки статичны -->
+  <nav class="bottom-nav glass-card">
+    <a class="bottom-nav__item" href="../referrals/index.html">
+      <img class="bottom-nav__icon" src="../../icons/реферал_off.svg" alt="">
+      <span class="bottom-nav__label">реферал</span>
+    </a>
+    <a class="bottom-nav__item" href="../donate/index.html">
+      <img class="bottom-nav__icon" src="../../icons/донат_off.svg" alt="">
+      <span class="bottom-nav__label">донат</span>
+    </a>
+    <a class="bottom-nav__item" href="../play/index.html">
+      <img class="bottom-nav__icon" src="../../icons/играть_off.svg" alt="">
+      <span class="bottom-nav__label">играть</span>
+    </a>
+    <a class="bottom-nav__item bottom-nav__item--active" href="index.html">
+      <img class="bottom-nav__icon" src="../../icons/профиль.svg" alt="">
+      <span class="bottom-nav__label bottom-nav__label--active">профиль</span>
+    </a>
+    <a class="bottom-nav__item" href="../more/index.html">
+      <img class="bottom-nav__icon" src="../../icons/еще_off.svg" alt="">
+      <span class="bottom-nav__label">еще</span>
+    </a>
+  </nav>
+
+</div><!-- /mobile-screen -->
+
+<script src="../../app.js"></script>
+<script src="profile.js"></script>
+</body>
+</html>

@@ -6,7 +6,7 @@
 .seg-btn.active { background: #DCCDFF; color: #180F2A; font-weight: 600; }
 .input, .select { background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; color: #f5f3ff; font-family: 'Montserrat', sans-serif; font-size: 12px; padding: 8px; }
 .logs-search { flex: 1; min-width: 0; }
-.btn-mini { background: #DCCDFF; border: none; border-radius: 10px; color: #180F2A; font-family: 'Montserrat', sans-serif; font-size: 12px; font-weight: 600; padding: 8px 12px; cursor: pointer; white-space: nowrap; }
+.btn-mini { background: #DCCDFF; border: none; border-radius: 10px; color: #180F2A; font-family: 'Montserrat', sans-serif; font-size: 12px; font-weight: 600; padding: 8px 12px; cursor: pointer; white-space: nowrap; text-decoration: none; display: inline-block; }
 .btn-mini.ghost { background: transparent; color: rgba(245,243,255,.7); border: 1px solid rgba(255,255,255,.2); }
 .logs-table-wrap { width: 100%; max-width: 300px; padding: 12px; }
 .logs-scroll { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; max-height: 44vh; }

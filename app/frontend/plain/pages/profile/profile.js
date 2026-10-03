@@ -14,10 +14,14 @@ async function loadUser() {
     $('status-value').textContent = u.topStatus || '—';
     const pf = Number(u.balance || 0).toLocaleString('ru-RU');
     $('pf-amount').textContent = pf;
-    $('header-pf-amount').textContent = pf;
+    const hp = $('header-pf-amount'); // мини-плашки больше нет — проверяем наличие
+    if (hp) hp.textContent = pf;
     $('df-amount').textContent = Number(u.df_balance || 0).toLocaleString('ru-RU');
     const admin = (u.statuses || []).some(s => s === 'Администратор' || s === 'Тех администратор');
-    if (admin) $('admin-enter').classList.remove('hidden');
+    if (admin) {
+      const btn = $('admin-enter');
+      if (btn) btn.classList.remove('hidden');
+    }
   } catch (e) { console.error(e); }
 }
 
@@ -30,7 +34,9 @@ async function loadTickets() {
 }
 
 function buildBonusProgress() {
-  const box = $('bonus-progress'); box.innerHTML = '';
+  const box = $('bonus-progress');
+  if (!box) return;
+  box.innerHTML = '';
   for (let i = 0; i < 6; i++) {
     const b = document.createElement('span');
     b.className = 'bonus-card__progress-bar';

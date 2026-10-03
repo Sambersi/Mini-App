@@ -24,8 +24,6 @@ const AdminLogs = (() => {
     $('logs-view').addEventListener('change', () => { st.view = $('logs-view').value; st.page = 1; load(); });
     $('logs-find').addEventListener('click', () => { st.search = $('logs-search').value.trim(); st.page = 1; load(); });
     $('logs-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') { st.search = $('logs-search').value.trim(); st.page = 1; load(); } });
-    $('logs-prev').addEventListener('click', () => { if (st.page > 1) { st.page--; load(); } });
-    $('logs-next').addEventListener('click', () => { if (st.page < st.pages) { st.page++; load(); } });
     $('logs-date-btn').addEventListener('click', () => $('logs-date-input').classList.toggle('hidden'));
     $('logs-date-input').addEventListener('change', () => {
       const ts = new Date($('logs-date-input').value).getTime();
@@ -42,7 +40,8 @@ const AdminLogs = (() => {
       $('logs-date-input').classList.add('hidden');
       load();
     });
-    st.timer = setInterval(() => { if (!st.jumpTs && !$('page-admin').classList.contains('hidden')) load(); }, 20000);
+    $('modal-close').addEventListener('click', () => { $('modal').hidden = true; });
+    st.timer = setInterval(() => { if (!st.jumpTs) load(); }, 20000);
     load();
   }
 
@@ -113,7 +112,7 @@ const AdminLogs = (() => {
         const bets = Array.isArray(r.bets) ? r.bets : [];
         const betsHtml = bets.map(b => {
           let v = b.is_win === 1 ? 'win' : b.is_win === 0 ? 'loss' : (r.round_status === 'finished' ? (b.multiplier === r.result_multiplier ? 'win' : 'loss') : 'pend');
-          return `<div class="bet-${v}">${esc(b.amount)} на ${esc(b.multiplier)}${b.game_choice ? `(${esc(b.game_choice)})` : ''}${v === 'win' && b.win_amount ? ` → +${esc(b.win_amount)}` : ''}</div>`;
+          return `<div class="bet-${v}">${esc(b.amount)} на ${esc(b.multiplier)}${b.game_choice ? ` (${esc(b.game_choice)})` : ''}${v === 'win' && b.win_amount ? ` → +${esc(b.win_amount)}` : ''}</div>`;
         }).join('') || '<div class="bet-pend">нет ставок</div>';
         const sts = bets.map(b => b.payout_status);
         const payout = !bets.length ? 'pending'
@@ -154,7 +153,7 @@ const AdminLogs = (() => {
       body += row('Чатов', d.chats.length);
       for (const c of d.chats) body += row(esc(c.chat_title || 'Чат без названия'), `${c.bets} ст. / ${c.bank.toLocaleString('ru-RU')} PF`);
       body += row('Ставок', d.bets.length);
-      for (const b of d.bets) body += row(`${esc(b.username || '—')} → ${esc(b.multiplier)}${b.game_choice ? `(${esc(b.game_choice)})` : ''}`, `<span class="${b.is_win === 1 ? 'bet-win' : b.is_win === 0 ? 'bet-loss' : ''}">${b.amount.toLocaleString('ru-RU')}${b.is_win === 1 && b.win_amount ? ` → +${b.win_amount.toLocaleString('ru-RU')}` : ''}</span>`);
+      for (const b of d.bets) body += row(`${esc(b.username || '—')} → ${esc(b.multiplier)}${b.game_choice ? ` (${esc(b.game_choice)})` : ''}`, `<span class="${b.is_win === 1 ? 'bet-win' : b.is_win === 0 ? 'bet-loss' : ''}">${b.amount.toLocaleString('ru-RU')}${b.is_win === 1 && b.win_amount ? ` → +${b.win_amount.toLocaleString('ru-RU')}` : ''}</span>`);
       showModal('Раунд ' + String(roundId).slice(0, 8) + '…', body);
     } catch (e) {
       showModal('Раунд ' + String(roundId).slice(0, 8) + '…', `<div class="logs-empty">Ошибка: ${esc(e.message)}</div>`);
@@ -163,3 +162,8 @@ const AdminLogs = (() => {
 
   return { init };
 })();
+
+// Самоинициализация на своей странице (userId приходит из app.js)
+document.addEventListener('DOMContentLoaded', () => {
+  AdminLogs.init(userId || null);
+});

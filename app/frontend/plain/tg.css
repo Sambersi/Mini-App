@@ -1,4 +1,4 @@
-/* === ВЕБ-АДАПТАЦИЯ: без рамки телефона, на весь экран === */
+/* === ВЕБ-АДАПТАЦИЯ: без рамки телефона, на весь экран, БЕЗ блюра === */
 html, body { height: 100%; overflow: hidden; }
 body { background-color: #03011d; display: block; }
 .mobile-screen {
@@ -7,67 +7,27 @@ body { background-color: #03011d; display: block; }
   border-radius: 0;
 }
 
-/* Зоны размытия ::before/::after здесь НЕ дублируются:
-   они лежат дословно из кода дизайнера в style.css. */
-
-/* === ФИКС ШИРИНЫ ПЛАШЕК (макс 300px, центрирование) === */
+/* === РОВНЫЕ БЛОКИ 300px === */
 .profile-card {
   left: 50%;
   right: auto;
   transform: translateX(-50%);
-  width: calc(100% - 40px);
-  max-width: 300px;
+  width: 300px;
+  max-width: calc(100% - 40px);
 }
-.bottom-nav {
-  left: 50%;
-  right: auto;
-  transform: translateX(-50%);
-  width: calc(100% - 40px);
-  max-width: 300px;
-}
-.currency-card, .bonus-shell, .action-card, .info-card { max-width: 300px; }
-
-/* === МИНИ-ПЛАШКА БАЛАНСА (страницы кроме профиля) === */
-.mini-header {
-  position: absolute;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 40px);
-  max-width: 300px;
-  height: 48px;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 16px;
-}
-.mini-header__icon { width: 30px; height: 30px; display: block; }
-.mini-header__amount {
-  font-family: 'Unbounded', sans-serif;
-  font-weight: 700;
-  font-size: 14px;
-  color: #f5f3ff;
-  margin: 0;
+.currency-card, .bonus-shell, .action-card, .info-card {
+  width: 300px;
+  max-width: calc(100% - 40px);
 }
 
-/* === ОТСТУПЫ КОНТЕНТА ПОД ПЛАШКИ === */
-.scroll-content { padding-top: 20px; }
+/* === ОТСТУПЫ КОНТЕНТА: верхняя плашка только на профиле === */
 .mobile-screen[data-page="профиль"] .scroll-content { padding-top: 106px; }
-.mobile-screen[data-page="играть"] .scroll-content,
-.mobile-screen[data-page="донат"] .scroll-content,
-.mobile-screen[data-page="реферал"] .scroll-content,
-.mobile-screen[data-page="еще"] .scroll-content { padding-top: 84px; }
 
 /* === НИК И ID НЕ ВЫЛЕЗАЮТ ЗА ПЛАШКУ === */
 .profile-card__info { min-width: 0; max-width: calc(100% - 130px); overflow: hidden; }
 .profile-card__nickname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .profile-card__id { min-width: 0; overflow: hidden; }
 .profile-card__id-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-
-/* === HELP-КНОПКИ: фрейм 20, иконка what 5x8 === */
-.profile-card__help, .bonus-card__help { width: 20px; height: 20px; padding: 0; }
-.help-icon { width: 5px; height: 8px; display: block; }
 
 /* === ОНЛАЙН: прикреплён к нижней плашке, выше на 16px === */
 .online-status--fixed {
@@ -84,9 +44,8 @@ body { background-color: #03011d; display: block; }
 }
 
 /* === УТИЛИТЫ === */
-.page-view { width: 100%; display: flex; flex-direction: column; gap: 16px; align-items: center; }
 .hidden { display: none !important; }
-.info-card { width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.info-card { width: 300px; max-width: calc(100% - 40px); padding: 20px; display: flex; flex-direction: column; gap: 10px; }
 .info-card__title { font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -0.05em; text-transform: uppercase; color: #f5f3ff; margin: 0; }
 .info-card__text { font-family: 'Montserrat', sans-serif; font-size: 12px; line-height: 1.5; color: rgba(255,255,255,.7); margin: 0; }
 

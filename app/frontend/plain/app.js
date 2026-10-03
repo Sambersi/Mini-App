@@ -13,9 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (photo) { const img = $('avatar-img'); if (img) { img.src = photo; img.style.display = 'block'; } }
   }
   if (!userId && isLocal) userId = '768451950'; // тестовый id как в старом App.jsx
-  bindCoreUI();
   connectOnlineWS();
-  switchPage('профиль'); // старт: включает верхнюю плашку, онлайн и data-page
 });
 
 // --- Онлайн (WebSocket + фолбэк REST) ---
@@ -53,74 +51,11 @@ async function fallbackOnlinePolling() {
   setTimeout(fallbackOnlinePolling, 30000);
 }
 
-// --- Хром страницы: верхние плашки и онлайн ---
-function applyPageChrome(name) {
-  const hp = $('header-profile');
-  const hm = $('header-mini');
-  const on = $('online-status');
-  const screen = document.querySelector('.mobile-screen');
-  if (name === 'профиль') {
-    if (hp) hp.classList.remove('hidden');
-    if (hm) hm.classList.add('hidden');
-    if (on) on.classList.remove('hidden');
-  } else if (name === 'admin') {
-    if (hp) hp.classList.add('hidden');
-    if (hm) hm.classList.add('hidden');
-    if (on) on.classList.add('hidden');
-  } else {
-    if (hp) hp.classList.add('hidden');
-    if (hm) hm.classList.remove('hidden');
-    if (on) on.classList.toggle('hidden', name !== 'еще');
-  }
-  if (screen) screen.setAttribute('data-page', name);
-}
-
-// --- Навигация ---
-function switchPage(name) {
-  document.querySelectorAll('.page-view').forEach(p => p.classList.add('hidden'));
-  const target = $('page-' + name);
-  if (target) target.classList.remove('hidden');
-  applyPageChrome(name);
-  const sc = document.querySelector('.scroll-content');
-  if (sc) sc.scrollTop = 0;
-}
-
-function setNavActive(name) {
-  const items = document.querySelectorAll('.bottom-nav__item');
-  items.forEach(i => {
-    const itemName = i.getAttribute('data-nav'); // ФИКС БАГА: имя берём у каждой кнопки своё
-    const active = itemName === name;
-    i.classList.toggle('bottom-nav__item--active', active);
-    const btn = i.querySelector('.bottom-nav__btn');
-    if (btn) btn.classList.toggle('bottom-nav__btn--active', active);
-    const label = i.querySelector('.bottom-nav__label');
-    if (label) label.classList.toggle('bottom-nav__label--active', active);
-    const img = i.querySelector('img');
-    if (img) img.src = active ? `icons/${itemName}.svg` : `icons/${itemName}_off.svg`;
-  });
-}
-
-function bindCoreUI() {
-  document.querySelectorAll('.bottom-nav__item').forEach(item => {
-    const btn = item.querySelector('.bottom-nav__btn');
-    if (btn) btn.addEventListener('click', () => {
-      const name = item.getAttribute('data-nav');
-      setNavActive(name);
-      switchPage(name);
-    });
-  });
-  const donate = $('donate-open');
-  if (donate) donate.addEventListener('click', () => alert('Донат открывается в боте: команда «донат».'));
-  const adminEnter = $('admin-enter');
-  if (adminEnter) adminEnter.addEventListener('click', () => { switchPage('admin'); AdminLogs.init(userId); });
-  const adminBack = $('admin-back');
-  if (adminBack) adminBack.addEventListener('click', () => { setNavActive('еще'); switchPage('еще'); });
-  const modalClose = $('modal-close');
-  if (modalClose) modalClose.addEventListener('click', () => { $('modal').hidden = true; });
-}
-
+// --- Модалка (есть не на всех страницах — проверяем наличие) ---
 function showModal(title, bodyHtml) {
+  const m = $('modal');
+  if (!m) return;
   $('modal-title').textContent = title;
   $('modal-body').innerHTML = bodyHtml || '';
-  $('modal').hidden = false;
+  m.hidden = false;
 }
