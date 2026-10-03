@@ -16,55 +16,23 @@ body {
   width: 100%;
 }
 
-/* РАМКА ТЕЛЕФОНА УБРАНА: блоки .phone-frame / .phone-notch / .phone-home-indicator удалены */
 body {
   background-color: #180F2A;
   overflow: hidden;
   font-family: 'Montserrat', sans-serif;
 }
 
+/* ЗОН РАЗМЫТИЯ НЕТ СОВСЕМ — удалены по требованию */
+
 .mobile-screen {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   background-color: #180F2A;
-  border-radius: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   position: relative;
   overflow: hidden;
-}
-
-.mobile-screen::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 140px;
-  z-index: 5;
-  pointer-events: none;
-  background: linear-gradient(to bottom, rgba(3, 1, 29, 0.98) 0%, rgba(3, 1, 29, 0.95) 40%, rgba(3, 1, 29, 0) 100%);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
-  mask-image: linear-gradient(to bottom, black 0%, black 60%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 60%, transparent 100%);
-}
-
-.mobile-screen::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 160px;
-  z-index: 5;
-  pointer-events: none;
-  background: linear-gradient(to top, rgba(3, 1, 29, 1) 0%, rgba(3, 1, 29, 0.98) 50%, rgba(3, 1, 29, 0) 100%);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
-  mask-image: linear-gradient(to top, black 0%, black 70%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to top, black 0%, black 70%, transparent 100%);
 }
 
 .glass-card {
@@ -284,7 +252,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  padding: 106px 20px 122px 20px;
+  padding: 20px 20px 122px 20px;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
   touch-action: pan-y;
@@ -426,7 +394,6 @@ body {
   z-index: 1;
   pointer-events: none;
   transform-origin: center center;
-  transform: rotate(var(--wheel-rotation, 20deg));
   overflow: visible;
 }
 
@@ -436,9 +403,6 @@ body {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  transform-origin: center center;
-  will-change: transform;
-  animation: wheelSpin 40s linear infinite;
   z-index: 1;
 }
 
@@ -448,18 +412,7 @@ body {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  transform-origin: center center;
-  transform: rotate(var(--frame-rotation, 70deg));
   z-index: 2;
-}
-
-@keyframes wheelSpin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .bonus-card__header {
@@ -635,6 +588,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 6px;
+  text-decoration: none;
 }
 
 .bottom-nav__btn {
@@ -720,6 +674,7 @@ body {
   font-weight: 600;
 }
 
+/* === МОДАЛКА ДИЗАЙНЕРА (вместо alert) === */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -761,6 +716,32 @@ body {
   text-align: center;
   line-height: 1.4;
   margin: 0;
+}
+
+.modal-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.modal-body::-webkit-scrollbar {
+  width: 0;
+}
+
+.modal-body .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  color: rgba(245, 243, 255, 0.75);
+}
+
+.modal-body .row .val {
+  color: #f5f3ff;
+  text-align: right;
 }
 
 .modal-btn {
