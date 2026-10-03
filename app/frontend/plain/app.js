@@ -19,10 +19,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // --- Онлайн (WebSocket + фолбэк REST) ---
 function updateOnlineText(count) {
-  const text = `онлайн: ${count}`;
-  const main = $('online-text');
-  if (main) main.textContent = text;
-  document.querySelectorAll('.online-text-mirror').forEach(el => { el.textContent = text; });
+  const el = $('online-text');
+  if (el) el.textContent = `онлайн: ${count}`;
 }
 function connectOnlineWS() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -51,23 +49,37 @@ async function fallbackOnlinePolling() {
   setTimeout(fallbackOnlinePolling, 30000);
 }
 
+// --- Хром страницы: верхние плашки, зона размытия, видимость онлайна ---
+function applyPageChrome(name) {
+  const withHeader = (name === 'профиль' || name === 'играть');
+  $('header-profile').classList.toggle('hidden', name !== 'профиль');
+  $('header-play').classList.toggle('hidden', name !== 'играть');
+  const screen = document.querySelector('.mobile-screen');
+  screen.classList.toggle('top-zone', withHeader);
+  screen.setAttribute('data-page', name);
+  // онлайн только в профиле и «ещё»
+  $('online-status').classList.toggle('hidden', !(name === 'профиль' || name === 'еще'));
+}
+
 // --- Навигация ---
 function switchPage(name) {
   document.querySelectorAll('.page-view').forEach(p => p.classList.add('hidden'));
   const target = $('page-' + name);
   if (target) target.classList.remove('hidden');
+  applyPageChrome(name);
   const sc = document.querySelector('.scroll-content');
   if (sc) sc.scrollTop = 0;
 }
 function setNavActive(name) {
   const items = document.querySelectorAll('.bottom-nav__item');
   items.forEach(i => {
-    const active = i.getAttribute('data-nav') === name;
+    const itemName = i.getAttribute('data-nav'); // БАГ ФИКС: раньше тут использовался name для всех кнопок
+    const active = itemName === name;
     i.classList.toggle('bottom-nav__item--active', active);
     i.querySelector('.bottom-nav__btn').classList.toggle('bottom-nav__btn--active', active);
     i.querySelector('.bottom-nav__label').classList.toggle('bottom-nav__label--active', active);
     const img = i.querySelector('img');
-    if (img) img.src = active ? `icons/${name}.svg` : `icons/${name}_off.svg`;
+    if (img) img.src = active ? `icons/${itemName}.svg` : `icons/${itemName}_off.svg`;
   });
 }
 function bindCoreUI() {

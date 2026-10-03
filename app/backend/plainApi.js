@@ -22,17 +22,29 @@ const WEB_BONUS_PF_MAX = 5000;          // ЗАГЛУШКА: сверь с handl
 const db = sqlite3(path.join(__dirname, '../../database.sqlite'));
 try { db.exec('ALTER TABLE users ADD COLUMN web_bonus_spins INTEGER DEFAULT 0'); } catch (e) { /* колонка уже есть */ }
 
-// Профиль + статусы (в /api/user/:id статусов нет, дизайн их требует)
+// Статус с максимальным приоритетом (priority из таблицы statuses, db.js)
+const topStatusStmt = db.prepare(`
+  SELECT s.name AS name
+  FROM user_statuses us
+  JOIN statuses s ON s.id = us.status_id
+  WHERE us.user_id = ?
+  ORDER BY s.priority DESC
+  LIMIT 1
+`);
+
+// Профиль + статусы + топ-статус
 router.get('/user/:id', async (req, res) => {
   const userId = req.params.id.toString();
   try {
     const user = getUserById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    const statuses = await getUserStatuses(userId); // имена статусов из db.js
+    const statuses = await getUserStatuses(userId);
+    const top = topStatusStmt.get(user.id);
     res.json({
       id: user.id, numeric_id: user.numeric_id, username: user.username,
       balance: user.balance, df_balance: user.df_balance, npf_shares: user.npf_shares,
       statuses,
+      topStatus: top ? top.name : null,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

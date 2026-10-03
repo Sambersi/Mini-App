@@ -12,9 +12,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const u = await r.json();
       $('nickname').textContent = u.username || '—';
       $('id-value').textContent = u.numeric_id ?? '—';
-      $('pf-amount').textContent = Number(u.balance || 0).toLocaleString('ru-RU');
+      // Статус с максимальным приоритетом (приходит с бекенда, plainApi.js)
+      $('status-value').textContent = u.topStatus || '—';
+      const pf = Number(u.balance || 0).toLocaleString('ru-RU');
+      $('pf-amount').textContent = pf;
+      $('header-pf-amount').textContent = pf; // мини-плашка на вкладке «играть»
       $('df-amount').textContent = Number(u.df_balance || 0).toLocaleString('ru-RU');
-      // Статусы не выводим (по ТЗ). Вход в админку — по реальным статусам из БД
+      // Вход в админку — по реальным статусам из БД
       // (НЕ по /api/admin/check: он в index.js всегда возвращает true)
       const admin = (u.statuses || []).some(s => s === 'Администратор' || s === 'Тех администратор');
       if (admin) $('admin-enter').classList.remove('hidden');

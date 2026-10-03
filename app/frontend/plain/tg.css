@@ -1,39 +1,77 @@
-/* === ГЛОБАЛЬНЫЕ ОВЕРРАЙДЫ: экран на весь viewport === */
+/* === ГЛОБАЛЬНО: экран на весь viewport === */
 html, body { height: 100%; overflow: hidden; }
 body { background-color: #03011d; }
 .mobile-screen { width: 100vw; height: 100vh; border-radius: 0; position: relative; }
 
-/* === СХЕМА СЛОЁВ ===
-   1 — скроллящийся контент
-   5 — зоны размытия (::before/::after), фильтруют контент под собой
-   30 — профиль и меню (уже в style.css дизайнера), стоят выше зон и не размываются */
-.scroll-content { position: relative; z-index: 1; }
-.mobile-screen::before,
-.mobile-screen::after {
-  content: '';
+/* === СЛОИ ===
+   1 — контент, 5 — зоны размытия, 30 — плашки (из style.css дизайнера) */
+.scroll-content { position: relative; z-index: 1; padding-top: 20px; }
+
+/* Верхняя зона размытия: включается только классом .top-zone (профиль/играть).
+   Сплошная до нижней кромки плашки, далее затухает маской за 24px в сторону центра. */
+.mobile-screen::before {
+  content: none;
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 0; right: 0; top: 0;
+  height: 114px; /* 90px плашка профиля + 24px затухание */
   z-index: 5;
   pointer-events: none;
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
+  background: linear-gradient(to bottom, rgba(3,1,29,.75), rgba(3,1,29,0));
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 90px, transparent 114px);
+  mask-image: linear-gradient(to bottom, #000 0, #000 90px, transparent 114px);
 }
-.mobile-screen::before {
-  top: 0;
-  height: 90px; /* зона верхней плашки: top 30 + height 60 */
-  background: linear-gradient(to bottom, rgba(3,1,29,.85), rgba(3,1,29,0));
+.mobile-screen.top-zone::before { content: ''; }
+/* Для мини-плашки (играть): плашка 20..68px, затухание до 92px */
+.mobile-screen[data-page="играть"]::before {
+  height: 92px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 68px, transparent 92px);
+  mask-image: linear-gradient(to bottom, #000 0, #000 68px, transparent 92px);
 }
+
+/* Нижняя зона размытия: сплошная до верхней кромки меню (110px),
+   далее затухает за 24px в сторону центра */
 .mobile-screen::after {
-  bottom: 0;
-  height: 110px; /* зона нижней плашки: bottom 30 + height 80 */
-  background: linear-gradient(to top, rgba(3,1,29,.85), rgba(3,1,29,0));
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 134px; /* 110px меню + 24px затухание */
+  z-index: 5;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  background: linear-gradient(to top, rgba(3,1,29,.75), rgba(3,1,29,0));
+  -webkit-mask-image: linear-gradient(to top, #000 0, #000 110px, transparent 134px);
+  mask-image: linear-gradient(to top, #000 0, #000 110px, transparent 134px);
 }
+
+/* Отступы контента под плашки по страницам */
+.mobile-screen[data-page="профиль"] .scroll-content { padding-top: 106px; }
+.mobile-screen[data-page="играть"] .scroll-content { padding-top: 84px; }
 
 /* === Максимальная ширина плашек 300px, центрирование === */
 .profile-card { left: 50%; right: auto; transform: translateX(-50%); width: calc(100% - 40px); max-width: 300px; }
 .bottom-nav { left: 50%; right: auto; transform: translateX(-50%); width: calc(100% - 40px); max-width: 300px; }
 .currency-card, .bonus-shell, .action-card, .info-card { max-width: 300px; }
+
+/* === Мини-плашка (играть): только баланс PF === */
+.mini-header {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 40px);
+  max-width: 300px;
+  height: 48px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+}
+.mini-header__icon { width: 30px; height: 30px; display: block; }
+.mini-header__amount { font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 14px; color: #f5f3ff; margin: 0; }
 
 /* Ник и ID не вылезают за плашку */
 .profile-card__info { min-width: 0; max-width: calc(100% - 130px); overflow: hidden; }
@@ -45,15 +83,23 @@ body { background-color: #03011d; }
 .profile-card__help, .bonus-card__help { width: 20px; height: 20px; padding: 0; }
 .help-icon { width: 5px; height: 8px; display: block; }
 
+/* === Онлайн: прикреплён к нижней плашке, выше на 16px === */
+.online-status--fixed {
+  position: absolute;
+  bottom: 126px; /* меню: 30 + 80 = 110 от низа + 16px */
+  left: 50%;
+  transform: translateX(-50%);
+  width: auto;
+  height: auto;
+  z-index: 6; /* выше зоны размытия (5), ниже плашек (30) */
+}
+
 /* === Страницы и утилиты === */
 .page-view { width: 100%; display: flex; flex-direction: column; gap: 16px; align-items: center; }
 .hidden { display: none !important; }
 .info-card { width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
 .info-card__title { font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -0.05em; text-transform: uppercase; color: #f5f3ff; margin: 0; }
 .info-card__text { font-family: 'Montserrat', sans-serif; font-size: 12px; line-height: 1.5; color: rgba(255,255,255,.7); margin: 0; }
-
-/* Онлайн — элемент в потоке страницы */
-.online-status--inline { position: static; transform: none; width: auto; height: auto; margin-top: 4px; padding-bottom: 8px; }
 
 /* === Модалка (глобальная) === */
 .modal { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: rgba(3,1,29,.7); }
