@@ -5090,20 +5090,22 @@ setupGlobalErrorHandler(bot);
 const MAIN_ADMIN_ID = process.env.MAIN_ADMIN; // ID главного администратора
 
 // Функция для отправки уведомления о выключении
+// Функция для отправки уведомления о выключении
 async function sendShutdownNotification(bot, reason) {
-    try {
-        const message = `
+  try {
+      const message = `
 ⚠️ <b>БОТ ВЫКЛЮЧЕН</b> ⚠️
-
 <b>Причина:</b> ${reason}
 <b>Дата:</b> ${new Date().toLocaleString()}
 `.trim();
-
-        await bot.telegram.sendMessage(MAIN_ADMIN_ID, message, { parse_mode: 'HTML' });
-        console.log('Уведомление о выключении отправлено администратору.');
-    } catch (error) {
-        console.error('Не удалось отправить уведомление о выключении:', error);
-    }
+      
+      // Оборачиваем в try...catch, чтобы ошибка сети не крашила процесс
+      await bot.telegram.sendMessage(MAIN_ADMIN_ID, message, { parse_mode: 'HTML' });
+      console.log('Уведомление о выключении отправлено администратору.');
+  } catch (error) {
+      // Просто логируем ошибку в консоль, но НЕ падаем
+      console.error('Не удалось отправить уведомление о выключении (сетевая ошибка):', error.message);
+  }
 }
 
 // Обработка сигнала SIGTERM (например, завершение через систему)
