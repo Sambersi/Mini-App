@@ -1,6 +1,6 @@
 /* === ВЕБ-АДАПТАЦИЯ: без рамки телефона, на весь экран, БЕЗ блюра === */
 html, body { height: 100%; overflow: hidden; }
-body { background-color: #03011d; display: block; }
+body { display: block; }
 .mobile-screen {
   width: 100vw;
   height: 100vh;
@@ -15,12 +15,19 @@ body { background-color: #03011d; display: block; }
   width: 300px;
   max-width: calc(100% - 40px);
 }
+.bottom-nav {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: 300px;
+  max-width: calc(100% - 40px);
+}
 .currency-card, .bonus-shell, .action-card, .info-card {
   width: 300px;
   max-width: calc(100% - 40px);
 }
 
-/* === ОТСТУПЫ КОНТЕНТА: верхняя плашка только на профиле === */
+/* === ОТСТУП ПОД ВЕРХНЮЮ ПЛАШКУ: только профиль === */
 .mobile-screen[data-page="профиль"] .scroll-content { padding-top: 106px; }
 
 /* === НИК И ID НЕ ВЫЛЕЗАЮТ ЗА ПЛАШКУ === */
@@ -45,16 +52,6 @@ body { background-color: #03011d; display: block; }
 
 /* === УТИЛИТЫ === */
 .hidden { display: none !important; }
-.info-card { width: 300px; max-width: calc(100% - 40px); padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.info-card { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
 .info-card__title { font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -0.05em; text-transform: uppercase; color: #f5f3ff; margin: 0; }
 .info-card__text { font-family: 'Montserrat', sans-serif; font-size: 12px; line-height: 1.5; color: rgba(255,255,255,.7); margin: 0; }
-
-/* === МОДАЛКА === */
-.modal { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: rgba(3,1,29,.7); }
-.modal[hidden] { display: none; }
-.modal__box { padding: 20px; width: min(92vw, 420px); display: flex; flex-direction: column; gap: 12px; align-items: stretch; z-index: 1; }
-.modal__title { font-family: 'Unbounded', sans-serif; font-size: 13px; color: #f5f3ff; text-align: center; margin: 0; }
-.modal__body { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
-.modal__body::-webkit-scrollbar { width: 0; }
-.modal__body .row { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: rgba(245,243,255,.75); }
-.modal__body .row .val { color: #f5f3ff; text-align: right; }

@@ -15,34 +15,43 @@
     <div class="info-card glass-card">
       <p class="info-card__title">поддержать проект</p>
       <p class="info-card__text">Донат проходит через Telegram Stars. Взамен — DF и статусы.</p>
-      <button id="donate-open" class="btn-mini">открыть в боте</button>
+      <button id="donate-open" class="modal-btn">открыть в боте</button>
     </div>
   </div>
 
   <nav class="bottom-nav glass-card">
     <a class="bottom-nav__item" href="../referrals/index.html">
-      <img class="bottom-nav__icon" src="../../icons/реферал_off.svg" alt="">
+      <span class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="../../icons/реферал_off.svg" alt=""></span>
       <span class="bottom-nav__label">реферал</span>
     </a>
     <a class="bottom-nav__item bottom-nav__item--active" href="index.html">
-      <img class="bottom-nav__icon" src="../../icons/донат.svg" alt="">
+      <span class="bottom-nav__btn bottom-nav__btn--active"><img class="bottom-nav__btn-icon" src="../../icons/донат.svg" alt=""></span>
       <span class="bottom-nav__label bottom-nav__label--active">донат</span>
     </a>
     <a class="bottom-nav__item" href="../play/index.html">
-      <img class="bottom-nav__icon" src="../../icons/играть_off.svg" alt="">
+      <span class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="../../icons/играть_off.svg" alt=""></span>
       <span class="bottom-nav__label">играть</span>
     </a>
     <a class="bottom-nav__item" href="../profile/index.html">
-      <img class="bottom-nav__icon" src="../../icons/профиль_off.svg" alt="">
+      <span class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="../../icons/профиль_off.svg" alt=""></span>
       <span class="bottom-nav__label">профиль</span>
     </a>
     <a class="bottom-nav__item" href="../more/index.html">
-      <img class="bottom-nav__icon" src="../../icons/еще_off.svg" alt="">
+      <span class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="../../icons/еще_off.svg" alt=""></span>
       <span class="bottom-nav__label">еще</span>
     </a>
   </nav>
 
 </div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box glass-card">
+    <p class="modal-text" id="modalText">Функция временно недоступна</p>
+    <div class="modal-body" id="modalBody" hidden></div>
+    <button class="modal-btn" id="modalClose">Понятно</button>
+  </div>
+</div>
+
 <script src="../../app.js"></script>
 <script src="donate.js"></script>
 </body>

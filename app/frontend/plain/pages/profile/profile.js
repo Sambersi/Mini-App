@@ -14,8 +14,6 @@ async function loadUser() {
     $('status-value').textContent = u.topStatus || '—';
     const pf = Number(u.balance || 0).toLocaleString('ru-RU');
     $('pf-amount').textContent = pf;
-    const hp = $('header-pf-amount'); // мини-плашки больше нет — проверяем наличие
-    if (hp) hp.textContent = pf;
     $('df-amount').textContent = Number(u.df_balance || 0).toLocaleString('ru-RU');
     const admin = (u.statuses || []).some(s => s === 'Администратор' || s === 'Тех администратор');
     if (admin) {
@@ -45,11 +43,11 @@ function buildBonusProgress() {
 }
 
 function bindProfileUI() {
-  $('bonus-btn').addEventListener('click', () => alert('Бонусное колесо пока не реализовано.'));
-  $('fortune-btn').addEventListener('click', () => alert('Колесо фортуны пока не реализовано.'));
-  document.querySelectorAll('[data-buy]').forEach(b => b.addEventListener('click', () => alert('Покупка валюты — через бота, команда «донат».')));
-  document.querySelectorAll('[data-help]').forEach(b => b.addEventListener('click', () => alert('Справка: команда «помощь» в боте.')));
-  $('promo-open').addEventListener('click', () => alert('Промокод активируется в боте: команда «промо [код]».'));
+  $('bonus-btn').addEventListener('click', () => showModal('Функция временно недоступна'));
+  $('fortune-btn').addEventListener('click', () => showModal('Функция временно недоступна'));
+  document.querySelectorAll('[data-buy]').forEach(b => b.addEventListener('click', () => showModal('Покупка валюты — через бота, команда «донат».')));
+  document.querySelectorAll('[data-help]').forEach(b => b.addEventListener('click', () => showModal('Справка: команда «помощь» в боте.')));
+  $('promo-open').addEventListener('click', () => showModal('Промокод активируется в боте: команда «промо [код]».'));
   $('channel-open').addEventListener('click', () => {
     const url = 'https://t.me/FBot42';
     if (TG && TG.openTelegramLink) TG.openTelegramLink(url);

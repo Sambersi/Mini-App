@@ -21,7 +21,7 @@
       <p class="info-card__text">Команда «репорт [текст]» в боте — и админы ответят в течение суток.</p>
     </div>
     <div class="info-card glass-card">
-      <a id="admin-enter" class="btn-mini hidden" href="../admin/index.html">админ-панель</a>
+      <a id="admin-enter" class="modal-btn hidden" href="../admin/index.html" style="display:block; text-decoration:none; line-height:40px;">админ-панель</a>
     </div>
   </div>
 
@@ -32,28 +32,37 @@
 
   <nav class="bottom-nav glass-card">
     <a class="bottom-nav__item" href="../referrals/index.html">
-      <img class="bottom-nav__icon" src="../../icons/реферал_off.svg" alt="">
+      <span class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="../../icons/реферал_off.svg" alt=""></span>
       <span class="bottom-nav__label">реферал</span>
     </a>
     <a class="bottom-nav__item" href="../donate/index.html">
-      <img class="bottom-nav__icon" src="../../icons/донат_off.svg" alt="">
+      <span class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="../../icons/донат_off.svg" alt=""></span>
       <span class="bottom-nav__label">донат</span>
     </a>
     <a class="bottom-nav__item" href="../play/index.html">
-      <img class="bottom-nav__icon" src="../../icons/играть_off.svg" alt="">
+      <span class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="../../icons/играть_off.svg" alt=""></span>
       <span class="bottom-nav__label">играть</span>
     </a>
     <a class="bottom-nav__item" href="../profile/index.html">
-      <img class="bottom-nav__icon" src="../../icons/профиль_off.svg" alt="">
+      <span class="bottom-nav__btn"><img class="bottom-nav__btn-icon" src="../../icons/профиль_off.svg" alt=""></span>
       <span class="bottom-nav__label">профиль</span>
     </a>
     <a class="bottom-nav__item bottom-nav__item--active" href="index.html">
-      <img class="bottom-nav__icon" src="../../icons/еще.svg" alt="">
+      <span class="bottom-nav__btn bottom-nav__btn--active"><img class="bottom-nav__btn-icon" src="../../icons/еще.svg" alt=""></span>
       <span class="bottom-nav__label bottom-nav__label--active">еще</span>
     </a>
   </nav>
 
 </div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box glass-card">
+    <p class="modal-text" id="modalText">Функция временно недоступна</p>
+    <div class="modal-body" id="modalBody" hidden></div>
+    <button class="modal-btn" id="modalClose">Понятно</button>
+  </div>
+</div>
+
 <script src="../../app.js"></script>
 <script src="more.js"></script>
 </body>

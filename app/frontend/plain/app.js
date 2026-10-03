@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (photo) { const img = $('avatar-img'); if (img) { img.src = photo; img.style.display = 'block'; } }
   }
   if (!userId && isLocal) userId = '768451950'; // тестовый id как в старом App.jsx
+  bindModal();
   connectOnlineWS();
 });
 
@@ -51,11 +52,31 @@ async function fallbackOnlinePolling() {
   setTimeout(fallbackOnlinePolling, 30000);
 }
 
-// --- Модалка (есть не на всех страницах — проверяем наличие) ---
-function showModal(title, bodyHtml) {
-  const m = $('modal');
-  if (!m) return;
-  $('modal-title').textContent = title;
-  $('modal-body').innerHTML = bodyHtml || '';
-  m.hidden = false;
+// === МОДАЛКА ДИЗАЙНЕРА (вместо alert) ===
+function openModal() {
+  const o = $('modalOverlay');
+  if (o) o.classList.add('active');
+}
+
+function closeModal() {
+  const o = $('modalOverlay');
+  if (o) o.classList.remove('active');
+}
+
+function showModal(text, bodyHtml) {
+  const t = $('modalText');
+  if (t) t.textContent = text || '';
+  const b = $('modalBody');
+  if (b) {
+    if (bodyHtml) { b.hidden = false; b.innerHTML = bodyHtml; }
+    else { b.hidden = true; b.innerHTML = ''; }
+  }
+  openModal();
+}
+
+function bindModal() {
+  const closeBtn = $('modalClose');
+  const overlay = $('modalOverlay');
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (overlay) overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
 }
