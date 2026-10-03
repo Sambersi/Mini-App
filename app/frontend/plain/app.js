@@ -24,6 +24,7 @@ function updateOnlineText(count) {
   if (el) el.textContent = `онлайн: ${count}`;
   document.querySelectorAll('.online-text-mirror').forEach(m => { m.textContent = `онлайн: ${count}`; });
 }
+
 function connectOnlineWS() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/ws/online`;
@@ -43,6 +44,7 @@ function connectOnlineWS() {
     fallbackOnlinePolling();
   }
 }
+
 async function fallbackOnlinePolling() {
   try {
     const d = await (await fetch(`${API}/api/online`)).json();
@@ -82,6 +84,7 @@ function switchPage(name) {
   const sc = document.querySelector('.scroll-content');
   if (sc) sc.scrollTop = 0;
 }
+
 function setNavActive(name) {
   const items = document.querySelectorAll('.bottom-nav__item');
   items.forEach(i => {
@@ -96,6 +99,7 @@ function setNavActive(name) {
     if (img) img.src = active ? `icons/${itemName}.svg` : `icons/${itemName}_off.svg`;
   });
 }
+
 function bindCoreUI() {
   document.querySelectorAll('.bottom-nav__item').forEach(item => {
     const btn = item.querySelector('.bottom-nav__btn');
@@ -114,6 +118,7 @@ function bindCoreUI() {
   const modalClose = $('modal-close');
   if (modalClose) modalClose.addEventListener('click', () => { $('modal').hidden = true; });
 }
+
 function showModal(title, bodyHtml) {
   $('modal-title').textContent = title;
   $('modal-body').innerHTML = bodyHtml || '';
