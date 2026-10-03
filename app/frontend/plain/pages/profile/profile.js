@@ -12,14 +12,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const u = await r.json();
       $('nickname').textContent = u.username || '—';
       $('id-value').textContent = u.numeric_id ?? '—';
-      // Статус с максимальным приоритетом (приходит с бекенда, plainApi.js)
       $('status-value').textContent = u.topStatus || '—';
       const pf = Number(u.balance || 0).toLocaleString('ru-RU');
       $('pf-amount').textContent = pf;
-      $('header-pf-amount').textContent = pf; // мини-плашка на вкладке «играть»
+      $('header-pf-amount').textContent = pf; // мини-плашка на других страницах
       $('df-amount').textContent = Number(u.df_balance || 0).toLocaleString('ru-RU');
-      // Вход в админку — по реальным статусам из БД
-      // (НЕ по /api/admin/check: он в index.js всегда возвращает true)
       const admin = (u.statuses || []).some(s => s === 'Администратор' || s === 'Тех администратор');
       if (admin) $('admin-enter').classList.remove('hidden');
     } catch (e) { console.error(e); }
@@ -43,14 +40,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   
   function bindProfileUI() {
-    // Колёса пока витрина: вращение по нажатию не реализовано (по ТЗ)
     $('bonus-btn').addEventListener('click', () => alert('Бонусное колесо пока не реализовано.'));
     $('fortune-btn').addEventListener('click', () => alert('Колесо фортуны пока не реализовано.'));
     document.querySelectorAll('[data-buy]').forEach(b => b.addEventListener('click', () => alert('Покупка валюты — через бота, команда «донат».')));
     document.querySelectorAll('[data-help]').forEach(b => b.addEventListener('click', () => alert('Справка: команда «помощь» в боте.')));
-    // Промокоды активируются в боте (эндпоинта активации с веба нет)
     $('promo-open').addEventListener('click', () => alert('Промокод активируется в боте: команда «промо [код]».'));
-    // Канал проекта: t.me/FBot42 (адрес взят из текстов бота, bot.js)
     $('channel-open').addEventListener('click', () => {
       const url = 'https://t.me/FBot42';
       if (TG && TG.openTelegramLink) TG.openTelegramLink(url);

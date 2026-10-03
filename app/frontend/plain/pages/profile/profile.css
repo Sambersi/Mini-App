@@ -5,9 +5,7 @@
 .bonus-card__frame-img { transform: rotate(0deg); }
 .bonus-card__pointer-img { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 20%; height: auto; z-index: 3; pointer-events: none; }
 
-/* === Плашки действий (промокод / канал) ===
-   иконка 24 + gap 10 + колонка текста (gap 10), отступ слева 20,
-   кнопка «перейти» 44x44 с иконкой arrow 14 */
+/* Плашки действий (промокод / канал) */
 .action-card {
   width: 100%;
   min-height: 84px;
@@ -49,9 +47,7 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  box-shadow:
-    0 0 15px 0 rgba(255, 255, 255, 0.75),
-    inset 0 0 15px 0 rgba(255, 255, 255, 1);
+  box-shadow: 0 0 15px 0 rgba(255, 255, 255, 0.75), inset 0 0 15px 0 rgba(255, 255, 255, 1);
   transition: transform 0.15s ease;
 }
 .action-card__btn:active { transform: scale(0.95); }

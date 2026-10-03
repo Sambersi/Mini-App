@@ -42,7 +42,6 @@ const AdminLogs = (() => {
       $('logs-date-input').classList.add('hidden');
       load();
     });
-    // автообновление каждые 20 сек, только без выбранной даты (как в React-версии)
     st.timer = setInterval(() => { if (!st.jumpTs && !$('page-admin').classList.contains('hidden')) load(); }, 20000);
     load();
   }

@@ -8,12 +8,16 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="tg.css">
 <link rel="stylesheet" href="pages/profile/profile.css">
+<link rel="stylesheet" href="pages/play/play.css">
+<link rel="stylesheet" href="pages/donate/donate.css">
+<link rel="stylesheet" href="pages/referrals/referrals.css">
+<link rel="stylesheet" href="pages/more/more.css">
 <link rel="stylesheet" href="pages/admin/admin.css">
 </head>
 <body>
-<div class="mobile-screen top-zone" data-page="профиль">
+<div class="mobile-screen">
   <!-- ВЕРХНЯЯ ПЛАШКА ПРОФИЛЯ: только на вкладке «профиль» -->
-  <header class="profile-card glass-card" id="header-profile">
+  <header class="profile-card glass-card hidden" id="header-profile">
     <button class="profile-card__help" data-help="profile"><img class="help-icon" src="icons/what.svg" alt=""></button>
     <div class="profile-card__avatar"><img class="profile-card__avatar-img" id="avatar-img" alt="" style="display:none"></div>
     <div class="profile-card__info">
@@ -26,8 +30,8 @@
     </div>
   </header>
 
-  <!-- МИНИ-ПЛАШКА: только на вкладке «играть», баланс PF -->
-  <header class="mini-header glass-card hidden" id="header-play">
+  <!-- МИНИ-ПЛАШКА БАЛАНСА: на всех страницах кроме профиля и админки -->
+  <header class="mini-header glass-card hidden" id="header-mini">
     <img class="mini-header__icon" src="icons/PF.svg" alt="">
     <p class="mini-header__amount" id="header-pf-amount">—</p>
   </header>
@@ -174,8 +178,8 @@
     </section>
   </main>
 
-  <!-- ОНЛАЙН: один фиксированный элемент, виден только в профиле и «ещё» -->
-  <div class="online-status online-status--fixed" id="online-status">
+  <!-- ОНЛАЙН: фиксированный элемент, виден только в профиле и «ещё» -->
+  <div class="online-status online-status--fixed hidden" id="online-status">
     <span class="online-status__dot"></span>
     <span class="online-status__text" id="online-text">онлайн: 0</span>
   </div>
@@ -198,6 +202,10 @@
 </div>
 <script src="app.js"></script>
 <script src="pages/profile/profile.js"></script>
+<script src="pages/play/play.js"></script>
+<script src="pages/donate/donate.js"></script>
+<script src="pages/referrals/referrals.js"></script>
+<script src="pages/more/more.js"></script>
 <script src="pages/admin/admin.js"></script>
 </body>
 </html>

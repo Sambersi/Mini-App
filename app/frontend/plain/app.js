@@ -12,9 +12,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const photo = TG.initDataUnsafe?.user?.photo_url;
     if (photo) { const img = $('avatar-img'); img.src = photo; img.style.display = 'block'; }
   }
-  if (!userId && isLocal) userId = '768451950'; // тестовый id как в старом App.jsx
+  if (!userId && isLocal) userId = '768451950';
   bindCoreUI();
   connectOnlineWS();
+  // Инициализация страницы по умолчанию (профиль)
+  switchPage('профиль');
 });
 
 // --- Онлайн (WebSocket + фолбэк REST) ---
@@ -51,14 +53,33 @@ async function fallbackOnlinePolling() {
 
 // --- Хром страницы: верхние плашки, зона размытия, видимость онлайна ---
 function applyPageChrome(name) {
-  const withHeader = (name === 'профиль' || name === 'играть');
-  $('header-profile').classList.toggle('hidden', name !== 'профиль');
-  $('header-play').classList.toggle('hidden', name !== 'играть');
+  const headerProfile = $('header-profile');
+  const headerMini = $('header-mini');
+  const onlineStatus = $('online-status');
   const screen = document.querySelector('.mobile-screen');
-  screen.classList.toggle('top-zone', withHeader);
+
+  // Профиль: полная плашка + онлайн
+  if (name === 'профиль') {
+    headerProfile.classList.remove('hidden');
+    headerMini.classList.add('hidden');
+    onlineStatus.classList.remove('hidden');
+  }
+  // Админка: без плашек, без онлайна
+  else if (name === 'admin') {
+    headerProfile.classList.add('hidden');
+    headerMini.classList.add('hidden');
+    onlineStatus.classList.add('hidden');
+  }
+  // Остальные страницы: мини-плашка баланса
+  else {
+    headerProfile.classList.add('hidden');
+    headerMini.classList.remove('hidden');
+    // Онлайн только в «ещё»
+    if (name === 'еще') onlineStatus.classList.remove('hidden');
+    else onlineStatus.classList.add('hidden');
+  }
+
   screen.setAttribute('data-page', name);
-  // онлайн только в профиле и «ещё»
-  $('online-status').classList.toggle('hidden', !(name === 'профиль' || name === 'еще'));
 }
 
 // --- Навигация ---
@@ -70,10 +91,11 @@ function switchPage(name) {
   const sc = document.querySelector('.scroll-content');
   if (sc) sc.scrollTop = 0;
 }
+
 function setNavActive(name) {
   const items = document.querySelectorAll('.bottom-nav__item');
   items.forEach(i => {
-    const itemName = i.getAttribute('data-nav'); // БАГ ФИКС: раньше тут использовался name для всех кнопок
+    const itemName = i.getAttribute('data-nav'); // ФИКС БАГА: берём имя каждой кнопки отдельно
     const active = itemName === name;
     i.classList.toggle('bottom-nav__item--active', active);
     i.querySelector('.bottom-nav__btn').classList.toggle('bottom-nav__btn--active', active);
@@ -82,17 +104,20 @@ function setNavActive(name) {
     if (img) img.src = active ? `icons/${itemName}.svg` : `icons/${itemName}_off.svg`;
   });
 }
+
 function bindCoreUI() {
   document.querySelectorAll('.bottom-nav__item').forEach(item => {
     item.querySelector('.bottom-nav__btn').addEventListener('click', () => {
       const name = item.getAttribute('data-nav');
-      setNavActive(name); switchPage(name);
+      setNavActive(name);
+      switchPage(name);
     });
   });
   $('admin-enter').addEventListener('click', () => { switchPage('admin'); AdminLogs.init(userId); });
   $('admin-back').addEventListener('click', () => { setNavActive('еще'); switchPage('еще'); });
   $('modal-close').addEventListener('click', () => { $('modal').hidden = true; });
 }
+
 function showModal(title, bodyHtml) {
   $('modal-title').textContent = title;
   $('modal-body').innerHTML = bodyHtml || '';
