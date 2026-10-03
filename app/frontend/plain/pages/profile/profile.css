@@ -1,0 +1,58 @@
+/* === СТРАНИЦА: ПРОФИЛЬ === */
+
+/* Колёса: слои дизайнера, рамка и стрелка статичны */
+.bonus-card__wheel-wrap { transform: rotate(0deg); }
+.bonus-card__frame-img { transform: rotate(0deg); }
+.bonus-card__pointer-img { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 20%; height: auto; z-index: 3; pointer-events: none; }
+
+/* === Плашки действий (промокод / канал) ===
+   иконка 24 + gap 10 + колонка текста (gap 10), отступ слева 20,
+   кнопка «перейти» 44x44 с иконкой arrow 14 */
+.action-card {
+  width: 100%;
+  min-height: 84px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+}
+.action-card__icon { width: 24px; height: 24px; flex-shrink: 0; display: block; }
+.action-card__content { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.action-card__title {
+  font-family: 'Unbounded', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  color: #f5f3ff;
+  margin: 0;
+  line-height: 1.1;
+}
+.action-card__text {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 12px;
+  color: rgba(245, 243, 255, .5);
+  margin: 0;
+  line-height: 1.2;
+}
+.action-card__btn {
+  margin-left: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 100px;
+  background: #DCCDFF;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow:
+    0 0 15px 0 rgba(255, 255, 255, 0.75),
+    inset 0 0 15px 0 rgba(255, 255, 255, 1);
+  transition: transform 0.15s ease;
+}
+.action-card__btn:active { transform: scale(0.95); }
+.action-card__btn-icon { width: 14px; height: 14px; display: block; }

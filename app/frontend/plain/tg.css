@@ -1,118 +1,61 @@
-/* === БЕЗ РАМКИ ТЕЛЕФОНА: экран на весь viewport === */
+/* === ГЛОБАЛЬНЫЕ ОВЕРРАЙДЫ: экран на весь viewport === */
 html, body { height: 100%; overflow: hidden; }
 body { background-color: #03011d; }
-.mobile-screen { width: 100vw; height: 100vh; border-radius: 0; }
+.mobile-screen { width: 100vw; height: 100vh; border-radius: 0; position: relative; }
 
-/* === Верхняя плашка профиля: непрозрачная, полностью перекрывает контент === */
-.profile-card--opaque {
-  position: fixed;
+/* === СХЕМА СЛОЁВ ===
+   1 — скроллящийся контент
+   5 — зоны размытия (::before/::after), фильтруют контент под собой
+   30 — профиль и меню (уже в style.css дизайнера), стоят выше зон и не размываются */
+.scroll-content { position: relative; z-index: 1; }
+.mobile-screen::before,
+.mobile-screen::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.mobile-screen::before {
   top: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
-  background: #0f0a2a; /* сплошной цвет фона, без прозрачности */
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  height: 90px; /* зона верхней плашки: top 30 + height 60 */
+  background: linear-gradient(to bottom, rgba(3,1,29,.85), rgba(3,1,29,0));
 }
-
-/* Ник и ID не вылезают за границы плашки */
-.profile-card__info {
-  min-width: 0;
-  max-width: calc(100% - 130px);
-  overflow: hidden;
-}
-.profile-card__nickname {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-.profile-card__id {
-  min-width: 0;
-  overflow: hidden;
-}
-.profile-card__id-value {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-/* === Нижняя навигация: непрозрачная, полностью перекрывает контент === */
-.bottom-nav--opaque {
-  position: fixed;
+.mobile-screen::after {
   bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
-  background: #0f0a2a; /* сплошной цвет фона */
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  height: 110px; /* зона нижней плашки: bottom 30 + height 80 */
+  background: linear-gradient(to top, rgba(3,1,29,.85), rgba(3,1,29,0));
 }
 
-/* === Основной скролл-контент: отступы под фиксированные плашки === */
-.scroll-content {
-  padding-top: 95px;   /* высота profile-card + небольшой зазор */
-  padding-bottom: 115px; /* высота bottom-nav + небольшой зазор */
-  overflow-y: auto;
-  height: 100vh;
-  box-sizing: border-box;
-}
+/* === Максимальная ширина плашек 300px, центрирование === */
+.profile-card { left: 50%; right: auto; transform: translateX(-50%); width: calc(100% - 40px); max-width: 300px; }
+.bottom-nav { left: 50%; right: auto; transform: translateX(-50%); width: calc(100% - 40px); max-width: 300px; }
+.currency-card, .bonus-shell, .action-card, .info-card { max-width: 300px; }
 
-/* === Страницы === */
-.page-view { width: 100%; display: flex; flex-direction: column; gap: 16px; align-items: center; padding: 0 16px; }
+/* Ник и ID не вылезают за плашку */
+.profile-card__info { min-width: 0; max-width: calc(100% - 130px); overflow: hidden; }
+.profile-card__nickname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.profile-card__id { min-width: 0; overflow: hidden; }
+.profile-card__id-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+/* === help-кнопки: фрейм 20, иконка what 5x8 === */
+.profile-card__help, .bonus-card__help { width: 20px; height: 20px; padding: 0; }
+.help-icon { width: 5px; height: 8px; display: block; }
+
+/* === Страницы и утилиты === */
+.page-view { width: 100%; display: flex; flex-direction: column; gap: 16px; align-items: center; }
 .hidden { display: none !important; }
 .info-card { width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
 .info-card__title { font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -0.05em; text-transform: uppercase; color: #f5f3ff; margin: 0; }
 .info-card__text { font-family: 'Montserrat', sans-serif; font-size: 12px; line-height: 1.5; color: rgba(255,255,255,.7); margin: 0; }
 
-/* === Колёса: слои дизайнера, рамка и стрелка статичны === */
-.bonus-card__wheel-wrap { transform: rotate(0deg); }
-.bonus-card__frame-img { transform: rotate(0deg); }
-.bonus-card__pointer-img { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 20%; height: auto; z-index: 3; pointer-events: none; }
+/* Онлайн — элемент в потоке страницы */
+.online-status--inline { position: static; transform: none; width: auto; height: auto; margin-top: 4px; padding-bottom: 8px; }
 
-/* === Онлайн как элемент в потоке страницы (не поверх блоков) === */
-.online-status--inline {
-  position: static;
-  transform: none;
-  width: auto;
-  height: auto;
-  margin-top: 4px;
-  padding-bottom: 8px;
-}
-
-/* === Админ-логи (дизайн в стиле glass) === */
-.logs-controls { width: 100%; display: flex; flex-direction: column; gap: 8px; }
-.logs-row { display: flex; gap: 8px; align-items: center; }
-.seg { display: flex; background: rgba(0,0,0,.4); border-radius: 10px; padding: 4px; gap: 4px; }
-.seg-btn { border: none; background: transparent; color: rgba(245,243,255,.6); font-family: 'Montserrat', sans-serif; font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
-.seg-btn.active { background: #DCCDFF; color: #180F2A; font-weight: 600; }
-.input, .select { background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; color: #f5f3ff; font-family: 'Montserrat', sans-serif; font-size: 12px; padding: 8px; }
-.logs-search { flex: 1; min-width: 0; }
-.btn-mini { background: #DCCDFF; border: none; border-radius: 10px; color: #180F2A; font-family: 'Montserrat', sans-serif; font-size: 12px; font-weight: 600; padding: 8px 12px; cursor: pointer; white-space: nowrap; }
-.btn-mini.ghost { background: transparent; color: rgba(245,243,255,.7); border: 1px solid rgba(255,255,255,.2); }
-.logs-table-wrap { width: 100%; padding: 12px; }
-.logs-scroll { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; max-height: 44vh; }
-.logs-scroll::-webkit-scrollbar { width: 0; }
-.logs-head, .logs-rowline { display: grid; gap: 8px; }
-.cols-4 { grid-template-columns: 1.1fr 1.1fr 1.6fr .8fr; }
-.cols-5 { grid-template-columns: 1fr 1fr 1.1fr 1fr .9fr; }
-.logs-head { font-family: 'Unbounded', sans-serif; font-size: 9px; text-transform: uppercase; color: rgba(245,243,255,.5); padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,.12); }
-.logs-rowline { padding: 8px; border-radius: 12px; background: rgba(0,0,0,.25); font-size: 11px; color: rgba(245,243,255,.85); }
-.logs-cell-name { font-weight: 600; }
-.logs-cell-sub { color: rgba(245,243,255,.5); font-size: 10px; }
-.logs-cell-action { font-size: 11px; word-break: break-word; }
-.logs-stat-link { cursor: pointer; color: #DCCDFF; }
-.bet-win { color: #7DFFAF; }
-.bet-loss { color: #ff4d6d; }
-.bet-pend { color: rgba(245,243,255,.5); }
-.status-badge { font-size: 10px; padding: 2px 8px; border-radius: 8px; }
-.status-finished { background: rgba(125,255,175,.15); color: #7DFFAF; }
-.status-active { background: rgba(251,251,51,.15); color: #FBFB33; }
-.logs-pager { display: flex; gap: 10px; align-items: center; color: rgba(245,243,255,.6); font-size: 12px; }
-.logs-empty { padding: 20px; text-align: center; color: rgba(245,243,255,.5); font-size: 12px; }
-
-/* === Модалка === */
+/* === Модалка (глобальная) === */
 .modal { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: rgba(3,1,29,.7); }
 .modal[hidden] { display: none; }
 .modal__box { padding: 20px; width: min(92vw, 420px); display: flex; flex-direction: column; gap: 12px; align-items: stretch; z-index: 1; }

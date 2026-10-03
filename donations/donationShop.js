@@ -296,10 +296,10 @@ async function showStatusesMenu(ctx) {
 
     // Определяем доступные для покупки статусы
     const availableStatuses = [
-      { name: 'GOLD', cost: 899, id: 6 },
-      { name: 'PLATINUM', cost: 1999, id: 5 },
-      { name: 'DIAMOND', cost: 4499, id: 4 },
-      { name: 'Администратор', cost: 6499, id: 1 },
+      { name: 'GOLD', cost: 499, id: 6 },
+      { name: 'PLATINUM', cost: 799, id: 5 },
+      { name: 'DIAMOND', cost: 999, id: 4 },
+      { name: 'Администратор', cost:1999, id: 1 },
     ];
 
     // Логируем доступные статусы
