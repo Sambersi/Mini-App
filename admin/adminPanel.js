@@ -233,6 +233,7 @@ async function handleAdminCommands(ctx) {
 🍬 <b>Конфеты:</b>
 • <code>выдать_конфеты</code> [id] [количество] - выдать конфеты
 • <code>забрать_конфеты</code> [id] [количество] - забрать конфеты
+• <code>запросы</code> - посмотреть запросы партнёров
 `;
 
     let commandsMessage;
