@@ -6328,17 +6328,6 @@ function getFortuneTickets(userId) {
   }
 }
 
-// ========== ФУНКЦИИ ДЛЯ ПАРТНЕРСКОЙ СИСТЕМЫ ==========
-
-function getUserMaxPriority(userId) {
-  try {
-    const stmt = db.prepare('SELECT MAX(priority) as max_priority FROM statuses WHERE id IN (SELECT status_id FROM user_statuses WHERE user_id = ?)');
-    const row = stmt.get(userId.toString());
-    return row ? row.max_priority : 0;
-  } catch (e) {
-    return 0;
-  }
-}
 
 function createPartnerRequest(partnerId, name, prizeType, prizeAmount, audienceType, template) {
   const stmt = db.prepare('INSERT INTO partner_requests (partner_id, name, prize_type, prize_amount, audience_type, template) VALUES (?, ?, ?, ?, ?, ?)');
@@ -6380,28 +6369,44 @@ function createPartnerPromo(name, activations, prizeType, prizeAmount, createdBy
     return { success: false, message: 'Промокод с таким названием уже существует.' };
   }
 }
-// ========== КОНЕЦ ФУНКЦИЙ ДЛЯ ПАРТНЕРСКОЙ СИСТЕМЫ ==========
-
-// ========== ФУНКЦИИ ДЛЯ ПАРТНЕРСКОЙ СИСТЕМЫ (ОБНОВЛЕННЫЕ) ==========
-
+// ========== ФУНКЦИЯ ПРОВЕРКИ ПРИОРИТЕТА (ДЛЯ ПАРТНЕРКИ) ==========
 function getUserMaxPriority(userId) {
   try {
-    const user = getUserById(userId.toString());
+    // 1. Получаем пользователя
+    const user = db.prepare('SELECT status_ids FROM users WHERE id = ?').get(userId.toString());
     if (!user || !user.status_ids) return 0;
-    const statusIds = JSON.parse(user.status_ids || '[]');
-    let maxPriority = 0;
-    for (const id of statusIds) {
-      const status = getStatusByIdSync(id);
-      if (status && status.priority > maxPriority) {
-        maxPriority = status.priority;
-      }
+
+    // 2. Парсим JSON массив ID статусов
+    let statusIds = [];
+    try {
+      statusIds = JSON.parse(user.status_ids);
+    } catch (e) {
+      console.error('[DB] Ошибка парсинга status_ids:', e);
+      return 0;
     }
-    return maxPriority;
+
+    if (!Array.isArray(statusIds) || statusIds.length === 0) return 0;
+
+    // 3. Получаем приоритеты этих статусов
+    // Используем IN (...) для запроса всех статусов разом
+    const placeholders = statusIds.map(() => '?').join(',');
+    const stmt = db.prepare(`SELECT priority FROM statuses WHERE id IN (${placeholders})`);
+    const rows = stmt.all(...statusIds);
+
+    // 4. Находим максимум
+    let max = 0;
+    for (const row of rows) {
+      if (row.priority > max) max = row.priority;
+    }
+    
+    console.log(`[DB] getUserMaxPriority(${userId}): statusIds=${JSON.stringify(statusIds)}, maxPriority=${max}`);
+    return max;
   } catch (e) {
-    console.error('[DB] getUserMaxPriority error:', e);
+    console.error('[DB] Критическая ошибка в getUserMaxPriority:', e);
     return 0;
   }
 }
+// ==================================================================
 
 function getPartnerRequestsStats(partnerId, hours = 24) {
   try {

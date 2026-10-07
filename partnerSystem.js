@@ -156,9 +156,20 @@ async function isPartner(userId) {
     return statuses.some(s => s.toLowerCase() === 'партнёр' || s.toLowerCase() === 'partner');
 }
 
+// ОБНОВЛЕННАЯ ФУНКЦИЯ ПРОВЕРКИ ПРАВ С ЛОГАМИ
 async function hasPartnerAdminRights(userId) {
-    const maxPriority = getUserMaxPriority(userId);
-    return ALLOWED_ADMIN_PRIORITIES.includes(maxPriority);
+    try {
+        const maxPriority = getUserMaxPriority(userId);
+        const hasRights = ALLOWED_ADMIN_PRIORITIES.includes(maxPriority);
+        
+        // ПОДРОБНЫЙ ЛОГ
+        console.log(`[PARTNER AUTH] User: ${userId} | Max Priority: ${maxPriority} | Allowed: ${JSON.stringify(ALLOWED_ADMIN_PRIORITIES)} | Result: ${hasRights}`);
+        
+        return hasRights;
+    } catch (e) {
+        console.error('[PARTNER AUTH] Error checking rights:', e);
+        return false;
+    }
 }
 
 async function showPartnerMenu(ctx) {
@@ -630,42 +641,60 @@ async function submitCurrencyRequestToAdmins(ctx, data) {
 }
 
 // ========== АДМИНСКАЯ ЧАСТЬ ==========
-async function handleAdminRequestCallback(ctx) {
-    const userId = ctx.from.id.toString();
-    const data = ctx.callbackQuery.data;
-    
-    if (!(await hasPartnerAdminRights(userId))) {
-        await ctx.answerCbQuery('❌ Недостаточно прав.', { show_alert: true });
-        return;
-    }
-    await ctx.answerCbQuery();
-
-    const parts = data.split('_');
-    const isCurrency = parts[1] === 'curr';
-    const action = isCurrency ? parts[2] : parts[2];
-    const partnerId = isCurrency ? parts[3] : parts[3];
-    const promoName = isCurrency ? parts[4] : parts[4];
-
-    const request = getPartnerRequestByPartnerAndName(partnerId, promoName, 'pending');
-
-    if (!request) {
-        await ctx.editMessageText(ctx.callbackQuery.message.text + '\n\n⚠️ <b>Запрос уже обработан.</b>', { parse_mode: 'HTML' });
-        return;
-    }
-
-    if (action === 'accept') {
-        if (isCurrency) {
-            await approveCurrencyRequest(ctx, request, ctx.from.id);
-        } else {
-            await approveRequest(ctx, request, ctx.from.id);
-        }
-    } else if (action === 'reject') {
-        await rejectRequest(ctx, request, ctx.from.id);
-    } else if (action === 'edit' && !isCurrency) {
-        adminEditSessions.set(userId, { requestId: request.id, step: 'AWAITING_EDIT_DATA' });
-        await ctx.reply('✏️ <b>Редактирование</b>\n\nФормат: <code>Название | Тип | Сумма | Аудитория | Шаблон</code>', { parse_mode: 'HTML' });
-    }
-}
+  // ОБНОВЛЕННЫЙ ОБРАБОТЧИК КНОПОК АДМИНА
+  async function handleAdminRequestCallback(ctx) {
+      const userId = ctx.from.id.toString();
+      const data = ctx.callbackQuery.data;
+      
+      console.log(`[PARTNER ADMIN] Нажата кнопка: ${data} пользователем: ${userId}`);
+  
+      const hasRights = await hasPartnerAdminRights(userId);
+      
+      if (!hasRights) {
+           // Логируем отказ
+           console.warn(`[PARTNER ADMIN] ОТКАЗ в доступе пользователю ${userId}. Данные кнопки: ${data}`);
+           await ctx.answerCbQuery('❌ Недостаточно прав. (Проверьте логи: приоритет статуса)', { show_alert: true });
+           return;
+      }
+      
+      await ctx.answerCbQuery();
+  
+      try {
+          const parts = data.split('_');
+          // Формат: admin_req_accept_{partnerId}_{promoName}
+          // Или: admin_curr_accept_{partnerId}_{name}
+          
+          const action = parts[2]; 
+          const partnerId = parts[3];
+          const promoName = parts[4];
+  
+          console.log(`[PARTNER ADMIN] Parsing -> Action: ${action}, PartnerID: ${partnerId}, Name: ${promoName}`);
+  
+          const request = getPartnerRequestByPartnerAndName(partnerId, promoName, 'pending');
+  
+          if (!request) {
+              console.warn(`[PARTNER ADMIN] Запрос не найден в БД! Partner: ${partnerId}, Name: ${promoName}`);
+              await ctx.editMessageText(ctx.callbackQuery.message.text + '\n\n⚠️ <b>Запрос уже обработан или не найден в БД.</b>', { parse_mode: 'HTML' });
+              return;
+          }
+  
+          if (action === 'accept') {
+              if (parts[1] === 'curr') {
+                  await approveCurrencyRequest(ctx, request, ctx.from.id);
+              } else {
+                  await approveRequest(ctx, request, ctx.from.id);
+              }
+          } else if (action === 'reject') {
+              await rejectRequest(ctx, request, ctx.from.id);
+          } else if (action === 'edit' && parts[1] !== 'curr') {
+              adminEditSessions.set(userId, { requestId: request.id, step: 'AWAITING_EDIT_DATA' });
+              await ctx.reply('✏️ <b>Редактирование</b>\n\nФормат: <code>Название | Тип | Сумма | Аудитория | Шаблон</code>', { parse_mode: 'HTML' });
+          }
+      } catch (e) {
+          console.error('[PARTNER ADMIN] Critical Error in callback:', e);
+          await ctx.reply('❌ Критическая ошибка обработки.');
+      }
+  }
 
 async function approveRequest(ctx, request, adminId, customData = null) {
     const data = customData || request;
