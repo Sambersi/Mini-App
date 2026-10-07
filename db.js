@@ -6494,6 +6494,15 @@ function getUserStatusIds(userId) {
   }
 }
 // =========================================================
+function getPendingPartnerRequests() {
+  const stmt = db.prepare("SELECT * FROM partner_requests WHERE status = 'pending' ORDER BY created_at ASC");
+  return stmt.all();
+}
+
+function getFinishedPartnerRequests(limit = 20) {
+  const stmt = db.prepare("SELECT * FROM partner_requests WHERE status != 'pending' ORDER BY created_at DESC LIMIT ?");
+  return stmt.all(limit);
+}
 
 
 // Экспортируем функции
@@ -6780,7 +6789,7 @@ module.exports = {
   getPartnerRequestsStats,
   createPartnerCurrencyRequest,
   getUserStatusIds,
-
+  getPendingPartnerRequests, getFinishedPartnerRequests,
 
 
 };

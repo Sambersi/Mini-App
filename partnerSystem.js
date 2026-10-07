@@ -3,7 +3,6 @@ const {
   getUserStatuses, 
   getUserById,
   getPromoByName,
-  getUserMaxPriority,
   getPartnerRequestsStats,
   createPartnerRequest,
   createPartnerCurrencyRequest,
@@ -14,6 +13,8 @@ const {
   getPartnerRequestById,
   createPartnerPromo,
   getUserStatusIds,
+  getPendingPartnerRequests,
+  getFinishedPartnerRequests,
 } = require('./db');
 
 let generatePromoImage = null;
@@ -24,7 +25,7 @@ try {
 }
 
 const PARTNER_ADMIN_CHAT_ID = '-1004397248092';
-const ALLOWED_ADMIN_PRIORITIES = [10, 9, 8]; // Тех админ, Главный админ, Руководитель партнёрки
+const ALLOWED_ADMIN_STATUS_IDS = [2, 9, 8]; // 2=Тех администратор, 9=Главный админ, 8=Руководитель партнёрки
 
 const partnerSessions = new Map();
 const adminEditSessions = new Map();
@@ -43,11 +44,11 @@ const STEP_AUDIENCE = 3;
 const STEP_TEMPLATE = 4;
 const STEP_SUMMARY = 5;
 
-// Быстрый запрос валюты
 const CURRENCY_STEP_TYPE = 0;
 const CURRENCY_STEP_AMOUNT = 1;
 const CURRENCY_STEP_SUMMARY = 2;
 
+// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 function escapeHtml(text) {
     if (typeof text !== 'string') return text;
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -76,6 +77,20 @@ async function safeEditOrReply(ctx, text, options, photoPath = null) {
     }
 }
 
+function chunkText(text, limit = 3800) {
+    const parts = [];
+    let current = '';
+    for (const line of text.split('\n')) {
+        if ((current + line + '\n').length > limit && current) {
+            parts.push(current);
+            current = '';
+        }
+        current += line + '\n';
+    }
+    if (current.trim()) parts.push(current);
+    return parts;
+}
+
 async function generatePartnerPromoImage(data) {
     if (!generatePromoImage) return null;
     try {
@@ -86,7 +101,7 @@ async function generatePartnerPromoImage(data) {
     }
 }
 
-// ========== КЛАВИАТУРЫ ==========
+// ========== КЛАВИАТУРЫ ПАРТНЁРА ==========
 const partnerPrizeTypeKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('📦 GOLD-контейнер', 'partner_prize_container_type_3')],
     [Markup.button.callback('💰 PF', 'partner_prize_balance'), Markup.button.callback('💎 DF', 'partner_prize_df_balance')],
@@ -130,10 +145,10 @@ const partnerEditMenuKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('⬅️ Назад к проверке', 'partner_back_to_summary')]
 ]);
 
-// Клавиатуры для быстрого запроса валюты
+// Кнопки валюты: префикс partner_, чтобы попадать под роут /^partner_.*/ в bot.js
 const currencyTypeKeyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('💰 PF', 'currency_type_balance')],
-    [Markup.button.callback('💎 DF', 'currency_type_df_balance')],
+    [Markup.button.callback('💰 PF', 'partner_curtype_balance')],
+    [Markup.button.callback('💎 DF', 'partner_curtype_df_balance')],
     [Markup.button.callback('❌ Отмена', 'partner_cancel_req')]
 ]);
 
@@ -145,19 +160,73 @@ function getCurrencyAmountKeyboard(currencyType) {
         rows = [['10', '50', '100'], ['500', '1000', '5000']];
     }
     const keyboardRows = rows.map(row =>
-        row.map(val => Markup.button.callback(val, `currency_quick_${val}`))
+        row.map(val => Markup.button.callback(val, `partner_curquick_${val}`))
     );
     keyboardRows.push([Markup.button.callback('❌ Отмена', 'partner_cancel_req')]);
     return Markup.inlineKeyboard(keyboardRows);
 }
 
-// ========== ПРОВЕРКИ И МЕНЮ ==========
+// ========== ПРОВЕРКИ ==========
 async function isPartner(userId) {
     const statuses = await getUserStatuses(userId);
     return statuses.some(s => s.toLowerCase() === 'партнёр' || s.toLowerCase() === 'partner');
 }
 
+async function hasPartnerAdminRights(userId) {
+    try {
+        const ids = getUserStatusIds(userId);
+        const hasRights = ids.some(id => ALLOWED_ADMIN_STATUS_IDS.includes(id));
+        console.log(`[PARTNER AUTH] User: ${userId} | StatusIDs: ${JSON.stringify(ids)} | AllowedIDs: ${JSON.stringify(ALLOWED_ADMIN_STATUS_IDS)} | Result: ${hasRights}`);
+        return hasRights;
+    } catch (e) {
+        console.error('[PARTNER AUTH] Error checking rights:', e);
+        return false;
+    }
+}
 
+// ========== ТЕКСТ КАРТОЧКИ ЗАПРОСА ==========
+function composeRequestCardText(d, withStats = true) {
+    const user = getUserById(d.partner_id);
+    const userLink = createUserLink(d.partner_id, user?.username || 'Неизвестный');
+    const idLabel = d.id ? ` #${d.id}` : '';
+    const isCurrency = d.request_type === 'currency';
+    let t;
+    if (isCurrency) {
+        const currencyName = d.prize_type === 'balance' ? 'PF' : 'DF';
+        t = `💰 <b>Запрос на ВАЛЮТУ</b>${idLabel}\n\n` +
+            `👤 Партнер: ${userLink}\n` +
+            `🆔 Numeric ID: <code>${user?.numeric_id || '—'}</code>\n` +
+            `💵 Валюта: <b>${currencyName}</b>\n` +
+            `💎 Сумма: <b>${(d.prize_amount || 0).toLocaleString('ru-RU')} ${currencyName}</b>\n`;
+    } else {
+        const prizeName = PRIZE_TYPES.find(p => p.id === d.prize_type)?.name || d.prize_type;
+        const audText = d.audience_type === 'all' ? '🌍 Для всех' : '👥 Только рефералы';
+        const templateText = d.template === 'fat' ? '🥶 Жирный' : '🍬 Обычный';
+        t = `📩 <b>Запрос на ПРОМОКОД</b>${idLabel}\n\n` +
+            `👤 Партнер: ${userLink}\n` +
+            `🆔 Numeric ID: <code>${user?.numeric_id || '—'}</code>\n` +
+            `🏷 Название: <code>${d.name}</code>\n` +
+            `🎁 Приз: ${(d.prize_amount || 0).toLocaleString('ru-RU')} ${prizeName}\n` +
+            `🎯 Аудитория: ${audText}\n` +
+            `🎨 Шаблон: ${templateText}\n`;
+    }
+    if (withStats) {
+        const s = getPartnerRequestsStats(d.partner_id, 24);
+        t += `\n📊 <b>Статистика за 24ч:</b>\n• Всего запросов: ${s.total}\n• Одобрено: ${s.approved}\n• На рассмотрении: ${s.pending}`;
+    }
+    return t;
+}
+
+function getRequestCardKeyboard(request) {
+    const id = request.id;
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('✅ Принять', `adminid_accept_${id}`)],
+        [Markup.button.callback('❌ Отклонить', `adminid_reject_${id}`)],
+        [Markup.button.callback('✏️ Редактировать', `adminid_edit_${id}`)]
+    ]);
+}
+
+// ========== МЕНЮ ПАРТНЁРА ==========
 async function showPartnerMenu(ctx) {
     const userId = ctx.from.id.toString();
     if (!(await isPartner(userId))) {
@@ -185,12 +254,10 @@ async function showMyRequests(ctx, userId) {
         }
         
         let text = '📜 <b>Ваши последние запросы (до 10):</b>\n\n';
-        
-        // Сортируем: сначала активные (pending), потом завершенные
         const pending = requests.filter(r => r.status === 'pending');
         const completed = requests.filter(r => r.status !== 'pending');
         
-        const formatRequest = (req, index) => {
+        const formatRequest = (req) => {
             const prizeName = PRIZE_TYPES.find(p => p.id === req.prize_type)?.name || req.prize_type;
             const isCurrency = req.request_type === 'currency';
             const typeLabel = isCurrency ? '💰 Валюта' : '🎁 Промо';
@@ -200,49 +267,38 @@ async function showMyRequests(ctx, userId) {
             if (req.status === 'approved') { statusIcon = '✅'; statusText = 'Одобрено'; }
             if (req.status === 'rejected') { statusIcon = '❌'; statusText = 'Отклонено'; }
             
-            const amount = req.prize_amount?.toLocaleString('ru-RU') || '—';
-            const date = new Date(req.created_at * 1000).toLocaleDateString('ru-RU');
+            const amount = (req.prize_amount || 0).toLocaleString('ru-RU');
+            const date = new Date((req.created_at || 0) * 1000).toLocaleDateString('ru-RU');
             
             return `${statusIcon} <b>${typeLabel}</b> | <code>${req.name}</code>\n` +
                    `   🎁 ${amount} ${prizeName} | 📅 ${date}\n` +
                    `   📊 ${statusText}\n`;
         };
         
-        // Сначала pending
         if (pending.length > 0) {
             text += '🟡 <b>На рассмотрении:</b>\n';
             for (let i = 0; i < pending.length; i++) {
-                text += formatRequest(pending[i], i + 1) + '\n';
+                text += formatRequest(pending[i]) + '\n';
             }
         }
         
-        // Потом completed
         if (completed.length > 0) {
             text += '\n⚪ <b>Завершенные:</b>\n';
             for (let i = 0; i < completed.length; i++) {
-                text += formatRequest(completed[i], pending.length + i + 1) + '\n';
+                text += formatRequest(completed[i]) + '\n';
             }
         }
         
-        // Разбиваем на части если длинное
-        const parts = [];
-        let current = '';
-        const lines = text.split('\n');
-        
-        for (const line of lines) {
-            if ((current + line + '\n').length > 3800) {
-                parts.push(current);
-                current = '';
-            }
-            current += line + '\n';
-        }
-        if (current) parts.push(current);
-        
+        const parts = chunkText(text);
         for (let i = 0; i < parts.length; i++) {
             const kb = i === parts.length - 1 
                 ? Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад', 'partner_back_to_menu')]])
                 : {};
-            await safeEditOrReply(ctx, parts[i], { parse_mode: 'HTML', ...kb });
+            if (i === 0) {
+                await safeEditOrReply(ctx, parts[i], { parse_mode: 'HTML', ...kb });
+            } else {
+                await ctx.reply(parts[i], { parse_mode: 'HTML', ...kb });
+            }
         }
     } catch (e) {
         console.error('[PARTNER] Ошибка показа запросов:', e);
@@ -250,7 +306,7 @@ async function showMyRequests(ctx, userId) {
     }
 }
 
-// ========== ПРОЦЕСС СОЗДАНИЯ ЗАПРОСА НА ПРОМО ==========
+// ========== СОЗДАНИЕ ЗАПРОСА НА ПРОМО ==========
 async function startPartnerRequest(ctx) {
     const userId = ctx.from.id.toString();
     partnerSessions.set(userId, {
@@ -274,7 +330,7 @@ async function showPartnerSummary(ctx, session) {
     
     const summaryText = `🎉 <b>Проверьте данные запроса:</b>\n\n` +
         `🏷 <b>Название:</b> <code>${d.name}</code>\n` +
-        `🎁 <b>Приз:</b> ${d.prize_amount?.toLocaleString('ru-RU')} ${prizeName}\n` +
+        `🎁 <b>Приз:</b> ${(d.prize_amount || 0).toLocaleString('ru-RU')} ${prizeName}\n` +
         `🎯 <b>Аудитория:</b> ${audText}\n` +
         `🎨 <b>Шаблон:</b> ${templateText}\n\n` +
         `Нажмите «Отправить» или «Редактировать».`;
@@ -309,9 +365,8 @@ async function showCurrencySummary(ctx, session) {
     const currencyName = d.prize_type === 'balance' ? 'PF' : 'DF';
     
     const summaryText = `💰 <b>Запрос на валюту</b>\n\n` +
-        `🏷 <b>Название:</b> <code>${d.name}</code>\n` +
         `💵 <b>Валюта:</b> ${currencyName}\n` +
-        `💎 <b>Сумма:</b> ${d.prize_amount?.toLocaleString('ru-RU')} ${currencyName}\n\n` +
+        `💎 <b>Сумма:</b> ${(d.prize_amount || 0).toLocaleString('ru-RU')} ${currencyName}\n\n` +
         `Нажмите «Отправить» для передачи администраторам.`;
     
     const keyboard = Markup.inlineKeyboard([
@@ -327,7 +382,8 @@ async function handlePartnerMessage(ctx) {
     const userId = ctx.from.id.toString();
     const text = ctx.message.text.trim();
 
-    if (adminEditSessions.has(userId)) {
+    const adminSession = adminEditSessions.get(userId);
+    if (adminSession && adminSession.editField) {
         await handleAdminEditInput(ctx, userId, text);
         return true;
     }
@@ -349,7 +405,7 @@ async function handlePartnerMessage(ctx) {
                     await showPartnerSummary(ctx, session);
                 } else {
                     session.step = STEP_PRIZE_TYPE;
-                    await ctx.reply(`✅ Название <b>${text}</b> принято.\n\nШаг 2/5: Выберите <b>тип приза</b>:`, {
+                    await ctx.reply(`✅ Название <b>${escapeHtml(text)}</b> принято.\n\nШаг 2/5: Выберите <b>тип приза</b>:`, {
                         parse_mode: 'HTML', ...partnerPrizeTypeKeyboard
                     });
                 }
@@ -393,7 +449,7 @@ async function handlePartnerMessage(ctx) {
     return true;
 }
 
-// ========== ОБРАБОТКА КНОПОК ==========
+// ========== ОБРАБОТКА КНОПОК ПАРТНЁРА ==========
 async function handlePartnerCallback(ctx) {
     const userId = ctx.from.id.toString();
     const data = ctx.callbackQuery.data;
@@ -413,7 +469,6 @@ async function handlePartnerCallback(ctx) {
         return;
     }
 
-    // Обработка для промо-запроса
     if (session.type === 'promo') {
         if (data === 'partner_edit_menu') {
             await safeEditOrReply(ctx, '✏️ <b>Редактирование</b>\n\nВыберите поле:', { parse_mode: 'HTML', ...partnerEditMenuKeyboard });
@@ -509,21 +564,22 @@ async function handlePartnerCallback(ctx) {
         }
     }
     
-    // Обработка для валютного запроса
     else if (session.type === 'currency') {
-        if (data.startsWith('currency_type_')) {
-            const currencyType = data.replace('currency_type_', '');
+        if (data.startsWith('partner_curtype_')) {
+            const currencyType = data.replace('partner_curtype_', '');
+            if (!['balance', 'df_balance'].includes(currencyType)) return;
             session.data.prize_type = currencyType;
             session.step = CURRENCY_STEP_AMOUNT;
             const currencyName = currencyType === 'balance' ? 'PF' : 'DF';
-            await safeEditOrReply(ctx, `✅ Валюта: <b>${currencyName}</b>.\n\nШаг 2/2: Введите <b>сумму</b>:`, {
+            await safeEditOrReply(ctx, `✅ Валюта: <b>${currencyName}</b>.\n\nШаг 2/2: Введите <b>сумму</b> (или выберите кнопкой):`, {
                 parse_mode: 'HTML', ...getCurrencyAmountKeyboard(currencyType)
             });
             return;
         }
 
-        if (data.startsWith('currency_quick_')) {
-            const val = parseInt(data.replace('currency_quick_', ''), 10);
+        if (data.startsWith('partner_curquick_')) {
+            const val = parseInt(data.replace('partner_curquick_', ''), 10);
+            session.data.prize_type = session.data.prize_type || 'balance';
             session.data.prize_amount = val;
             session.data.name = `CURRENCY_${Date.now()}`;
             session.step = CURRENCY_STEP_SUMMARY;
@@ -542,33 +598,10 @@ async function handlePartnerCallback(ctx) {
 // ========== ОТПРАВКА АДМИНАМ (ПРОМО) ==========
 async function submitRequestToAdmins(ctx, data) {
     try {
-        const user = getUserById(data.partner_id);
-        const prizeName = PRIZE_TYPES.find(p => p.id === data.prize_type)?.name || data.prize_type;
-        const audText = data.audience_type === 'all' ? '🌍 Для всех' : '👥 Только рефералы';
-        const templateText = data.template === 'fat' ? '🥶 Жирный' : '🍬 Обычный';
-        const userLink = createUserLink(data.partner_id, ctx.from.username || ctx.from.first_name);
-
-        const stats = getPartnerRequestsStats(data.partner_id, 24);
-
-        const msgText = `📩 <b>Новый запрос на ПРОМОКОД</b>\n\n` +
-            `👤 Партнер: ${userLink}\n` +
-            `🆔 Numeric ID: <code>${user?.numeric_id || '—'}</code>\n` +
-            `🏷 Название: <code>${data.name}</code>\n` +
-            `🎁 Приз: ${data.prize_amount?.toLocaleString('ru-RU')} ${prizeName}\n` +
-            `🎯 Аудитория: ${audText}\n` +
-            `🎨 Шаблон: ${templateText}\n\n` +
-            `📊 <b>Статистика за 24ч:</b>\n` +
-            `• Всего запросов: ${stats.total}\n` +
-            `• Одобрено: ${stats.approved}\n` +
-            `• На рассмотрении: ${stats.pending}`;
-            
-        const kb = Markup.inlineKeyboard([
-            [Markup.button.callback('✅ Принять', `admin_req_accept_${data.partner_id}_${data.name}`)],
-            [Markup.button.callback('❌ Отклонить', `admin_req_reject_${data.partner_id}_${data.name}`)],
-            [Markup.button.callback('✏️ Редактировать', `admin_req_edit_${data.partner_id}_${data.name}`)]
-        ]);
-
         const requestId = createPartnerRequest(data.partner_id, data.name, data.prize_type, data.prize_amount, data.audience_type, data.template);
+        const cardData = { ...data, id: requestId };
+        const msgText = composeRequestCardText(cardData, true);
+        const kb = getRequestCardKeyboard({ id: requestId });
         const photoPath = await generatePartnerPromoImage(data);
 
         let sentMsg;
@@ -583,7 +616,7 @@ async function submitRequestToAdmins(ctx, data) {
         }
         
         updatePartnerRequestAdminMessageId(requestId, sentMsg.message_id);
-        await safeEditOrReply(ctx, '✅ Запрос отправлен администраторам!', { parse_mode: 'HTML' });
+        await safeEditOrReply(ctx, `✅ Запрос отправлен администраторам! Номер запроса: <b>#${requestId}</b>`, { parse_mode: 'HTML' });
     } catch (e) {
         console.error('[PARTNER] Ошибка отправки:', e);
         await safeEditOrReply(ctx, '❌ Ошибка при отправке.', { parse_mode: 'HTML' });
@@ -593,149 +626,413 @@ async function submitRequestToAdmins(ctx, data) {
 // ========== ОТПРАВКА АДМИНАМ (ВАЛЮТА) ==========
 async function submitCurrencyRequestToAdmins(ctx, data) {
     try {
-        const user = getUserById(data.partner_id);
-        const currencyName = data.prize_type === 'balance' ? 'PF' : 'DF';
-        const userLink = createUserLink(data.partner_id, ctx.from.username || ctx.from.first_name);
-
-        const stats = getPartnerRequestsStats(data.partner_id, 24);
-
-        const msgText = `💰 <b>Запрос на ВАЛЮТУ</b>\n\n` +
-            `👤 Партнер: ${userLink}\n` +
-            `🆔 Numeric ID: <code>${user?.numeric_id || '—'}</code>\n` +
-            `💵 Валюта: <b>${currencyName}</b>\n` +
-            `💎 Сумма: <b>${data.prize_amount?.toLocaleString('ru-RU')} ${currencyName}</b>\n\n` +
-            `📊 <b>Статистика за 24ч:</b>\n` +
-            `• Всего запросов: ${stats.total}\n` +
-            `• Одобрено: ${stats.approved}\n` +
-            `• На рассмотрении: ${stats.pending}`;
-            
-        const kb = Markup.inlineKeyboard([
-            [Markup.button.callback('✅ Одобрить', `admin_curr_accept_${data.partner_id}_${data.name}`)],
-            [Markup.button.callback('❌ Отклонить', `admin_curr_reject_${data.partner_id}_${data.name}`)]
-        ]);
-
         const requestId = createPartnerCurrencyRequest(data.partner_id, data.name, data.prize_type, data.prize_amount);
+        const cardData = { ...data, id: requestId, request_type: 'currency' };
+        const msgText = composeRequestCardText(cardData, true);
+        const kb = getRequestCardKeyboard({ id: requestId });
 
         const sentMsg = await ctx.telegram.sendMessage(PARTNER_ADMIN_CHAT_ID, msgText, { parse_mode: 'HTML', ...kb });
         updatePartnerRequestAdminMessageId(requestId, sentMsg.message_id);
         
-        await safeEditOrReply(ctx, '✅ Запрос на валюту отправлен!', { parse_mode: 'HTML' });
+        await safeEditOrReply(ctx, `✅ Запрос на валюту отправлен! Номер запроса: <b>#${requestId}</b>`, { parse_mode: 'HTML' });
     } catch (e) {
         console.error('[PARTNER] Ошибка отправки валюты:', e);
         await safeEditOrReply(ctx, '❌ Ошибка при отправке.', { parse_mode: 'HTML' });
     }
 }
 
-// ========== АДМИНСКАЯ ЧАСТЬ ==========
-  // ОБНОВЛЕННЫЙ ОБРАБОТЧИК КНОПОК АДМИНА
-  async function handleAdminRequestCallback(ctx) {
-      const userId = ctx.from.id.toString();
-      const data = ctx.callbackQuery.data;
-      
-      console.log(`[PARTNER ADMIN] Нажата кнопка: ${data} пользователем: ${userId}`);
-  
-      const hasRights = await hasPartnerAdminRights(userId);
-      
-      if (!hasRights) {
-           // Логируем отказ
-           console.warn(`[PARTNER ADMIN] ОТКАЗ в доступе пользователю ${userId}. Данные кнопки: ${data}`);
-           await ctx.answerCbQuery('❌ Недостаточно прав. (Проверьте логи: приоритет статуса)', { show_alert: true });
-           return;
-      }
-      
-      await ctx.answerCbQuery();
-  
-      try {
-          const parts = data.split('_');
-          // Формат: admin_req_accept_{partnerId}_{promoName}
-          // Или: admin_curr_accept_{partnerId}_{name}
-          
-          const action = parts[2]; 
-          const partnerId = parts[3];
-          const promoName = parts[4];
-  
-          console.log(`[PARTNER ADMIN] Parsing -> Action: ${action}, PartnerID: ${partnerId}, Name: ${promoName}`);
-  
-          const request = getPartnerRequestByPartnerAndName(partnerId, promoName, 'pending');
-  
-          if (!request) {
-              console.warn(`[PARTNER ADMIN] Запрос не найден в БД! Partner: ${partnerId}, Name: ${promoName}`);
-              await ctx.editMessageText(ctx.callbackQuery.message.text + '\n\n⚠️ <b>Запрос уже обработан или не найден в БД.</b>', { parse_mode: 'HTML' });
-              return;
-          }
-  
-          if (action === 'accept') {
-              if (parts[1] === 'curr') {
-                  await approveCurrencyRequest(ctx, request, ctx.from.id);
-              } else {
-                  await approveRequest(ctx, request, ctx.from.id);
-              }
-          } else if (action === 'reject') {
-              await rejectRequest(ctx, request, ctx.from.id);
-          } else if (action === 'edit' && parts[1] !== 'curr') {
-              adminEditSessions.set(userId, { requestId: request.id, step: 'AWAITING_EDIT_DATA' });
-              await ctx.reply('✏️ <b>Редактирование</b>\n\nФормат: <code>Название | Тип | Сумма | Аудитория | Шаблон</code>', { parse_mode: 'HTML' });
-          }
-      } catch (e) {
-          console.error('[PARTNER ADMIN] Critical Error in callback:', e);
-          await ctx.reply('❌ Критическая ошибка обработки.');
-      }
-  }
+// ========== АДМИН: МЕНЮ ЗАПРОСОВ ==========
+async function showAdminRequestsMenu(ctx) {
+    const userId = ctx.from.id.toString();
+    if (!(await hasPartnerAdminRights(userId))) {
+        return ctx.reply('❌ Недостаточно прав. Команда доступна: Тех администратор, Главный админ, Руководитель партнёрки.');
+    }
+    const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🟡 Активные запросы', 'adminreqs_active')],
+        [Markup.button.callback('⚪ Старые запросы (последние 20)', 'adminreqs_old')]
+    ]);
+    await safeEditOrReply(ctx, '📋 <b>Запросы партнёров</b>\n\nВыберите раздел:', { parse_mode: 'HTML', ...keyboard });
+}
+
+async function showActiveRequests(ctx) {
+    try {
+        const requests = getPendingPartnerRequests();
+        if (!requests || requests.length === 0) {
+            return safeEditOrReply(ctx, '🟡 <b>Активные запросы</b>\n\nНет активных запросов.', { parse_mode: 'HTML' });
+        }
+        let text = `🟡 <b>Активные запросы (${requests.length}):</b>\n\n`;
+        for (const r of requests) {
+            const isCurrency = r.request_type === 'currency';
+            const prizeName = PRIZE_TYPES.find(p => p.id === r.prize_type)?.name || r.prize_type;
+            const user = getUserById(r.partner_id);
+            text += `#${r.id} | ${isCurrency ? '💰 Валюта' : '🎁 Промо'} | <code>${r.name}</code>\n` +
+                    `   👤 ${user?.username || r.partner_id} | 🎁 ${(r.prize_amount || 0).toLocaleString('ru-RU')} ${prizeName}\n` +
+                    `   📅 ${new Date((r.created_at || 0) * 1000).toLocaleDateString('ru-RU')}\n` +
+                    `   ➡️ Откройте карточку: <code>запрос ${r.id}</code>\n\n`;
+        }
+        const parts = chunkText(text);
+        for (let i = 0; i < parts.length; i++) {
+            if (i === 0) await safeEditOrReply(ctx, parts[i], { parse_mode: 'HTML' });
+            else await ctx.reply(parts[i], { parse_mode: 'HTML' });
+        }
+    } catch (e) {
+        console.error('[PARTNER] Ошибка списка активных:', e);
+        await ctx.reply('❌ Ошибка загрузки активных запросов.');
+    }
+}
+
+async function showOldRequests(ctx) {
+    try {
+        const requests = getFinishedPartnerRequests(20);
+        if (!requests || requests.length === 0) {
+            return safeEditOrReply(ctx, '⚪ <b>Старые запросы</b>\n\nЗавершенных запросов пока нет.', { parse_mode: 'HTML' });
+        }
+        let text = `⚪ <b>Старые запросы (последние 20):</b>\n\n`;
+        for (const r of requests) {
+            const isCurrency = r.request_type === 'currency';
+            const prizeName = PRIZE_TYPES.find(p => p.id === r.prize_type)?.name || r.prize_type;
+            const icon = r.status === 'approved' ? '✅' : '❌';
+            const typeLabel = isCurrency ? '💰 Валюта' : '🎁 Промо';
+            const namePart = isCurrency ? '' : ` | <code>${r.name}</code>`;
+            text += `${icon} #${r.id} | ${typeLabel}${namePart} | ${(r.prize_amount || 0).toLocaleString('ru-RU')} ${prizeName} | 📅 ${new Date((r.created_at || 0) * 1000).toLocaleDateString('ru-RU')}\n`;
+        }
+        const parts = chunkText(text);
+        for (let i = 0; i < parts.length; i++) {
+            if (i === 0) await safeEditOrReply(ctx, parts[i], { parse_mode: 'HTML' });
+            else await ctx.reply(parts[i], { parse_mode: 'HTML' });
+        }
+    } catch (e) {
+        console.error('[PARTNER] Ошибка списка старых:', e);
+        await ctx.reply('❌ Ошибка загрузки старых запросов.');
+    }
+}
+
+// ========== АДМИН: КАРТОЧКА ПО ID ==========
+async function openAdminRequestById(ctx, idStr) {
+    const userId = ctx.from.id.toString();
+    if (!(await hasPartnerAdminRights(userId))) {
+        return ctx.reply('❌ Недостаточно прав.');
+    }
+    const id = parseInt(idStr, 10);
+    if (isNaN(id)) {
+        return ctx.reply('❌ Укажите ID запроса числом. Пример: <code>запрос 12</code>', { parse_mode: 'HTML' });
+    }
+    const request = getPartnerRequestById(id);
+    if (!request) {
+        return ctx.reply(`❌ Запрос #${id} не найден.`);
+    }
+    const text = composeRequestCardText(request, true);
+    if (request.status !== 'pending') {
+        const statusText = request.status === 'approved' ? '✅ Одобрено' : '❌ Отклонено';
+        return ctx.reply(text + `\n\n📊 Статус: <b>${statusText}</b>`, { parse_mode: 'HTML' });
+    }
+    const kb = getRequestCardKeyboard(request);
+    if (request.request_type !== 'currency') {
+        const photoPath = await generatePartnerPromoImage(request);
+        if (photoPath) {
+            try {
+                await ctx.replyWithPhoto({ source: photoPath }, { caption: text, parse_mode: 'HTML', ...kb });
+                return;
+            } catch (e) { /* упадёт в текстовый вариант */ }
+        }
+    }
+    await ctx.reply(text, { parse_mode: 'HTML', ...kb });
+}
+
+// ========== АДМИН: ОБРАБОТЧИК ВСЕХ АДМИН-КНОПОК ==========
+async function handleAdminRequestCallback(ctx) {
+    const userId = ctx.from.id.toString();
+    const data = ctx.callbackQuery.data;
+    console.log(`[PARTNER ADMIN] Нажата кнопка: ${data} пользователем: ${userId}`);
+
+    const hasRights = await hasPartnerAdminRights(userId);
+    if (!hasRights) {
+        console.warn(`[PARTNER ADMIN] ОТКАЗ в доступе пользователю ${userId}. Кнопка: ${data}`);
+        await ctx.answerCbQuery('❌ Недостаточно прав.', { show_alert: true });
+        return;
+    }
+    await ctx.answerCbQuery();
+
+    try {
+        if (data === 'adminreqs_active') { await showActiveRequests(ctx); return; }
+        if (data === 'adminreqs_old') { await showOldRequests(ctx); return; }
+
+        if (data.startsWith('adminedit_')) { await handleAdminEditCallback(ctx, userId, data); return; }
+
+        let request = null;
+        let action = null;
+
+        const mId = data.match(/^adminid_(accept|reject|edit)_(\d+)$/);
+        if (mId) {
+            action = mId[1];
+            request = getPartnerRequestById(parseInt(mId[2], 10));
+        } else {
+            // Старый формат кнопок (сообщения, уже висящие в чате)
+            const mOld = data.match(/^admin_(req|curr)_(accept|reject|edit)_([^_]+)_(.+)$/);
+            if (mOld) {
+                action = mOld[2];
+                request = getPartnerRequestByPartnerAndName(mOld[3], mOld[4], 'pending');
+            }
+        }
+
+        if (!request) {
+            await safeEditOrReply(ctx, '⚠️ <b>Запрос уже обработан или не найден.</b>', { parse_mode: 'HTML' });
+            return;
+        }
+        if (request.status !== 'pending') {
+            await safeEditOrReply(ctx, '⚠️ <b>Запрос уже обработан.</b>', { parse_mode: 'HTML' });
+            return;
+        }
+
+        if (action === 'accept') {
+            if (request.request_type === 'currency') await approveCurrencyRequest(ctx, request, ctx.from.id);
+            else await approveRequest(ctx, request, ctx.from.id);
+        } else if (action === 'reject') {
+            await rejectRequest(ctx, request, ctx.from.id);
+        } else if (action === 'edit') {
+            await startAdminEdit(ctx, userId, request);
+        }
+    } catch (e) {
+        console.error('[PARTNER ADMIN] Critical Error in callback:', e);
+        await ctx.reply('❌ Критическая ошибка обработки.');
+    }
+}
+
+// ========== АДМИН: ПОШАГОВОЕ РЕДАКТИРОВАНИЕ ==========
+async function startAdminEdit(ctx, userId, request) {
+    if (ctx.callbackQuery) await ctx.deleteMessage().catch(() => {});
+    adminEditSessions.set(userId, {
+        requestId: request.id,
+        editField: null,
+        menuMessageId: null,
+        data: {
+            name: request.name,
+            prize_type: request.prize_type,
+            prize_amount: request.prize_amount,
+            audience_type: request.audience_type,
+            template: request.template
+        }
+    });
+    await showAdminEditMenu(ctx, userId, adminEditSessions.get(userId));
+}
+
+async function showAdminEditMenu(ctx, userId, session) {
+    const base = getPartnerRequestById(session.requestId) || {};
+    const d = { ...base, ...session.data };
+    const isCurrency = d.request_type === 'currency';
+    let text;
+    let kb;
+    if (isCurrency) {
+        const currencyName = d.prize_type === 'balance' ? 'PF' : 'DF';
+        text = `✏️ <b>Редактирование запроса #${d.id}</b>\n\n💵 Валюта: <b>${currencyName}</b>\n💎 Сумма: <b>${(d.prize_amount || 0).toLocaleString('ru-RU')}</b>\n\nВыберите поле или сохраните:`;
+        kb = Markup.inlineKeyboard([
+            [Markup.button.callback('✏️ Сумма', 'adminedit_amount'), Markup.button.callback('✏️ Валюта', 'adminedit_curtype')],
+            [Markup.button.callback('✅ Сохранить и одобрить', 'adminedit_save')],
+            [Markup.button.callback('❌ Отмена', 'adminedit_cancel')]
+        ]);
+    } else {
+        const prizeName = PRIZE_TYPES.find(p => p.id === d.prize_type)?.name || d.prize_type;
+        const audText = d.audience_type === 'all' ? '🌍 Для всех' : '👥 Только рефералы';
+        const tplText = d.template === 'fat' ? '🥶 Жирный' : '🍬 Обычный';
+        text = `✏️ <b>Редактирование запроса #${d.id}</b>\n\n🏷 Название: <code>${d.name}</code>\n🎁 Приз: ${(d.prize_amount || 0).toLocaleString('ru-RU')} ${prizeName}\n🎯 Аудитория: ${audText}\n🎨 Шаблон: ${tplText}\n\nВыберите поле или сохраните:`;
+        kb = Markup.inlineKeyboard([
+            [Markup.button.callback('✏️ Название', 'adminedit_name'), Markup.button.callback('✏️ Тип приза', 'adminedit_ptype')],
+            [Markup.button.callback('✏️ Сумма', 'adminedit_amount'), Markup.button.callback('✏️ Аудитория', 'adminedit_aud')],
+            [Markup.button.callback('✏️ Шаблон', 'adminedit_tpl')],
+            [Markup.button.callback('✅ Сохранить и одобрить', 'adminedit_save')],
+            [Markup.button.callback('❌ Отмена', 'adminedit_cancel')]
+        ]);
+    }
+    try {
+        if (session.menuMessageId) {
+            await ctx.telegram.editMessageText(ctx.chat.id, session.menuMessageId, undefined, text, { parse_mode: 'HTML', ...kb });
+        } else {
+            const msg = await ctx.reply(text, { parse_mode: 'HTML', ...kb });
+            session.menuMessageId = msg.message_id;
+        }
+    } catch (e) {
+        const msg = await ctx.reply(text, { parse_mode: 'HTML', ...kb });
+        session.menuMessageId = msg.message_id;
+    }
+}
+
+async function handleAdminEditCallback(ctx, userId, data) {
+    const session = adminEditSessions.get(userId);
+    if (!session) {
+        await safeEditOrReply(ctx, '❌ Сессия редактирования не найдена. Начните заново с кнопки «Редактировать».', { parse_mode: 'HTML' });
+        return;
+    }
+
+    if (data === 'adminedit_cancel') {
+        adminEditSessions.delete(userId);
+        await safeEditOrReply(ctx, '❌ Редактирование отменено.', { parse_mode: 'HTML' });
+        return;
+    }
+
+    if (data === 'adminedit_save') {
+        const request = getPartnerRequestById(session.requestId);
+        if (!request || request.status !== 'pending') {
+            adminEditSessions.delete(userId);
+            await safeEditOrReply(ctx, '⚠️ Запрос уже обработан.', { parse_mode: 'HTML' });
+            return;
+        }
+        const edited = { ...request, ...session.data };
+        adminEditSessions.delete(userId);
+        if (request.request_type === 'currency') await approveCurrencyRequest(ctx, request, ctx.from.id, edited);
+        else await approveRequest(ctx, request, ctx.from.id, edited);
+        return;
+    }
+
+    if (data === 'adminedit_name') {
+        session.editField = 'name';
+        await ctx.reply('✍️ Отправьте новое <b>название</b> промокода:', { parse_mode: 'HTML' });
+        return;
+    }
+    if (data === 'adminedit_amount') {
+        session.editField = 'amount';
+        await ctx.reply('✍️ Отправьте новую <b>сумму</b> (число):', { parse_mode: 'HTML' });
+        return;
+    }
+    if (data === 'adminedit_ptype') {
+        const kb = Markup.inlineKeyboard([
+            [Markup.button.callback('📦 GOLD-контейнер', 'adminedit_pt_container_type_3')],
+            [Markup.button.callback('💰 PF', 'adminedit_pt_balance'), Markup.button.callback('💎 DF', 'adminedit_pt_df_balance')],
+            [Markup.button.callback('🎫 Билетики', 'adminedit_pt_tickets')],
+            [Markup.button.callback('⬅️ Назад', 'adminedit_back')]
+        ]);
+        await safeEditOrReply(ctx, '✏️ Выберите новый <b>тип приза</b>:', { parse_mode: 'HTML', ...kb });
+        return;
+    }
+    if (data === 'adminedit_aud') {
+        const kb = Markup.inlineKeyboard([
+            [Markup.button.callback('🌍 Для всех игроков', 'adminedit_aud_all')],
+            [Markup.button.callback('👥 Только рефералы партнёра', 'adminedit_aud_refs')],
+            [Markup.button.callback('⬅️ Назад', 'adminedit_back')]
+        ]);
+        await safeEditOrReply(ctx, '✏️ Выберите новую <b>аудиторию</b>:', { parse_mode: 'HTML', ...kb });
+        return;
+    }
+    if (data === 'adminedit_tpl') {
+        const kb = Markup.inlineKeyboard([
+            [Markup.button.callback('🥶 Жирный', 'adminedit_tpl_fat')],
+            [Markup.button.callback('🍬 Обычный', 'adminedit_tpl_normal')],
+            [Markup.button.callback('⬅️ Назад', 'adminedit_back')]
+        ]);
+        await safeEditOrReply(ctx, '✏️ Выберите новый <b>шаблон</b>:', { parse_mode: 'HTML', ...kb });
+        return;
+    }
+    if (data === 'adminedit_curtype') {
+        const kb = Markup.inlineKeyboard([
+            [Markup.button.callback('💰 PF', 'adminedit_cur_balance')],
+            [Markup.button.callback('💎 DF', 'adminedit_cur_df_balance')],
+            [Markup.button.callback('⬅️ Назад', 'adminedit_back')]
+        ]);
+        await safeEditOrReply(ctx, '✏️ Выберите новую <b>валюту</b>:', { parse_mode: 'HTML', ...kb });
+        return;
+    }
+    if (data === 'adminedit_back') { await showAdminEditMenu(ctx, userId, session); return; }
+
+    if (data.startsWith('adminedit_pt_')) { session.data.prize_type = data.replace('adminedit_pt_', ''); await showAdminEditMenu(ctx, userId, session); return; }
+    if (data === 'adminedit_aud_all') { session.data.audience_type = 'all'; await showAdminEditMenu(ctx, userId, session); return; }
+    if (data === 'adminedit_aud_refs') { session.data.audience_type = 'referrals'; await showAdminEditMenu(ctx, userId, session); return; }
+    if (data === 'adminedit_tpl_fat') { session.data.template = 'fat'; await showAdminEditMenu(ctx, userId, session); return; }
+    if (data === 'adminedit_tpl_normal') { session.data.template = 'normal'; await showAdminEditMenu(ctx, userId, session); return; }
+    if (data === 'adminedit_cur_balance') { session.data.prize_type = 'balance'; await showAdminEditMenu(ctx, userId, session); return; }
+    if (data === 'adminedit_cur_df_balance') { session.data.prize_type = 'df_balance'; await showAdminEditMenu(ctx, userId, session); return; }
+}
+
+async function handleAdminEditInput(ctx, adminId, text) {
+    const session = adminEditSessions.get(adminId);
+    if (!session || !session.editField) return;
+    try {
+        if (session.editField === 'name') {
+            const existing = await getPromoByName(text);
+            if (existing) {
+                await ctx.reply('❌ Промокод с таким названием уже существует. Отправьте другое:');
+                return;
+            }
+            session.data.name = text;
+            session.editField = null;
+            await showAdminEditMenu(ctx, adminId, session);
+        } else if (session.editField === 'amount') {
+            const val = parseInt(text.replace(/\s/g, ''), 10);
+            if (isNaN(val) || val <= 0) {
+                await ctx.reply('❌ Некорректная сумма. Отправьте число больше 0:');
+                return;
+            }
+            session.data.prize_amount = val;
+            session.editField = null;
+            await showAdminEditMenu(ctx, adminId, session);
+        }
+    } catch (e) {
+        console.error('[PARTNER] Ошибка админ-ввода:', e);
+        await ctx.reply('❌ Ошибка обработки ввода.');
+    }
+}
+
+// ========== ОДОБРЕНИЕ / ОТКЛОНЕНИЕ ==========
+async function updateAdminMessageFinal(ctx, request, suffix) {
+    if (!request.admin_message_id) return;
+    const text = composeRequestCardText(request, false) + '\n\n' + suffix;
+    const opts = { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } };
+    try {
+        await ctx.telegram.editMessageCaption(PARTNER_ADMIN_CHAT_ID, request.admin_message_id, undefined, text, opts);
+    } catch (e1) {
+        try {
+            await ctx.telegram.editMessageText(PARTNER_ADMIN_CHAT_ID, request.admin_message_id, undefined, text, opts);
+        } catch (e2) {
+            console.warn('[PARTNER] Не удалось обновить сообщение запроса в админ-чате:', e2.message);
+        }
+    }
+}
 
 async function approveRequest(ctx, request, adminId, customData = null) {
     const data = customData || request;
     try {
         const result = createPartnerPromo(
             data.name, -1, data.prize_type, data.prize_amount,
-            'partner_system', 0, null, data.partner_id, data.audience_type, data.template
+            'partner_system', 0, null, request.partner_id, data.audience_type || 'all', data.template || 'normal'
         );
-
-        if (!result.success) throw new Error(result.message);
+        if (!result.success) throw new Error(result.message || 'Ошибка создания промо');
 
         updatePartnerRequestStatus(request.id, 'approved');
-        
-        const prizeName = PRIZE_TYPES.find(p => p.id === data.prize_type)?.name || data.prize_type;
-        const audText = data.audience_type === 'all' ? 'Для всех' : 'Только рефералы';
-        const adminLink = createUserLink(adminId, ctx.from.username || 'Админ');
-        
-        const finalText = `${ctx.callbackQuery.message.text || ctx.callbackQuery.message.caption}\n\n✅ <b>ОДОБРЕНО</b> ${adminLink}`;
-        await ctx.editMessageCaption(finalText, { parse_mode: 'HTML' }).catch(() => 
-            ctx.editMessageText(finalText, { parse_mode: 'HTML' })
-        );
 
-        await ctx.telegram.sendMessage(data.partner_id, 
-            `🎉 <b>Запрос одобрен!</b>\n\nПромокод <code>${data.name}</code> (${data.prize_amount?.toLocaleString('ru-RU')} ${prizeName}, ${audText}) создан.`, 
-            { parse_mode: 'HTML' }
-        );
+        const adminLink = createUserLink(adminId, ctx.from.username || 'Админ');
+        await updateAdminMessageFinal(ctx, request, `✅ <b>ОДОБРЕНО</b> администратором ${adminLink}`);
+        await safeEditOrReply(ctx, `✅ Запрос #${request.id} одобрен. Промокод <code>${data.name}</code> создан.`, { parse_mode: 'HTML' });
+
+        const prizeName = PRIZE_TYPES.find(p => p.id === data.prize_type)?.name || data.prize_type;
+        const audText = (data.audience_type || 'all') === 'all' ? 'Для всех' : 'Только рефералы';
+        await ctx.telegram.sendMessage(request.partner_id,
+            `🎉 <b>Запрос одобрен!</b>\n\nПромокод <code>${data.name}</code> (${(data.prize_amount || 0).toLocaleString('ru-RU')} ${prizeName}, ${audText}) создан.`,
+            { parse_mode: 'HTML' });
     } catch (e) {
         console.error('[PARTNER] Ошибка одобрения:', e);
-        await ctx.reply('❌ Ошибка создания промокода.');
+        await ctx.reply('❌ Ошибка создания промокода: ' + (e.message || ''));
     }
 }
 
-async function approveCurrencyRequest(ctx, request, adminId) {
+async function approveCurrencyRequest(ctx, request, adminId, customData = null) {
+    const data = customData || request;
     try {
         const { updateUserBalance, updateUserDFBalance } = require('./db');
-        const amount = request.prize_amount;
-        
-        if (request.prize_type === 'balance') {
+        const amount = data.prize_amount || 0;
+        if (data.prize_type === 'balance') {
             updateUserBalance(request.partner_id, amount);
         } else {
             updateUserDFBalance(request.partner_id, amount);
         }
 
         updatePartnerRequestStatus(request.id, 'approved');
-        
-        const currencyName = request.prize_type === 'balance' ? 'PF' : 'DF';
-        const adminLink = createUserLink(adminId, ctx.from.username || 'Админ');
-        
-        const finalText = `${ctx.callbackQuery.message.text}\n\n✅ <b>ОДОБРЕНО</b> ${adminLink}\n💰 Начислено: ${amount?.toLocaleString('ru-RU')} ${currencyName}`;
-        await ctx.editMessageText(finalText, { parse_mode: 'HTML' });
 
-        await ctx.telegram.sendMessage(request.partner_id, 
-            `🎉 <b>Запрос на валюту одобрен!</b>\n\n💰 Начислено: ${amount?.toLocaleString('ru-RU')} ${currencyName}`, 
-            { parse_mode: 'HTML' }
-        );
+        const currencyName = data.prize_type === 'balance' ? 'PF' : 'DF';
+        const adminLink = createUserLink(adminId, ctx.from.username || 'Админ');
+        await updateAdminMessageFinal(ctx, request, `✅ <b>ОДОБРЕНО</b> администратором ${adminLink}\n💰 Начислено: ${amount.toLocaleString('ru-RU')} ${currencyName}`);
+        await safeEditOrReply(ctx, `✅ Запрос #${request.id} одобрен. Начислено: ${amount.toLocaleString('ru-RU')} ${currencyName}.`, { parse_mode: 'HTML' });
+
+        await ctx.telegram.sendMessage(request.partner_id,
+            `🎉 <b>Запрос на валюту одобрен!</b>\n\n💰 Начислено: ${amount.toLocaleString('ru-RU')} ${currencyName}`,
+            { parse_mode: 'HTML' });
     } catch (e) {
         console.error('[PARTNER] Ошибка одобрения валюты:', e);
         await ctx.reply('❌ Ошибка начисления валюты.');
@@ -745,61 +1042,12 @@ async function approveCurrencyRequest(ctx, request, adminId) {
 async function rejectRequest(ctx, request, adminId) {
     updatePartnerRequestStatus(request.id, 'rejected');
     const adminLink = createUserLink(adminId, ctx.from.username || 'Админ');
-    const finalText = `${ctx.callbackQuery.message.text || ctx.callbackQuery.message.caption}\n\n❌ <b>ОТКЛОНЕНО</b> ${adminLink}`;
-    
-    await ctx.editMessageCaption(finalText, { parse_mode: 'HTML' }).catch(() => 
-        ctx.editMessageText(finalText, { parse_mode: 'HTML' })
-    );
+    await updateAdminMessageFinal(ctx, request, `❌ <b>ОТКЛОНЕНО</b> администратором ${adminLink}`);
+    await safeEditOrReply(ctx, `❌ Запрос #${request.id} отклонен.`, { parse_mode: 'HTML' });
 
-    await ctx.telegram.sendMessage(request.partner_id, 
-        `❌ <b>Запрос отклонен.</b>\n\nЗапрос <code>${request.name}</code> отклонен администратором.`, 
-        { parse_mode: 'HTML' }
-    );
-}
-
-async function handleAdminEditInput(ctx, adminId, text) {
-    const session = adminEditSessions.get(adminId);
-    if (!session) return;
-
-    try {
-        const parts = text.split('|').map(p => p.trim());
-        if (parts.length !== 5) {
-            await ctx.reply('❌ Формат: <code>Название | Тип | Сумма | Аудитория | Шаблон</code>', { parse_mode: 'HTML' });
-            return;
-        }
-
-        const [name, prizeType, amountStr, audience, template] = parts;
-        const amount = parseInt(amountStr, 10);
-
-        if (!PRIZE_TYPES.find(p => p.id === prizeType)) return ctx.reply('❌ Неверный тип.');
-        if (isNaN(amount) || amount <= 0) return ctx.reply('❌ Неверная сумма.');
-        if (!['all', 'referrals'].includes(audience)) return ctx.reply('❌ Неверная аудитория.');
-        if (!['fat', 'normal'].includes(template)) return ctx.reply('❌ Неверный шаблон.');
-
-        const request = getPartnerRequestById(session.requestId);
-        const newData = { ...request, name, prize_type: prizeType, prize_amount: amount, audience_type: audience, template };
-
-        await approveRequest(ctx, request, adminId, newData);
-        adminEditSessions.delete(adminId);
-    } catch (e) {
-        console.error('[PARTNER] Ошибка парсинга:', e);
-        await ctx.reply('❌ Ошибка обработки.');
-    }
-}
-// БЫЛО: const ALLOWED_ADMIN_PRIORITIES = [10, 9, 8];
-// СТАЛО (права по ID статусов, ID стабильны):
-const ALLOWED_ADMIN_STATUS_IDS = [2, 9, 8]; // 2=Тех администратор, 9=Главный админ, 8=Руководитель партнёрки
-
-async function hasPartnerAdminRights(userId) {
-    try {
-        const ids = getUserStatusIds(userId);
-        const hasRights = ids.some(id => ALLOWED_ADMIN_STATUS_IDS.includes(id));
-        console.log(`[PARTNER AUTH] User: ${userId} | StatusIDs: ${JSON.stringify(ids)} | AllowedIDs: ${JSON.stringify(ALLOWED_ADMIN_STATUS_IDS)} | Result: ${hasRights}`);
-        return hasRights;
-    } catch (e) {
-        console.error('[PARTNER AUTH] Error checking rights:', e);
-        return false;
-    }
+    await ctx.telegram.sendMessage(request.partner_id,
+        `❌ <b>Запрос отклонен.</b>\n\nЗапрос <code>${request.name}</code> отклонен администратором.`,
+        { parse_mode: 'HTML' });
 }
 
 module.exports = {
@@ -807,5 +1055,7 @@ module.exports = {
     showPartnerMenu,
     handlePartnerMessage,
     handlePartnerCallback,
-    handleAdminRequestCallback
+    handleAdminRequestCallback,
+    showAdminRequestsMenu,
+    openAdminRequestById
 };

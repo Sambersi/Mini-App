@@ -85,9 +85,9 @@ const {
   usePromoHandler 
 } = require('./handlers/promoHandler');
 const { 
-  showPartnerMenu, 
-  handlePartnerCallback, 
-  handleAdminRequestCallback } = require('./partnerSystem');
+  showPartnerMenu, handlePartnerMessage, handlePartnerCallback, 
+  handleAdminRequestCallback, showAdminRequestsMenu, openAdminRequestById 
+} = require('./partnerSystem');
 const { listBannedPlayersHandler, startAutoUnban, isAdmin_ban } = require('./admin/blacklistManagement');
 const { buyContainerHandler, containersHandler, setupContainerHandlers, sendContainerInfoMessage } = require('./handlers/buyContainer');
 const { openContainerHandler } = require('./handlers/openContainer');
@@ -2024,6 +2024,16 @@ if (!reportText) {
   if (ctx.chat.type !== 'private') return ctx.reply('Используйте эту команду в личных сообщениях с ботом.');
   await showPartnerMenu(ctx);
 },
+'запросы': async (ctx) => {
+  if (ctx.chat.type !== 'private') return ctx.reply('Используйте в личных сообщениях.');
+  await showAdminRequestsMenu(ctx);
+},
+'запрос': async (ctx) => {
+  if (ctx.chat.type !== 'private') return ctx.reply('Используйте в личных сообщениях.');
+  const arg = (ctx.message.text.trim().split(/\s+/)[1] || '');
+  await openAdminRequestById(ctx, arg);
+},
+
 };
 
 
@@ -5121,6 +5131,12 @@ bot.action(/^partner_.*/, handlePartnerCallback);
 bot.action(/^admin_req_.*/, async (ctx) => {
   await handleAdminRequestCallback(ctx);
 });
+
+// Роуты колбэков (заменяют старый /^admin_req_.*/):
+bot.action(/^admin_(req|curr)_.*/, handleAdminRequestCallback); // старые сообщения в чате продолжают работать
+bot.action(/^adminid_.*/, handleAdminRequestCallback);
+bot.action(/^adminedit_.*/, handleAdminRequestCallback);
+bot.action(/^adminreqs_.*/, handleAdminRequestCallback);
 
 
 
