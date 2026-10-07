@@ -5,8 +5,8 @@ const { createStatus, getAllStatuses, db } = require('./db');
 const allStatuses = [
   { name: 'Тех администратор', priority: 10 },
   { name: 'Главный админ', priority: 9 },
-  { name: 'Администратор', priority: 8 },
-  { name: 'Руководитель партнёрки', priority: 7 },
+  { name: 'Руководитель партнёрки', priority: 8 },
+  { name: 'Администратор', priority: 7 },
   { name: 'Модератор', priority: 6 },
   { name: 'DIAMOND', priority: 5 },
   { name: 'PLATINUM', priority: 4 },

@@ -116,6 +116,36 @@ try {
   if (!e.message.includes('duplicate column')) console.error('[DB] Migration fortune_tickets:', e.message);
 }
 
+// ========== МИГРАЦИИ: ПАРТНЕРСКАЯ СИСТЕМА ==========
+try {
+  db.exec(`ALTER TABLE promos ADD COLUMN creator_id TEXT DEFAULT NULL`);
+  console.log('[DB] Migration: added column creator_id to promos');
+} catch (e) {
+  if (!e.message.includes('duplicate column')) console.error('[DB] Migration creator_id:', e.message);
+}
+
+try {
+  db.exec(`ALTER TABLE promos ADD COLUMN audience_type TEXT DEFAULT 'all'`);
+  console.log('[DB] Migration: added column audience_type to promos');
+} catch (e) {
+  if (!e.message.includes('duplicate column')) console.error('[DB] Migration audience_type:', e.message);
+}
+
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS partner_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    partner_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    prize_type TEXT NOT NULL,
+    prize_amount INTEGER NOT NULL,
+    audience_type TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    admin_message_id INTEGER,
+    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+  )
+`).run();
+// ========== КОНЕЦ МИГРАЦИЙ ПАРТНЕРСКОЙ СИСТЕМЫ ==========
+
 // Сброс индивидуальных referral_bonus_amount — всем одинаковый из конфига
 try {
   const { REFERRAL_BONUS_REFERRER_PF } = require('./config');

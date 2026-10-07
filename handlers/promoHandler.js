@@ -1425,88 +1425,94 @@ async function listPromosHandler(ctx) {
 async function usePromoHandler(ctx) {
   const parts = ctx.message.text.trim().split(/\s+/);
   if (parts.length !== 2 || parts[0].toLowerCase() !== 'промо') {
-    return ctx.reply('❕ <b>Использование</b>: промо [название]', { parse_mode: 'HTML' });
+      return ctx.reply('❕ <b>Использование</b>: промо [название]', { parse_mode: 'HTML' });
   }
   const promoName = parts[1];
   const userId = ctx.from.id.toString();
   const now = Math.floor(Date.now() / 1000);
+
   try {
-    console.log(`[PROMO DEBUG] Попытка активации промокода: "${promoName}" пользователем ${userId}`);
-    const promo = await getPromoByName(promoName);
-    if (!promo) {
-      console.log(`[PROMO DEBUG] Промокод "${promoName}" не найден в БД.`);
-      logPromoActivation({ userId, promoName, success: false, reason: 'Промокод не найден' });
-      return ctx.reply('❕ Промокод не найден.');
-    }
-    console.log(`[PROMO DEBUG] Промокод найден. ID: ${promo.id}, Activations: ${promo.activations_left}, Expires: ${promo.expires_at}`);
-    if (promo.expires_at) {
-      if (now > promo.expires_at) {
-        console.log(`[PROMO DEBUG] Промокод истек! Сейчас: ${now}, Истекает: ${promo.expires_at}. Удаляем.`);
-        logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Срок действия истёк' });
-        await deletePromoById(promo.id);
-        return ctx.reply('❕ Срок действия этого промокода истек.');
-      } else {
-        console.log(`[PROMO DEBUG] Время в порядке. Осталось секунд: ${promo.expires_at - now}`);
+      console.log(`[PROMO DEBUG] Попытка активации промокода: "${promoName}" пользователем ${userId}`);
+      const promo = await getPromoByName(promoName);
+      if (!promo) {
+          logPromoActivation({ userId, promoName, success: false, reason: 'Промокод не найден' });
+          return ctx.reply('❕ Промокод не найден.');
       }
-    }
-    if (promo.activations_left <= 0 && promo.activations_left !== -1) {
-      console.log(`[PROMO DEBUG] Активации исчерпаны (${promo.activations_left}).`);
-      logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Активации исчерпаны' });
-      return ctx.reply('❕ Активации исчерпаны.');
-    }
-    if (await hasUserActivatedPromo(promo.id, userId)) {
-      console.log(`[PROMO DEBUG] Пользователь ${userId} уже активировал этот промокод.`);
-      logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Уже активирован ранее' });
-      return ctx.reply('❕ Вы уже активировали этот код.');
-    }
-    if (promo.min_status_id > 0) {
-      const statuses = await getUserStatuses(userId);
-      const reqStatus = getStatusNameById(promo.min_status_id);
-      if (!statuses.includes(reqStatus)) {
-        console.log(`[PROMO DEBUG] Недостаточный статус у пользователя ${userId}. Требуется: ${reqStatus}`);
-        logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: `Недостаточный статус (требуется ${reqStatus})` });
-        return ctx.reply(`❕ Недостаточный статус. Требуется: ${reqStatus}.`);
+
+      if (promo.expires_at) {
+          if (now > promo.expires_at) {
+              logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Срок действия истёк' });
+              await deletePromoById(promo.id);
+              return ctx.reply('❕ Срок действия этого промокода истек.');
+          }
       }
-    }
-    console.log(`[PROMO DEBUG] Вызов activatePromo...`);
-    const res = await activatePromo(promo.id, userId);
-    if (!res.success) {
-      console.error(`[PROMO DEBUG] Ошибка activatePromo: ${res.message}`);
-      return ctx.reply(`❕ Ошибка активации: ${res.message || 'Неизвестная ошибка БД'}`);
-    }
-    console.log(`[PROMO DEBUG] Активация успешна. Приз: ${res.prizeAmount} ${promo.prize_type}`);
-    await recordPromoActivation(promo.id, userId);
-    if (promo.activations_left !== -1) {
-      const updated = await getPromoById(promo.id);
-      if (updated && updated.activations_left <= 0) {
-        console.log(`[PROMO DEBUG] Активации кончились, удаляем промокод.`);
-        await deletePromoById(updated.id);
+
+      if (promo.activations_left <= 0 && promo.activations_left !== -1) {
+          logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Активации исчерпаны' });
+          return ctx.reply('❕ Активации исчерпаны.');
       }
-    }
-    let candyMsg = '';
-    if (Math.random() < 0.15) {
-      const count = Math.floor(Math.random() * 4) + 2;
-      const { giveCandy } = require('../db');
-      giveCandy(userId, count);
-      candyMsg = `\n🍬 +${count} конфет бонусом!`;
-    }
-    const user = await getUserById(userId);
-    const link = await createUserLink(user.id, user.username || user.first_name);
-    await ctx.reply(`✅ ${link}, промокод активирован!\n▫️ Получено: ${formatNumber(res.prizeAmount)} ${prizeTypeMapping[promo.prize_type]}${candyMsg}`, { parse_mode: 'HTML' });
-    if (LOG_CHAT_PROMO_ID) {
-      try {
-        const logMsg = `🔔 <b>Активация промокода</b>\n• Игрок: ${link}\n• Код: <code>${escapeHtml(promo.name)}</code>\n• Приз: ${formatNumber(res.prizeAmount)} ${prizeTypeMapping[promo.prize_type]}`;
-        await ctx.telegram.sendMessage(LOG_CHAT_PROMO_ID, logMsg, { parse_mode: 'HTML' });
-        console.log(`[PROMO LOG] Лог отправлен в чат ${LOG_CHAT_PROMO_ID}`);
-      } catch (logError) {
-        console.error(`[PROMO LOG ERROR] Не удалось отправить лог в чат ${LOG_CHAT_PROMO_ID}:`, logError.message);
+
+      if (await hasUserActivatedPromo(promo.id, userId)) {
+          logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Уже активирован ранее' });
+          return ctx.reply('❕ Вы уже активировали этот код.');
       }
-    } else {
-      console.log('[PROMO LOG] Переменная LOG_CHAT_PROMO_ID не установлена, логирование пропущено.');
-    }
+
+      // НОВАЯ ПРОВЕРКА: Аудитория промокода (для партнерских промо)
+      if (promo.audience_type === 'referrals' && promo.creator_id) {
+          const { getReferrerId } = require('../db');
+          const userReferrerId = await getReferrerId(userId);
+          if (userReferrerId !== promo.creator_id) {
+              logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Не является рефералом партнера' });
+              return ctx.reply('❕ Этот промокод доступен только для рефералов конкретного партнёра.');
+          }
+      }
+
+      if (promo.min_status_id > 0) {
+          const statuses = await getUserStatuses(userId);
+          const reqStatus = getStatusNameById(promo.min_status_id);
+          if (!statuses.includes(reqStatus)) {
+              logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: `Недостаточный статус (требуется ${reqStatus})` });
+              return ctx.reply(`❕ Недостаточный статус. Требуется: ${reqStatus}.`);
+          }
+      }
+
+      console.log(`[PROMO DEBUG] Вызов activatePromo...`);
+      const res = await activatePromo(promo.id, userId);
+      if (!res.success) {
+          return ctx.reply(`❕ Ошибка активации: ${res.message || 'Неизвестная ошибка БД'}`);
+      }
+
+      await recordPromoActivation(promo.id, userId);
+      if (promo.activations_left !== -1) {
+          const updated = await getPromoById(promo.id);
+          if (updated && updated.activations_left <= 0) {
+              await deletePromoById(updated.id);
+          }
+      }
+
+      let candyMsg = '';
+      if (Math.random() < 0.15) {
+          const count = Math.floor(Math.random() * 4) + 2;
+          const { giveCandy } = require('../db');
+          giveCandy(userId, count);
+          candyMsg = `\n🍬 +${count} конфет бонусом!`;
+      }
+
+      const user = await getUserById(userId);
+      const link = await createUserLink(user.id, user.username || user.first_name);
+      await ctx.reply(`✅ ${link}, промокод активирован!\n▫️ Получено: ${formatNumber(res.prizeAmount)} ${prizeTypeMapping[promo.prize_type]}${candyMsg}`, { parse_mode: 'HTML' });
+
+      if (LOG_CHAT_PROMO_ID) {
+          try {
+              const logMsg = `🔔 <b>Активация промокода</b>\n• Игрок: ${link}\n• Код: <code>${escapeHtml(promo.name)}</code>\n• Приз: ${formatNumber(res.prizeAmount)} ${prizeTypeMapping[promo.prize_type]}`;
+              await ctx.telegram.sendMessage(LOG_CHAT_PROMO_ID, logMsg, { parse_mode: 'HTML' });
+          } catch (logError) {
+              console.error(`[PROMO LOG ERROR] Не удалось отправить лог в чат ${LOG_CHAT_PROMO_ID}:`, logError.message);
+          }
+      }
   } catch (error) {
-    console.error('[PROMO USE CRITICAL ERROR]', error);
-    await ctx.reply('❕ Произошла критическая ошибка при активации. Попробуйте позже.');
+      console.error('[PROMO USE CRITICAL ERROR]', error);
+      await ctx.reply('❕ Произошла критическая ошибка при активации. Попробуйте позже.');
   }
 }
 
@@ -1520,4 +1526,5 @@ module.exports = {
   handlePromoPostMessage,
   handlePromoPostCallback,
   showPromoSummary,
+  
 };

@@ -14,6 +14,7 @@ const {
   getReferralCount,
   getReferrerBankPercent
 } = require('../db');
+const { isPartner } = require('../partnerSystem');
 
 const CONFIG = require('../config');
 const { Markup } = require('telegraf');
@@ -59,51 +60,77 @@ function generateReferralLink(userId) {
 
 // Функция для обработки команды "реф"
 async function referralLinkHandler(ctx) {
+    try {
+        const userId = ctx.from.id.toString();
+        const user = await getUserById(userId);
+        if (!user) {
+            return ctx.reply('Для получения реферальной ссылки необходимо зарегистироваться.');
+        }
+
+        const referralLink = generateReferralLink(user.id);
+        if (!referralLink) {
+            return ctx.reply('Произошла ошибка при генерации реферальной ссылки.');
+        }
+
+        const currentBank = getReferrerBank(userId);
+        const formattedBank = Math.floor(currentBank).toLocaleString('ru-RU');
+
+        // ПРОВЕРКА СТАТУСА ПАРТНЕРА
+        const userStatuses = getUserStatusesSync(userId);
+        const isUserPartner = userStatuses.some(s => s.toLowerCase() === 'партнёр' || s.toLowerCase() === 'partner');
+
+        let partnerButton;
+        if (isUserPartner) {
+            partnerButton = Markup.button.callback('🤝 Панель Партнёра', 'open_partner_panel');
+        } else {
+            partnerButton = Markup.button.callback('ℹ️ Стать Партнёром', 'partner_info');
+        }
+
+        const keyboard = Markup.inlineKeyboard([
+            [partnerButton],
+            [
+                Markup.button.callback('Мои рефералы', 'my_referrals'),
+                Markup.button.callback('Реф инфо', 'ref_info')
+            ],
+            [
+                Markup.button.callback(`🏦 Снять банк (${formattedBank} PF)`, 'withdraw_referrer_bank')
+            ],
+            [
+                Markup.button.callback('🤝 Сотрудничество', 'partnership_info')
+            ]
+        ]);
+
+        await ctx.replyWithHTML(
+            `🌟 <b>Ваша реферальная ссылка:</b>\n\n` +
+            `👉 <code>${referralLink}</code>\n\n` +
+            `💲 За каждого приведенного друга вы получите по ${CONFIG.REFERRAL_BONUS_REFERRER_PF.toLocaleString('ru-RU')} PF + ${CONFIG.REFERRAL_BONUS_REFERRER_TICKETS} 🎟 + 10% DF с каждого доната вашего реферала!\n\n` +
+            `🏦 <b>Банк реферовода:</b> ${formattedBank} PF\n` +
+            `<i>(Накапливается % от побед ваших рефералов в Double)</i>`,
+            keyboard
+        );
+    } catch (error) {
+        console.error('Ошибка при обработке реферальной ссылки:', error);
+        await ctx.reply('Произошла ошибка. Попробуйте позже.');
+    }
+}
+
+// Обработчик информационной кнопки (добавить в bot.js или сюда)
+async function handlePartnerInfo(ctx) {
   try {
-    const userId = ctx.from.id.toString();
-    const user = await getUserById(userId);
-
-    if (!user) {
-      return ctx.reply('Для получения реферальной ссылки необходимо зарегистироваться.');
-    }
-
-    // Генерируем реферальную ссылку
-    const referralLink = generateReferralLink(user.id);
-    if (!referralLink) {
-      return ctx.reply('Произошла ошибка при генерации реферальной ссылки.');
-    }
-
-    // === ПОЛУЧЕНИЕ ДАННЫХ БАНКА РЕФЕРОВОДА ===
-    const currentBank = getReferrerBank(userId);
-    const formattedBank = Math.floor(currentBank).toLocaleString('ru-RU');
-    
-    // Создаем клавиатуру с кнопками
-    const keyboard = Markup.inlineKeyboard([
-      [
-        Markup.button.callback('Мои рефералы', 'my_referrals'),
-        Markup.button.callback('Реф инфо', 'ref_info')
-      ],
-      [
-        // Кнопка снятия средств из банка (активна всегда, проверка внутри обработчика)
-        Markup.button.callback(`🏦 Снять банк (${formattedBank} PF)`, 'withdraw_referrer_bank')
-      ],
-      [
-        Markup.button.callback('🤝 Сотрудничество', 'partnership_info')
-      ]
-    ]);
-
-    // Отправляем сообщение
-    await ctx.replyWithHTML(
-      `🌟 <b>Ваша реферальная ссылка:</b>\n\n` +
-      `👉 <code>${referralLink}</code>\n\n` +
-      `💲 За каждого приведенного друга вы получите по ${CONFIG.REFERRAL_BONUS_REFERRER_PF.toLocaleString('ru-RU')} PF + ${CONFIG.REFERRAL_BONUS_REFERRER_TICKETS} 🎟 + 10% DF с каждого доната вашего реферала!\n\n` +
-      `🏦 <b>Банк реферовода:</b> ${formattedBank} PF\n` +
-      `<i>(Накапливается % от побед ваших рефералов в Double)</i>`,
-      keyboard
-    );
+      const text = `🤝 <b>Партнёрская программа</b>\n\n` +
+          `Статус "Партнёр" дает особые привилегии:\n` +
+          `⭐️ Повышенный реферальный бонус (x2 PF и билетов).\n` +
+          `⭐️ Увеличенный процент DF с донатов рефералов (15%).\n` +
+          `⭐️ Доступ к закрытой панели для создания эксклюзивных промокодов.\n\n` +
+          `<b>Как получить?</b>\n` +
+          `Партнёрский статус выдается вручную администрацией бота за особые заслуги, активное продвижение или по договоренности. Свяжитесь с администрацией через команду "репорт".`;
+      
+      await ctx.editMessageText(text, { 
+          parse_mode: 'HTML', 
+          ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад', 'back_to_ref_menu')]]) 
+      });
   } catch (error) {
-    console.error('Ошибка при обработке реферальной ссылки:', error);
-    await ctx.reply('Произошла ошибка. Попробуйте позже.');
+      console.error('Ошибка в handlePartnerInfo:', error);
   }
 }
 // Обработчик кнопки "КОНКУРС"
@@ -963,5 +990,6 @@ module.exports = {
   topSeasonalReferralsHandler,
   handleContestInfo,
   handleBackToRefMenu,
-  handleWithdrawReferrerBank
+  handleWithdrawReferrerBank,
+  handlePartnerInfo
 };

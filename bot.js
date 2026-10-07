@@ -71,12 +71,12 @@ const { helpHandler, handleHelpNavigation } = require('./handlers/help');
 const { registerCardHandler, handleRegisterCardAction, handleCardInfoButton, handleShowUpgradeGrid, handleUpgradeCardLevel, cardInfoHandler, handleManageCardButton, performLevelUpgrade } = require('./handlers/cardInfo');
 const { changeNicknameHandler } = require('./handlers/changeNickname');
 const { forbesHandler } = require('./handlers/top'); // Обработчик "форбс"
-const { referralLinkHandler, topReferralsHandler, referralsListHandler, handleMyReferrals, handleRefInfo, changeReferralBonus, setReferralBonusForAllUsers, handleBackToRefMenu, topSeasonalReferralsHandler, handleContestInfo, handleWithdrawReferrerBank } = require('./handlers/referralSystem'); // Реферальная ссылка
+const { referralLinkHandler, topReferralsHandler, referralsListHandler, handleMyReferrals, handleRefInfo, changeReferralBonus, setReferralBonusForAllUsers, handleBackToRefMenu, topSeasonalReferralsHandler, handleContestInfo, handlePartnerInfo } = require('./handlers/referralSystem'); // Реферальная ссылка
 const { showAdminPanel, handleListAdmins, handleAdminCommands, handleClosePanel, isTechAdmin,  handleTechAdminPanelButton,
   handleBackToAdminPanel } = require('./admin/adminPanel');
 const {handleTechAdminCallback, handleTechAdminMessage } = require('./admin/techAdminPanel');
   
-  const { 
+const { 
   startPromoCreationSession, 
   handlePromoPostMessage,
   handlePromoPostCallback,
@@ -84,6 +84,10 @@ const {handleTechAdminCallback, handleTechAdminMessage } = require('./admin/tech
   deletePromoHandler, 
   usePromoHandler 
 } = require('./handlers/promoHandler');
+const { 
+  showPartnerMenu, 
+  handlePartnerCallback, 
+  handleAdminRequestCallback } = require('./partnerSystem');
 const { listBannedPlayersHandler, startAutoUnban, isAdmin_ban } = require('./admin/blacklistManagement');
 const { buyContainerHandler, containersHandler, setupContainerHandlers, sendContainerInfoMessage } = require('./handlers/buyContainer');
 const { openContainerHandler } = require('./handlers/openContainer');
@@ -2004,8 +2008,14 @@ if (!reportText) {
 'забрать_билетики': async (ctx) => {
   await takeTicketsHandler(ctx);
 },
-// 'логи': async (ctx) => { await logsHandler(ctx); },
-// '/logs': async (ctx) => { await logsHandler(ctx); },
+'партнер': async (ctx) => {
+  if (ctx.chat.type !== 'private') return ctx.reply('Используйте эту команду в личных сообщениях с ботом.');
+  await showPartnerMenu(ctx);
+},
+'партнёрка': async (ctx) => {
+  if (ctx.chat.type !== 'private') return ctx.reply('Используйте эту команду в личных сообщениях с ботом.');
+  await showPartnerMenu(ctx);
+},
 
 };
 
@@ -2689,6 +2699,9 @@ bot.use(async (ctx, next) => {
 // Обработчик текстовых сообщений
 bot.on('text', async (ctx) => {
   try {
+    const { handlePartnerMessage } = require('./partnerSystem');
+    const handledByPartner = await handlePartnerMessage(ctx);
+    if (handledByPartner) return;
     const userId = ctx.from.id.toString();
     const chatId = ctx.chat?.id;
     const chatType = ctx.chat?.type;
@@ -3234,49 +3247,49 @@ bot.on('message', async (ctx) => {
           console.log(`[DEBUG] Обработчик платежей: Получен успешный платеж от пользователя ${userId}`);
           console.log(`[DEBUG] Обработчик платежей: Сумма доната: ${total_amount} звезд`);
 
-          // Начисляем награду игроку
           const rewardAmount = total_amount * 10; // 1 звезда = 10 DF
-
           updateUserDFBalance(userId, rewardAmount);
           updateTotalDonatedStars(userId, total_amount, db);
           addDonationToHistory(userId, total_amount, db);
 
-          // Проверяем, является ли пользователь рефералом
-          const referrerId = await getReferrerId(userId); // Получаем ID реферера
+          const referrerId = await getReferrerId(userId);
           if (referrerId) {
               const CONFIG = require('./config');
-              const referrerBonus = Math.floor(rewardAmount * (CONFIG.REFERRAL_DONATION_PERCENT_DF / 100));
+              let percent = CONFIG.REFERRAL_DONATION_PERCENT_DF / 100;
+              
+              // ПРОВЕРКА НА ПАРТНЕРА
+              const { getUserStatusesSync } = require('./db');
+              const referrerStatuses = getUserStatusesSync(referrerId);
+              const isReferrerPartner = referrerStatuses.some(s => s.toLowerCase() === 'партнёр' || s.toLowerCase() === 'partner');
+              
+              if (isReferrerPartner) {
+                  percent = 0.15; // 15% для партнеров (вместо стандартных 10%)
+              }
+
+              const referrerBonus = Math.floor(rewardAmount * percent);
               updateUserDFBalance(referrerId, referrerBonus);
 
-              // Уведомляем реферера о бонусе
+              const partnerNote = isReferrerPartner ? ' (Партнёрский бонус 15%)' : '';
               await ctx.telegram.sendMessage(
                   referrerId,
-                  `☑️ Вы получили +${referrerBonus} DF за донат вашего реферала!`,
+                  `☑️ Вы получили +${referrerBonus} DF за донат вашего реферала!${partnerNote}`,
                   { parse_mode: 'HTML' }
               );
           }
 
-          // Отправляем уведомление о донате в специальный чат
           await sendDonationNotification(ctx, userId, total_amount);
 
-          // Создаем инлайн-клавиатуру с кнопкой "Статистика донатов"
           const keyboard = {
               inline_keyboard: [
                   [{ text: '📊 Статистика донатов', callback_data: 'donation_stats' }]
               ]
           };
 
-          // Отправляем сообщение с благодарностью и кнопкой
           await ctx.replyWithHTML(
-              `<b>😇 Спасибо!</b>\n` +
-              `🍩 Ваш донат на сумму ${total_amount} звезд успешно принят.`,
+              `<b>😇 Спасибо!</b>\n🍩 Ваш донат на сумму ${total_amount} звезд успешно принят.`,
               { reply_markup: keyboard }
           );
-
-          await ctx.replyWithHTML(
-              `🍩 Вам зачислено: <b>${rewardAmount} DF</b>`,
-              { parse_mode: 'HTML' }
-          );
+          await ctx.replyWithHTML(`🍩 Вам зачислено: <b>${rewardAmount} DF</b>`, { parse_mode: 'HTML' });
       }
   } catch (error) {
       console.error(`Ошибка при обработке успешного платежа для пользователя ${ctx.from.id}:`, error);
@@ -5084,6 +5097,25 @@ bot.action(/^promo_/, async (ctx) => {
   const { handleCallback } = require('./handlers/promoHandler');
   await handleCallback(ctx);
 });
+// Колбэки партнерской панели
+bot.action('open_partner_panel', async (ctx) => {
+  await ctx.answerCbQuery();
+  await showPartnerMenu(ctx);
+});
+
+bot.action('partner_info', async (ctx) => {
+  await ctx.answerCbQuery();
+  await handlePartnerInfo(ctx);
+});
+
+bot.action(/^partner_.*/, handlePartnerCallback);
+
+// Колбэки админов для запросов (в закрытом чате)
+bot.action(/^admin_req_.*/, async (ctx) => {
+  await handleAdminRequestCallback(ctx);
+});
+
+
 
 // Глобальный обработчик ошибок
 setupGlobalErrorHandler(bot);
