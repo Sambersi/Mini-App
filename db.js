@@ -6416,7 +6416,9 @@ function getPartnerRequestsStats(partnerId, hours = 24) {
         COUNT(*) as total,
         SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
+        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
+        SUM(CASE WHEN status = 'approved' AND prize_type = 'balance' THEN prize_amount ELSE 0 END) as sum_pf,
+        SUM(CASE WHEN status = 'approved' AND prize_type = 'df_balance' THEN prize_amount ELSE 0 END) as sum_df
       FROM partner_requests 
       WHERE partner_id = ? AND created_at >= ?
     `);
@@ -6425,11 +6427,13 @@ function getPartnerRequestsStats(partnerId, hours = 24) {
       total: row.total || 0,
       approved: row.approved || 0,
       pending: row.pending || 0,
-      rejected: row.rejected || 0
+      rejected: row.rejected || 0,
+      sum_pf: row.sum_pf || 0,
+      sum_df: row.sum_df || 0
     };
   } catch (e) {
     console.error('[DB] getPartnerRequestsStats error:', e);
-    return { total: 0, approved: 0, pending: 0, rejected: 0 };
+    return { total: 0, approved: 0, pending: 0, rejected: 0, sum_pf: 0, sum_df: 0 };
   }
 }
 

@@ -212,7 +212,19 @@ function composeRequestCardText(d, withStats = true) {
     }
     if (withStats) {
         const s = getPartnerRequestsStats(d.partner_id, 24);
-        t += `\n📊 <b>Статистика за 24ч:</b>\n• Всего запросов: ${s.total}\n• Одобрено: ${s.approved}\n• На рассмотрении: ${s.pending}`;
+        const currentPF = (user?.balance || 0).toLocaleString('ru-RU');
+        const currentDF = (user?.df_balance || 0).toLocaleString('ru-RU');
+        
+        t += `\n💼 <b>Текущие балансы партнёра:</b>\n` +
+             `   💰 PF: <b>${currentPF}</b>\n` +
+             `   💎 DF: <b>${currentDF}</b>\n\n`;
+             
+        t += `📊 <b>Статистика за 24ч:</b>\n` +
+             `   • Всего запросов: ${s.total}\n` +
+             `   • Одобрено: ${s.approved}\n` +
+             `   • На рассмотрении: ${s.pending}\n` +
+             `   • Выдано PF: <b>${s.sum_pf.toLocaleString('ru-RU')}</b>\n` +
+             `   • Выдано DF: <b>${s.sum_df.toLocaleString('ru-RU')}</b>`;
     }
     return t;
 }
@@ -658,7 +670,10 @@ async function showActiveRequests(ctx) {
     try {
         const requests = getPendingPartnerRequests();
         if (!requests || requests.length === 0) {
-            return safeEditOrReply(ctx, '🟡 <b>Активные запросы</b>\n\nНет активных запросов.', { parse_mode: 'HTML' });
+            return safeEditOrReply(ctx, '🟡 <b>Активные запросы</b>\n\nНет активных запросов.', { 
+                parse_mode: 'HTML',
+                ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад к меню', 'adminreqs_menu')]])
+            });
         }
         let text = `🟡 <b>Активные запросы (${requests.length}):</b>\n\n`;
         for (const r of requests) {
@@ -672,8 +687,11 @@ async function showActiveRequests(ctx) {
         }
         const parts = chunkText(text);
         for (let i = 0; i < parts.length; i++) {
-            if (i === 0) await safeEditOrReply(ctx, parts[i], { parse_mode: 'HTML' });
-            else await ctx.reply(parts[i], { parse_mode: 'HTML' });
+            const kb = i === parts.length - 1 
+                ? Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад к меню', 'adminreqs_menu')]])
+                : {};
+            if (i === 0) await safeEditOrReply(ctx, parts[i], { parse_mode: 'HTML', ...kb });
+            else await ctx.reply(parts[i], { parse_mode: 'HTML', ...kb });
         }
     } catch (e) {
         console.error('[PARTNER] Ошибка списка активных:', e);
@@ -685,7 +703,10 @@ async function showOldRequests(ctx) {
     try {
         const requests = getFinishedPartnerRequests(20);
         if (!requests || requests.length === 0) {
-            return safeEditOrReply(ctx, '⚪ <b>Старые запросы</b>\n\nЗавершенных запросов пока нет.', { parse_mode: 'HTML' });
+            return safeEditOrReply(ctx, '⚪ <b>Старые запросы</b>\n\nЗавершенных запросов пока нет.', { 
+                parse_mode: 'HTML',
+                ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад к меню', 'adminreqs_menu')]])
+            });
         }
         let text = `⚪ <b>Старые запросы (последние 20):</b>\n\n`;
         for (const r of requests) {
@@ -698,8 +719,11 @@ async function showOldRequests(ctx) {
         }
         const parts = chunkText(text);
         for (let i = 0; i < parts.length; i++) {
-            if (i === 0) await safeEditOrReply(ctx, parts[i], { parse_mode: 'HTML' });
-            else await ctx.reply(parts[i], { parse_mode: 'HTML' });
+            const kb = i === parts.length - 1 
+                ? Markup.inlineKeyboard([[Markup.button.callback('⬅️ Назад к меню', 'adminreqs_menu')]])
+                : {};
+            if (i === 0) await safeEditOrReply(ctx, parts[i], { parse_mode: 'HTML', ...kb });
+            else await ctx.reply(parts[i], { parse_mode: 'HTML', ...kb });
         }
     } catch (e) {
         console.error('[PARTNER] Ошибка списка старых:', e);
@@ -756,6 +780,7 @@ async function handleAdminRequestCallback(ctx) {
     try {
         if (data === 'adminreqs_active') { await showActiveRequests(ctx); return; }
         if (data === 'adminreqs_old') { await showOldRequests(ctx); return; }
+        if (data === 'adminreqs_menu') { await showAdminRequestsMenu(ctx); return; }
 
         if (data.startsWith('adminedit_')) { await handleAdminEditCallback(ctx, userId, data); return; }
 
