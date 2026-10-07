@@ -115,6 +115,13 @@ try {
 } catch (e) {
   if (!e.message.includes('duplicate column')) console.error('[DB] Migration fortune_tickets:', e.message);
 }
+// ========== МИГРАЦИИ: БЛОКИРОВКА РЕПОРТОВ ==========
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN report_blocked INTEGER DEFAULT 0`);
+  console.log('[DB] Migration: added column report_blocked');
+} catch (e) {
+  if (!e.message.includes('duplicate column')) console.error('[DB] Migration report_blocked:', e.message);
+}
 
 // ========== МИГРАЦИИ: ПАРТНЕРСКАЯ СИСТЕМА ==========
 try {
