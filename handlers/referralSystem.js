@@ -12,7 +12,8 @@ const {
   getReferrerBank,
   withdrawReferrerBank,
   getReferralCount,
-  getReferrerBankPercent
+  getReferrerBankPercent,
+  getUserStatusesSync
 } = require('../db');
 const { isPartner } = require('../partnerSystem');
 

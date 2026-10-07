@@ -6578,4 +6578,5 @@ module.exports = {
   withdrawReferrerBank,
   giveFortuneTicket,
   getFortuneTickets,
+  getUserStatusesSync,
 };
