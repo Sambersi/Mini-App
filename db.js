@@ -162,6 +162,12 @@ try {
   if (!e.message.includes('duplicate column')) console.error('[DB] Migration template:', e.message);
 }
 // ========== КОНЕЦ МИГРАЦИЙ ШАБЛОНА ==========
+try {
+  db.exec(`ALTER TABLE partner_requests ADD COLUMN request_type TEXT DEFAULT 'promo'`);
+  console.log('[DB] Migration: added column request_type to partner_requests');
+} catch (e) {
+  if (!e.message.includes('duplicate column')) console.error('[DB] Migration request_type:', e.message);
+}
 
 // Сброс индивидуальных referral_bonus_amount — всем одинаковый из конфига
 try {
@@ -6376,6 +6382,100 @@ function createPartnerPromo(name, activations, prizeType, prizeAmount, createdBy
 }
 // ========== КОНЕЦ ФУНКЦИЙ ДЛЯ ПАРТНЕРСКОЙ СИСТЕМЫ ==========
 
+// ========== ФУНКЦИИ ДЛЯ ПАРТНЕРСКОЙ СИСТЕМЫ (ОБНОВЛЕННЫЕ) ==========
+
+function getUserMaxPriority(userId) {
+  try {
+    const user = getUserById(userId.toString());
+    if (!user || !user.status_ids) return 0;
+    const statusIds = JSON.parse(user.status_ids || '[]');
+    let maxPriority = 0;
+    for (const id of statusIds) {
+      const status = getStatusByIdSync(id);
+      if (status && status.priority > maxPriority) {
+        maxPriority = status.priority;
+      }
+    }
+    return maxPriority;
+  } catch (e) {
+    console.error('[DB] getUserMaxPriority error:', e);
+    return 0;
+  }
+}
+
+function getPartnerRequestsStats(partnerId, hours = 24) {
+  try {
+    const cutoff = Math.floor(Date.now() / 1000) - (hours * 3600);
+    const stmt = db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
+      FROM partner_requests 
+      WHERE partner_id = ? AND created_at >= ?
+    `);
+    const row = stmt.get(partnerId.toString(), cutoff);
+    return {
+      total: row.total || 0,
+      approved: row.approved || 0,
+      pending: row.pending || 0,
+      rejected: row.rejected || 0
+    };
+  } catch (e) {
+    console.error('[DB] getPartnerRequestsStats error:', e);
+    return { total: 0, approved: 0, pending: 0, rejected: 0 };
+  }
+}
+
+function createPartnerRequest(partnerId, name, prizeType, prizeAmount, audienceType, template) {
+  const stmt = db.prepare('INSERT INTO partner_requests (partner_id, name, prize_type, prize_amount, audience_type, template) VALUES (?, ?, ?, ?, ?, ?)');
+  const info = stmt.run(partnerId.toString(), name, prizeType, prizeAmount, audienceType, template || 'normal');
+  return info.lastInsertRowid;
+}
+
+function createPartnerCurrencyRequest(partnerId, name, currencyType, amount) {
+  const stmt = db.prepare('INSERT INTO partner_requests (partner_id, name, prize_type, prize_amount, audience_type, template, request_type) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const info = stmt.run(partnerId.toString(), name, currencyType, amount, 'all', 'normal', 'currency');
+  return info.lastInsertRowid;
+}
+
+function updatePartnerRequestAdminMessageId(requestId, messageId) {
+  db.prepare('UPDATE partner_requests SET admin_message_id = ? WHERE id = ?').run(messageId, requestId);
+}
+
+function updatePartnerRequestStatus(requestId, status) {
+  db.prepare('UPDATE partner_requests SET status = ? WHERE id = ?').run(status, requestId);
+}
+
+function getPartnerRequestsByPartner(partnerId) {
+  const stmt = db.prepare('SELECT * FROM partner_requests WHERE partner_id = ? ORDER BY created_at DESC LIMIT 10');
+  return stmt.all(partnerId.toString());
+}
+
+function getPartnerRequestByPartnerAndName(partnerId, name, status) {
+  const stmt = db.prepare('SELECT * FROM partner_requests WHERE partner_id = ? AND name = ? AND status = ?');
+  return stmt.get(partnerId.toString(), name, status);
+}
+
+function getPartnerRequestById(requestId) {
+  const stmt = db.prepare('SELECT * FROM partner_requests WHERE id = ?');
+  return stmt.get(requestId);
+}
+
+function createPartnerPromo(name, activations, prizeType, prizeAmount, createdBy, minStatusId, expiresAt, creatorId, audienceType, template) {
+  const stmt = db.prepare(
+    'INSERT INTO promos (name, activations_left, prize_type, prize_amount, created_by, min_status_id, expires_at, creator_id, audience_type, template) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  );
+  try {
+    stmt.run(name, activations, prizeType, prizeAmount, createdBy, minStatusId, expiresAt, creatorId, audienceType, template);
+    return { success: true };
+  } catch (error) {
+    return { success: false, message: 'Промокод с таким названием уже существует.' };
+  }
+}
+// ========== КОНЕЦ ФУНКЦИЙ ==========
+
 
 // Экспортируем функции
 module.exports = {
@@ -6658,5 +6758,10 @@ module.exports = {
   getPartnerRequestByPartnerAndName,
   getPartnerRequestById,
   createPartnerPromo,
-  
+  getPartnerRequestsStats,
+  createPartnerCurrencyRequest,
+
+
+
+
 };
