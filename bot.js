@@ -997,11 +997,6 @@ function processMultiWordCommand(ctx, commandsMap) {
     return null; // Команда не найдена
 }
 
-// Обработчик callback-запросов
-bot.action(/^promo_create_/, async (ctx) => {
-  await require('./handlers/promoHandler').handlePromoCreationCallback(ctx);
-});
-
 // Создание маппинга многословных команд
 const multiWordCommands = {
 // Создание промокода

@@ -502,16 +502,16 @@ async function showPromoSummary(ctx, promoName) {
       ? `⏳ Время: ${promo.expires_at ? 'до ' + new Date(promo.expires_at * 1000).toLocaleString() : '∞'}`
       : `🔢 Активаций: ${formatNumber(promo.activations_left)}`;
 
-    const summaryMsg = `✅ <b>Промокод готов!</b>\n\n` +
+      const summaryMsg = `✅ <b>Промокод готов!</b>\n\n` +
       `🏷 Название: <code>${escapeHtml(promoName)}</code>\n` +
       `${limitStr}\n` +
       `🎁 Приз: ${formatNumber(promo.prize_amount)} ${prizeTypeMapping[promo.prize_type]}\n` +
       `🔒 Статус: ${getStatusNameById(promo.min_status_id)}\n\n` +
-      `🔗 <b>Ссылка для активации:</b>\n${promoLink}`;
+      `🔗 <b>Ссылка для активации:</b>\n<code>${promoLink}</code>`;
 
     const keyboard = Markup.inlineKeyboard([
-      [Markup.button.url('🚀 Активировать промокод', promoLink)],
       [Markup.button.callback('📢 Запостить промо', `promo_post_menu_${promoName}`)],
+      [Markup.button.callback('➕ Создать ещё', 'promo_create_another')],
     ]);
 
     await ctx.reply(summaryMsg, {
@@ -766,7 +766,6 @@ ${limitInfo}
   });
 }
 
-// --- ОБРАБОТЧИКИ CALLBACK (КНОПКИ) ---
 async function handleCallback(ctx) {
   const userId = ctx.from.id.toString();
   const data = ctx.callbackQuery.data;
@@ -776,6 +775,16 @@ async function handleCallback(ctx) {
   // =====================================================
   if (data.startsWith('promo_post_')) {
     return handlePromoPostCallback(ctx);
+  }
+
+  // =====================================================
+  // НОВОЕ: Кнопка «Создать ещё» — запускает новое создание промо
+  // (сессия уже закрыта, поэтому обрабатываем ДО проверки сессии)
+  // =====================================================
+  if (data === 'promo_create_another') {
+    await ctx.answerCbQuery();
+    await startPromoCreationSession(ctx);
+    return;
   }
 
   const session = promoSessions.get(userId);
@@ -1072,19 +1081,16 @@ async function finalizePromoCreation(ctx, session) {
       ? `⏳ Время: ${formatDuration(d.durationMinutes)} (до ${new Date(expiresAt * 1000).toLocaleTimeString()})`
       : `🔢 Активаций: ${formatNumber(d.activations)}`;
 
-    const successMsg = `✅ <b>Промокод создан!</b>\n\n` +
+      const successMsg = `✅ <b>Промокод создан!</b>\n\n` +
       `🏷 Название: <code>${escapeHtml(d.name)}</code>\n` +
       `${limitStr}\n` +
       `🎁 Приз: ${formatNumber(d.prize_amount)} ${prizeTypeMapping[d.prize_type]}\n` +
       `🔒 Статус: ${getStatusNameById(d.min_status_id)}\n\n` +
-      `🔗 <b>Ссылка для активации:</b>\n${promoLink}`;
-
-    // =====================================================
-    // НОВОЕ: Добавляем кнопку "Запостить промо" в клавиатуру
-    // =====================================================
+      `🔗 <b>Ссылка для активации:</b>\n<code>${promoLink}</code>`;
+  
+    // Кнопка активации убрана: ссылка уже в тексте моноширинным шрифтом
     const keyboard = Markup.inlineKeyboard([
-      [Markup.button.url('🚀 Активировать промокод', promoLink)],
-      [Markup.button.callback('📢 Запостить промо', `promo_post_menu_${d.name}`)],
+      [Markup.button.callback('➕ Создать ещё', 'promo_create_another')],
     ]);
 
     if (photoPath) {
