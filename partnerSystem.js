@@ -12,7 +12,8 @@ const {
   getPartnerRequestsByPartner,
   getPartnerRequestByPartnerAndName,
   getPartnerRequestById,
-  createPartnerPromo
+  createPartnerPromo,
+  getUserStatusIds,
 } = require('./db');
 
 let generatePromoImage = null;
@@ -156,21 +157,6 @@ async function isPartner(userId) {
     return statuses.some(s => s.toLowerCase() === 'партнёр' || s.toLowerCase() === 'partner');
 }
 
-// ОБНОВЛЕННАЯ ФУНКЦИЯ ПРОВЕРКИ ПРАВ С ЛОГАМИ
-async function hasPartnerAdminRights(userId) {
-    try {
-        const maxPriority = getUserMaxPriority(userId);
-        const hasRights = ALLOWED_ADMIN_PRIORITIES.includes(maxPriority);
-        
-        // ПОДРОБНЫЙ ЛОГ
-        console.log(`[PARTNER AUTH] User: ${userId} | Max Priority: ${maxPriority} | Allowed: ${JSON.stringify(ALLOWED_ADMIN_PRIORITIES)} | Result: ${hasRights}`);
-        
-        return hasRights;
-    } catch (e) {
-        console.error('[PARTNER AUTH] Error checking rights:', e);
-        return false;
-    }
-}
 
 async function showPartnerMenu(ctx) {
     const userId = ctx.from.id.toString();
@@ -798,6 +784,21 @@ async function handleAdminEditInput(ctx, adminId, text) {
     } catch (e) {
         console.error('[PARTNER] Ошибка парсинга:', e);
         await ctx.reply('❌ Ошибка обработки.');
+    }
+}
+// БЫЛО: const ALLOWED_ADMIN_PRIORITIES = [10, 9, 8];
+// СТАЛО (права по ID статусов, ID стабильны):
+const ALLOWED_ADMIN_STATUS_IDS = [2, 9, 8]; // 2=Тех администратор, 9=Главный админ, 8=Руководитель партнёрки
+
+async function hasPartnerAdminRights(userId) {
+    try {
+        const ids = getUserStatusIds(userId);
+        const hasRights = ids.some(id => ALLOWED_ADMIN_STATUS_IDS.includes(id));
+        console.log(`[PARTNER AUTH] User: ${userId} | StatusIDs: ${JSON.stringify(ids)} | AllowedIDs: ${JSON.stringify(ALLOWED_ADMIN_STATUS_IDS)} | Result: ${hasRights}`);
+        return hasRights;
+    } catch (e) {
+        console.error('[PARTNER AUTH] Error checking rights:', e);
+        return false;
     }
 }
 

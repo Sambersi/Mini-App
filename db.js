@@ -6481,6 +6481,20 @@ function createPartnerPromo(name, activations, prizeType, prizeAmount, createdBy
 }
 // ========== КОНЕЦ ФУНКЦИЙ ==========
 
+// ========== ПОЛУЧЕНИЕ ID СТАТУСОВ ПОЛЬЗОВАТЕЛЯ ==========
+function getUserStatusIds(userId) {
+  try {
+    const user = db.prepare('SELECT status_ids FROM users WHERE id = ?').get(userId.toString());
+    if (!user || !user.status_ids) return [];
+    const ids = JSON.parse(user.status_ids);
+    return Array.isArray(ids) ? ids : [];
+  } catch (e) {
+    console.error('[DB] getUserStatusIds error:', e);
+    return [];
+  }
+}
+// =========================================================
+
 
 // Экспортируем функции
 module.exports = {
@@ -6765,7 +6779,7 @@ module.exports = {
   createPartnerPromo,
   getPartnerRequestsStats,
   createPartnerCurrencyRequest,
-
+  getUserStatusIds,
 
 
 
