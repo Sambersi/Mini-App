@@ -1,6 +1,7 @@
 const { logError } = require('../utils/errorHandler');
 const {
   getUserById,
+  getUserByNumericId,
   updateUserDFBalance,
   incrementLikesReceived,
   incrementDislikesReceived,
@@ -12,7 +13,6 @@ const {
 function isMainAdmin(userId) {
   return process.env.MAIN_ADMIN === userId.toString();
 }
-
 
 // Обновленная функция для проверки прав администратора
 async function isAdmin(ctx) {
@@ -31,6 +31,16 @@ async function isAdmin(ctx) {
   }
 }
 
+// Функция для проверки, является ли пользователь Тех. Админом
+async function isTechAdmin(userId) {
+  try {
+    const statuses = await getUserStatuses(userId.toString());
+    return statuses.includes('Тех администратор') || isMainAdmin(userId.toString());
+  } catch (error) {
+    return false;
+  }
+}
+
 // Функция для создания нового репорта
 async function createReport(ctx, db) {
   try {
@@ -42,6 +52,11 @@ async function createReport(ctx, db) {
         '❕ <b>Вы не зарегистрированы.</b> Используйте команду "/start" для регистрации.',
         { parse_mode: 'HTML' }
       );
+    }
+
+    // Проверяем, заблокированы ли репорты у пользователя
+    if (user.report_blocked === 1) {
+      return ctx.reply('❌ Вам заблокирована возможность отправлять репорты администрацией.');
     }
 
     // Проверяем, есть ли у пользователя неотвеченные репорты
@@ -76,7 +91,7 @@ async function createReport(ctx, db) {
     const reportNumber = info.lastInsertRowid;
     const adminMessage = `
 📮 <b>Новый репорт №${reportNumber}:</b>
-👤 <b>Пользователь:</b> ${userLink}
+👤 <b>Пользователь:</b> ${userLink} (NumID: ${user.numeric_id})
 📃 <b>Текст репорта:</b> ${escapeHtml(truncatedText)}
 ✖️ <b>Статус:</b> Не отвеченный
 `.trim();
@@ -126,7 +141,7 @@ async function getReports(ctx, db) {
       // Добавляем numeric_id пользователя в вывод
       response += `
 <b>Репорт №${report.id}:</b>
-👤 <b>Пользователь:</b> ${userLink} (ID: ${report.user_numeric_id})
+👤 <b>Пользователь:</b> ${userLink} (NumID: ${report.user_numeric_id})
 📃 <b>Текст вопроса:</b> ${truncatedText}
 --------------------------
 `;
@@ -159,32 +174,6 @@ function truncateText(text, maxLength) {
     return text;
   }
   return text.slice(0, maxLength - 3) + '...'; // Добавляем многоточие в конце
-}
-
-// Функция для разделения длинного текста на части
-function splitMessage(text, maxLength) {
-  const messages = [];
-  while (text.length > 0) {
-    let chunk = text.slice(0, maxLength);
-
-    // Если часть текста заканчивается на незакрытый тег, уменьшаем длину до ближайшего закрытия тега
-    const lastTagIndex = chunk.lastIndexOf('</');
-    if (lastTagIndex !== -1 && lastTagIndex + '</b>'.length > maxLength) {
-      chunk = chunk.slice(0, lastTagIndex);
-    }
-
-    messages.push(chunk.trim());
-    text = text.slice(chunk.length);
-  }
-  return messages;
-}
-
-// Функция для безопасного экранирования HTML-символов
-function escapeHtml(text) {
-  return text
-    .replace(/&/g, '&amp;') // Заменяем & на &amp;
-    .replace(/</g, '<')  // Заменяем < на <
-    .replace(/>/g, '>'); // Заменяем > на >
 }
 
 // Функция для разделения длинного текста на части
@@ -315,9 +304,85 @@ async function deleteReportById(ctx, db, reportId) {
   }
 }
 
+// Функция для очистки всего списка репортов
+async function clearAllReports(ctx, db) {
+  try {
+    const senderId = ctx.from.id.toString();
+    // Проверка прав только для Тех. Админа или Главного
+    if (!(await isTechAdmin(senderId))) {
+      return ctx.reply('❌ Эту команду могут использовать только Тех. Администраторы.');
+    }
+
+    const stmt = db.prepare('DELETE FROM reports');
+    const info = stmt.run();
+    
+    return ctx.reply(`✅ Список репортов полностью очищен. Удалено записей: ${info.changes}.`);
+  } catch (error) {
+    logError(error);
+    return ctx.reply('❌ Произошла ошибка при очистке репортов.');
+  }
+}
+
+// Функция для блокировки репортов конкретному игроку
+async function blockUserReports(ctx, db, numericId) {
+  try {
+    const senderId = ctx.from.id.toString();
+    if (!(await isTechAdmin(senderId))) {
+      return ctx.reply('❌ Эту команду могут использовать только Тех. Администраторы.');
+    }
+
+    const user = await getUserByNumericId(numericId);
+    if (!user) {
+      return ctx.reply(`❌ Пользователь с NumID ${numericId} не найден.`);
+    }
+
+    if (user.report_blocked === 1) {
+      return ctx.reply(`❌ Репорты для пользователя ${user.username} уже заблокированы.`);
+    }
+
+    const updateStmt = db.prepare('UPDATE users SET report_blocked = 1 WHERE id = ?');
+    updateStmt.run(user.id);
+
+    return ctx.reply(`✅ Возможность отправлять репорты заблокирована для пользователя ${user.username} (NumID: ${numericId}).`);
+  } catch (error) {
+    logError(error);
+    return ctx.reply('❌ Произошла ошибка при блокировке репортов.');
+  }
+}
+
+// Функция для разблокировки репортов конкретному игроку
+async function unblockUserReports(ctx, db, numericId) {
+  try {
+    const senderId = ctx.from.id.toString();
+    if (!(await isTechAdmin(senderId))) {
+      return ctx.reply('❌ Эту команду могут использовать только Тех. Администраторы.');
+    }
+
+    const user = await getUserByNumericId(numericId);
+    if (!user) {
+      return ctx.reply(`❌ Пользователь с NumID ${numericId} не найден.`);
+    }
+
+    if (user.report_blocked === 0) {
+      return ctx.reply(`✅ Репорты для пользователя ${user.username} уже разблокированы.`);
+    }
+
+    const updateStmt = db.prepare('UPDATE users SET report_blocked = 0 WHERE id = ?');
+    updateStmt.run(user.id);
+
+    return ctx.reply(`✅ Возможность отправлять репорты разблокирована для пользователя ${user.username} (NumID: ${numericId}).`);
+  } catch (error) {
+    logError(error);
+    return ctx.reply('❌ Произошла ошибка при разблокировке репортов.');
+  }
+}
+
 module.exports = {
   createReport,
   getReports,
   answerReport,
-  deleteReportById
+  deleteReportById,
+  clearAllReports,
+  blockUserReports,
+  unblockUserReports
 };

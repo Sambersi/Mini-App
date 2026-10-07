@@ -2033,24 +2033,19 @@ if (!reportText) {
   const arg = (ctx.message.text.trim().split(/\s+/)[1] || '');
   await openAdminRequestById(ctx, arg);
 },
-// --- НОВЫЕ КОМАНДЫ ДЛЯ РЕПОРТОВ ---
 'блок_репорт': async (ctx, parts) => {
-  if (!(await isTechAdmin(ctx.from.id.toString()))) return;
-  const numericId = parseInt(parts[1], 10);
-  if (isNaN(numericId)) return ctx.reply('❌ Использование: блок_репорт [numeric_id]');
-  await require('./admin/reports').blockUserReports(ctx, db, numericId);
+    const numericId = parseInt(parts[1], 10);
+    if (isNaN(numericId)) return ctx.reply('❌ Использование: блок_репорт [numeric_id]');
+    await require('./admin/reports').blockUserReports(ctx, db, numericId);
 },
 'разблок_репорт': async (ctx, parts) => {
-  if (!(await isTechAdmin(ctx.from.id.toString()))) return;
-  const numericId = parseInt(parts[1], 10);
-  if (isNaN(numericId)) return ctx.reply('❌ Использование: разблок_репорт [numeric_id]');
-  await require('./admin/reports').unblockUserReports(ctx, db, numericId);
+    const numericId = parseInt(parts[1], 10);
+    if (isNaN(numericId)) return ctx.reply('❌ Использование: разблок_репорт [numeric_id]');
+    await require('./admin/reports').unblockUserReports(ctx, db, numericId);
 },
 'очистить_репорты': async (ctx) => {
-  if (!(await isTechAdmin(ctx.from.id.toString()))) return;
-  await require('./admin/reports').clearAllReports(ctx, db);
+    await require('./admin/reports').clearAllReports(ctx, db);
 },
-
 };
 
 
