@@ -6322,6 +6322,60 @@ function getFortuneTickets(userId) {
   }
 }
 
+// ========== ФУНКЦИИ ДЛЯ ПАРТНЕРСКОЙ СИСТЕМЫ ==========
+
+function getUserMaxPriority(userId) {
+  try {
+    const stmt = db.prepare('SELECT MAX(priority) as max_priority FROM statuses WHERE id IN (SELECT status_id FROM user_statuses WHERE user_id = ?)');
+    const row = stmt.get(userId.toString());
+    return row ? row.max_priority : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function createPartnerRequest(partnerId, name, prizeType, prizeAmount, audienceType, template) {
+  const stmt = db.prepare('INSERT INTO partner_requests (partner_id, name, prize_type, prize_amount, audience_type, template) VALUES (?, ?, ?, ?, ?, ?)');
+  const info = stmt.run(partnerId, name, prizeType, prizeAmount, audienceType, template);
+  return info.lastInsertRowid;
+}
+
+function updatePartnerRequestAdminMessageId(requestId, messageId) {
+  db.prepare('UPDATE partner_requests SET admin_message_id = ? WHERE id = ?').run(messageId, requestId);
+}
+
+function updatePartnerRequestStatus(requestId, status) {
+  db.prepare('UPDATE partner_requests SET status = ? WHERE id = ?').run(status, requestId);
+}
+
+function getPartnerRequestsByPartner(partnerId) {
+  const stmt = db.prepare('SELECT * FROM partner_requests WHERE partner_id = ? ORDER BY created_at DESC LIMIT 10');
+  return stmt.all(partnerId);
+}
+
+function getPartnerRequestByPartnerAndName(partnerId, name, status) {
+  const stmt = db.prepare('SELECT * FROM partner_requests WHERE partner_id = ? AND name = ? AND status = ?');
+  return stmt.get(partnerId, name, status);
+}
+
+function getPartnerRequestById(requestId) {
+  const stmt = db.prepare('SELECT * FROM partner_requests WHERE id = ?');
+  return stmt.get(requestId);
+}
+
+function createPartnerPromo(name, activations, prizeType, prizeAmount, createdBy, minStatusId, expiresAt, creatorId, audienceType, template) {
+  const stmt = db.prepare(
+    'INSERT INTO promos (name, activations_left, prize_type, prize_amount, created_by, min_status_id, expires_at, creator_id, audience_type, template) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  );
+  try {
+    stmt.run(name, activations, prizeType, prizeAmount, createdBy, minStatusId, expiresAt, creatorId, audienceType, template);
+    return { success: true };
+  } catch (error) {
+    return { success: false, message: 'Промокод с таким названием уже существует.' };
+  }
+}
+// ========== КОНЕЦ ФУНКЦИЙ ДЛЯ ПАРТНЕРСКОЙ СИСТЕМЫ ==========
+
 
 // Экспортируем функции
 module.exports = {
@@ -6596,4 +6650,13 @@ module.exports = {
   giveFortuneTicket,
   getFortuneTickets,
   getUserStatusesSync,
+  getUserMaxPriority,
+  createPartnerRequest,
+  updatePartnerRequestAdminMessageId,
+  updatePartnerRequestStatus,
+  getPartnerRequestsByPartner,
+  getPartnerRequestByPartnerAndName,
+  getPartnerRequestById,
+  createPartnerPromo,
+  
 };

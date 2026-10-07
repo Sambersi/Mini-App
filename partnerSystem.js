@@ -1,10 +1,28 @@
 const { Markup } = require('telegraf');
-const { db, getUserStatuses, getPromoByName } = require('./db'); 
+const { 
+  getUserStatuses, 
+  getPromoByName,
+  getUserMaxPriority,
+  createPartnerRequest,
+  updatePartnerRequestAdminMessageId,
+  updatePartnerRequestStatus,
+  getPartnerRequestsByPartner,
+  getPartnerRequestByPartnerAndName,
+  getPartnerRequestById,
+  createPartnerPromo
+} = require('./db');
+
+// Пытаемся импортировать генератор картинок, как это сделано в promoHandler.js
+let generatePromoImage = null;
+try {
+  generatePromoImage = require('./generatePromoImage').generatePromoImage;
+} catch (e) {
+  console.warn('[PARTNER] generatePromoImage не найдена, предпросмотр будет без картинок.');
+}
 
 const PARTNER_ADMIN_CHAT_ID = '-5564485597';
-const ALLOWED_ADMIN_PRIORITIES = [10, 9, 8]; // Тех админ, Главный админ, Руководитель партнёрки
+const ALLOWED_ADMIN_PRIORITIES = [10, 9, 8];
 
-// Хранилища сессий
 const partnerSessions = new Map();
 const adminEditSessions = new Map();
 
@@ -15,7 +33,6 @@ const PRIZE_TYPES = [
     { id: 'tickets', name: 'Билетики' }
 ];
 
-// Шаги создания запроса
 const STEP_NAME = 0;
 const STEP_PRIZE_TYPE = 1;
 const STEP_PRIZE_AMOUNT = 2;
@@ -23,7 +40,6 @@ const STEP_AUDIENCE = 3;
 const STEP_TEMPLATE = 4;
 const STEP_SUMMARY = 5;
 
-// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 function escapeHtml(text) {
     if (typeof text !== 'string') return text;
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -53,7 +69,17 @@ async function safeEditOrReply(ctx, text, options) {
     }
 }
 
-// ========== КЛАВИАТУРЫ ==========
+async function generatePartnerPromoImage(data) {
+    if (!generatePromoImage) return null;
+    try {
+        // Параметры: name, activations, prize_amount, prize_type, templateHint, isTimeBased, expiresAt
+        return await generatePromoImage(data.name, -1, data.prize_amount, data.prize_type, data.template, false, null);
+    } catch (e) {
+        console.error('[PARTNER] Ошибка генерации картинки:', e);
+        return null;
+    }
+}
+
 const partnerPrizeTypeKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('📦 GOLD-контейнер', 'partner_prize_container_type_3')],
     [Markup.button.callback('💰 PF', 'partner_prize_balance'), Markup.button.callback('💎 DF', 'partner_prize_df_balance')],
@@ -97,21 +123,14 @@ const partnerEditMenuKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('⬅️ Назад к проверке', 'partner_back_to_summary')]
 ]);
 
-// ========== ПРОВЕРКИ И МЕНЮ ==========
 async function isPartner(userId) {
     const statuses = await getUserStatuses(userId);
     return statuses.some(s => s.toLowerCase() === 'партнёр' || s.toLowerCase() === 'partner');
 }
 
 async function hasPartnerAdminRights(userId) {
-    try {
-        const stmt = db.prepare('SELECT priority FROM statuses WHERE id IN (SELECT status_id FROM user_statuses WHERE user_id = ?)');
-        const rows = stmt.all(userId.toString());
-        return rows.some(row => ALLOWED_ADMIN_PRIORITIES.includes(row.priority));
-    } catch (e) {
-        console.error('[PARTNER] Ошибка проверки прав админа:', e);
-        return false;
-    }
+    const maxPriority = getUserMaxPriority(userId);
+    return ALLOWED_ADMIN_PRIORITIES.includes(maxPriority);
 }
 
 async function showPartnerMenu(ctx) {
@@ -129,8 +148,7 @@ async function showPartnerMenu(ctx) {
 
 async function showMyRequests(ctx, userId) {
     try {
-        const stmt = db.prepare('SELECT * FROM partner_requests WHERE partner_id = ? ORDER BY created_at DESC LIMIT 10');
-        const requests = stmt.all(userId);
+        const requests = getPartnerRequestsByPartner(userId);
         
         if (!requests || requests.length === 0) {
             return safeEditOrReply(ctx, '📭 <b>Мои запросы</b>\n\nУ вас пока нет отправленных запросов на создание промокодов.', {
@@ -162,7 +180,6 @@ async function showMyRequests(ctx, userId) {
     }
 }
 
-// ========== ПРОЦЕСС СОЗДАНИЯ ЗАПРОСА ==========
 async function startPartnerRequest(ctx) {
     const userId = ctx.from.id.toString();
     partnerSessions.set(userId, {
@@ -183,16 +200,7 @@ async function showPartnerSummary(ctx, session) {
     const audText = d.audience_type === 'all' ? '🌍 Для всех игроков' : '👥 Только для моих рефералов';
     const templateText = d.template === 'fat' ? '🥶 Жирный' : '🍬 Обычный';
     
-    const summaryText = `
-🎉 <b>Проверьте данные запроса:</b>
-
-🏷 <b>Название:</b> <code>${d.name}</code>
-🎁 <b>Приз:</b> ${d.prize_amount.toLocaleString('ru-RU')} ${prizeName}
-🎯 <b>Аудитория:</b> ${audText}
-🎨 <b>Шаблон:</b> ${templateText}
-
-Нажмите «Отправить», чтобы передать запрос администраторам, или «Редактировать».
-    `.trim();
+    const summaryText = `🎉 <b>Проверьте данные запроса:</b>\n\n🏷 <b>Название:</b> <code>${d.name}</code>\n🎁 <b>Приз:</b> ${d.prize_amount.toLocaleString('ru-RU')} ${prizeName}\n🎯 <b>Аудитория:</b> ${audText}\n🎨 <b>Шаблон:</b> ${templateText}\n\nНажмите «Отправить», чтобы передать запрос администраторам, или «Редактировать».`;
     
     const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('✅ Отправить админам', 'partner_submit_req')],
@@ -200,10 +208,26 @@ async function showPartnerSummary(ctx, session) {
         [Markup.button.callback('❌ Отмена', 'partner_cancel_req')]
     ]);
     
-    await safeEditOrReply(ctx, summaryText, { parse_mode: 'HTML', ...keyboard });
+    const photoPath = await generatePartnerPromoImage(d);
+    
+    if (photoPath) {
+        try {
+            if (ctx.callbackQuery) {
+                await ctx.deleteMessage().catch(() => {});
+            }
+            await ctx.replyWithPhoto({ source: photoPath }, {
+                caption: summaryText,
+                parse_mode: 'HTML',
+                ...keyboard
+            });
+        } catch (e) {
+            await safeEditOrReply(ctx, summaryText, { parse_mode: 'HTML', ...keyboard });
+        }
+    } else {
+        await safeEditOrReply(ctx, summaryText, { parse_mode: 'HTML', ...keyboard });
+    }
 }
 
-// ========== ОБРАБОТКА ТЕКСТА ==========
 async function handlePartnerMessage(ctx) {
     const userId = ctx.from.id.toString();
     const text = ctx.message.text.trim();
@@ -218,7 +242,6 @@ async function handlePartnerMessage(ctx) {
 
     try {
         if (session.step === STEP_NAME) {
-            // Проверка на уникальность названия (как в оригинальном создании промо)
             const existing = await getPromoByName(text);
             if (existing) {
                 await ctx.reply('❌ Промокод с таким названием уже существует. Попробуйте другое название.');
@@ -261,7 +284,6 @@ async function handlePartnerMessage(ctx) {
     return true;
 }
 
-// ========== ОБРАБОТКА КНОПОК ==========
 async function handlePartnerCallback(ctx) {
     const userId = ctx.from.id.toString();
     const data = ctx.callbackQuery.data;
@@ -374,7 +396,6 @@ async function handlePartnerCallback(ctx) {
     }
 }
 
-// ========== ОТПРАВКА АДМИНАМ ==========
 async function submitRequestToAdmins(ctx, data) {
     try {
         const prizeName = PRIZE_TYPES.find(p => p.id === data.prize_type)?.name || data.prize_type;
@@ -396,12 +417,21 @@ async function submitRequestToAdmins(ctx, data) {
             [Markup.button.callback('✏️ Редактировать', `admin_req_edit_${data.partner_id}_${data.name}`)]
         ]);
 
-        const stmt = db.prepare('INSERT INTO partner_requests (partner_id, name, prize_type, prize_amount, audience_type, template) VALUES (?, ?, ?, ?, ?, ?)');
-        const info = stmt.run(data.partner_id, data.name, data.prize_type, data.prize_amount, data.audience_type, data.template);
-        const requestId = info.lastInsertRowid;
+        const requestId = createPartnerRequest(data.partner_id, data.name, data.prize_type, data.prize_amount, data.audience_type, data.template);
+        const photoPath = await generatePartnerPromoImage(data);
 
-        const sentMsg = await ctx.telegram.sendMessage(PARTNER_ADMIN_CHAT_ID, msgText, { parse_mode: 'HTML', ...kb });
-        db.prepare('UPDATE partner_requests SET admin_message_id = ? WHERE id = ?').run(sentMsg.message_id, requestId);
+        let sentMsg;
+        if (photoPath) {
+            sentMsg = await ctx.telegram.sendPhoto(PARTNER_ADMIN_CHAT_ID, { source: photoPath }, {
+                caption: msgText,
+                parse_mode: 'HTML',
+                ...kb
+            });
+        } else {
+            sentMsg = await ctx.telegram.sendMessage(PARTNER_ADMIN_CHAT_ID, msgText, { parse_mode: 'HTML', ...kb });
+        }
+        
+        updatePartnerRequestAdminMessageId(requestId, sentMsg.message_id);
 
         await safeEditOrReply(ctx, '✅ Ваш запрос успешно отправлен администраторам! Ожидайте решения.', { parse_mode: 'HTML' });
     } catch (e) {
@@ -410,7 +440,6 @@ async function submitRequestToAdmins(ctx, data) {
     }
 }
 
-// ========== АДМИНСКАЯ ЧАСТЬ ==========
 async function handleAdminRequestCallback(ctx) {
     const userId = ctx.from.id.toString();
     const data = ctx.callbackQuery.data;
@@ -426,8 +455,7 @@ async function handleAdminRequestCallback(ctx) {
     const partnerId = parts[3];
     const promoName = parts[4];
 
-    const reqStmt = db.prepare('SELECT * FROM partner_requests WHERE partner_id = ? AND name = ? AND status = ?');
-    const request = reqStmt.get(partnerId, promoName, 'pending');
+    const request = getPartnerRequestByPartnerAndName(partnerId, promoName, 'pending');
 
     if (!request) {
         await ctx.editMessageText(ctx.callbackQuery.message.text + '\n\n⚠️ <b>Запрос уже обработан или не найден.</b>', { parse_mode: 'HTML' });
@@ -447,10 +475,24 @@ async function handleAdminRequestCallback(ctx) {
 async function approveRequest(ctx, request, adminId, customData = null) {
     const data = customData || request;
     try {
-        const insertStmt = db.prepare(`INSERT INTO promos (name, prize_type, prize_amount, activations_left, min_status_id, creator_id, audience_type, template) VALUES (?, ?, ?, -1, 0, ?, ?, ?)`);
-        insertStmt.run(data.name, data.prize_type, data.prize_amount, data.partner_id, data.audience_type, data.template);
+        const result = createPartnerPromo(
+            data.name, 
+            -1, 
+            data.prize_type, 
+            data.prize_amount, 
+            'partner_system', 
+            0, 
+            null, 
+            data.partner_id, 
+            data.audience_type, 
+            data.template
+        );
 
-        db.prepare('UPDATE partner_requests SET status = ? WHERE id = ?').run('approved', request.id);
+        if (!result.success) {
+            throw new Error(result.message);
+        }
+
+        updatePartnerRequestStatus(request.id, 'approved');
         
         const prizeName = PRIZE_TYPES.find(p => p.id === data.prize_type)?.name || data.prize_type;
         const audText = data.audience_type === 'all' ? 'Для всех' : 'Только для рефералов';
@@ -467,7 +509,7 @@ async function approveRequest(ctx, request, adminId, customData = null) {
 }
 
 async function rejectRequest(ctx, request, adminId) {
-    db.prepare('UPDATE partner_requests SET status = ? WHERE id = ?').run('rejected', request.id);
+    updatePartnerRequestStatus(request.id, 'rejected');
     const adminLink = createUserLink(adminId, ctx.from.username || 'Админ');
     const finalText = `${ctx.callbackQuery.message.text}\n\n❌ <b>ОТКЛОНЕНО</b> администратором ${adminLink}`;
     await ctx.editMessageText(finalText, { parse_mode: 'HTML' });
@@ -494,8 +536,7 @@ async function handleAdminEditInput(ctx, adminId, text) {
         if (!['all', 'referrals'].includes(audience)) return ctx.reply('❌ Неверная аудитория (должно быть all или referrals).');
         if (!['fat', 'normal'].includes(template)) return ctx.reply('❌ Неверный шаблон (должно быть fat или normal).');
 
-        const reqStmt = db.prepare('SELECT * FROM partner_requests WHERE id = ?');
-        const request = reqStmt.get(session.requestId);
+        const request = getPartnerRequestById(session.requestId);
 
         const newData = {
             ...request,
