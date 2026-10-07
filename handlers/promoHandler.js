@@ -41,13 +41,9 @@ const statusesList = [
 const LOG_GIVE_CHAT_ID = process.env.LOG_GIVE_CHAT_ID;
 const LOG_CHAT_PROMO_ID = process.env.LOG_CHAT_PROMO_ID;
 
-// Хранилище сессий создания промокодов
 const promoSessions = new Map();
-
-// Хранилище сессий постинга промо
 const promoPostSessions = new Map();
 
-// === ЕДИНАЯ МАШИНА ШАГОВ ===
 const STEP_NAME = 0;
 const STEP_LIMIT_TYPE = 1;
 const STEP_TIME_VALUE = 2;
@@ -59,19 +55,66 @@ const STEP_TEMPLATE = 7;
 const STEP_SUMMARY = 8;
 
 // =====================================================
-// НОВОЕ: ДИНАМИЧЕСКИЕ КЛАВИАТУРЫ ДЛЯ СУММЫ ПРИЗА
+// НОВОЕ: ФОРМАТИРОВАНИЕ ВРЕМЕНИ ПО МОСКВЕ (24ч, МСК)
+// =====================================================
+function formatMoscowTime(timestamp) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Europe/Moscow',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(new Date(timestamp * 1000)) + ' по МСК';
+}
+
+function formatMoscowTimeShort(timestamp) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Europe/Moscow',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(new Date(timestamp * 1000)) + ' по МСК';
+}
+
+// =====================================================
+// НОВОЕ: Безопасное редактирование сообщения
+// Если исходное сообщение — фото с капшном, editMessageText падает.
+// В таком случае удаляем старое и отправляем новое.
+// =====================================================
+async function safeEditToText(ctx, text, options) {
+  try {
+    await ctx.editMessageText(text, options);
+  } catch (error) {
+    if (error.description && (
+      error.description.includes('there is no text') ||
+      error.description.includes('message is not modified')
+    )) {
+      await ctx.deleteMessage().catch(() => {});
+      await ctx.reply(text, options);
+    } else {
+      throw error;
+    }
+  }
+}
+
+// =====================================================
+// ДИНАМИЧЕСКИЕ КЛАВИАТУРЫ ДЛЯ СУММЫ ПРИЗА
 // =====================================================
 function getPrizeAmountKeyboard(prizeType) {
   let rows = [];
   switch (prizeType) {
-    case 'balance': // PF: 500 - 25000
+    case 'balance':
       rows = [
         ['500', '1 000', '2 500'],
         ['5 000', '7 500', '10 000'],
         ['15 000', '20 000', '25 000'],
       ];
       break;
-    case 'df_balance': // DF: 10 - 2000
+    case 'df_balance':
       rows = [
         ['10', '25', '50'],
         ['100', '250', '500'],
@@ -79,21 +122,21 @@ function getPrizeAmountKeyboard(prizeType) {
         ['2 000'],
       ];
       break;
-    case 'container_type_3': // GOLD-контейнеры: 1 - 25
+    case 'container_type_3':
       rows = [
         ['1', '3', '5'],
         ['10', '15', '20'],
         ['25'],
       ];
       break;
-    case 'tickets': // Билетики: 1 - 25
+    case 'tickets':
       rows = [
         ['1', '3', '5'],
         ['10', '15', '20'],
         ['25'],
       ];
       break;
-    case 'npf_shares': // NPF-акции: 1 - 100
+    case 'npf_shares':
       rows = [
         ['1', '5', '10'],
         ['25', '50', '100'],
@@ -141,17 +184,12 @@ function formatDuration(minutes) {
   return `${m} мин`;
 }
 
-/**
- * Парсит число с поддержкой суффиксов: к/k (×1000), кк/kk/m/м (×1 000 000)
- * Примеры: "1к" → 1000, "500к" → 500000, "1кк" → 1000000, "1.5к" → 1500, "2.5кк" → 2500000
- */
 function parseNumberWithSuffix(text) {
   if (text === undefined || text === null) return NaN;
   let str = String(text).trim().toLowerCase().replace(/\s/g, '').replace(',', '.');
   if (!str) return NaN;
 
   let multiplier = 1;
-  // Сначала проверяем двойные суффиксы (кк), чтобы не съесть одну "к"
   if (str.endsWith('кк') || str.endsWith('kk') || str.endsWith('m') || str.endsWith('м')) {
     multiplier = 1000000;
     str = str.slice(0, -2);
@@ -180,15 +218,14 @@ const limitTypeKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('🔙 Отмена', 'promo_cancel_create')]
 ]);
 
-// НОВОЕ: Время от 3 до 120 минут, обязательно 5 и 10
+// НОВОЕ: Максимум 99 минут
 const timeQuickKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('3 мин', 'promo_quick_time_3'), Markup.button.callback('5 мин', 'promo_quick_time_5'), Markup.button.callback('10 мин', 'promo_quick_time_10')],
   [Markup.button.callback('15 мин', 'promo_quick_time_15'), Markup.button.callback('30 мин', 'promo_quick_time_30'), Markup.button.callback('45 мин', 'promo_quick_time_45')],
-  [Markup.button.callback('60 мин', 'promo_quick_time_60'), Markup.button.callback('90 мин', 'promo_quick_time_90'), Markup.button.callback('120 мин', 'promo_quick_time_120')],
+  [Markup.button.callback('60 мин', 'promo_quick_time_60'), Markup.button.callback('90 мин', 'promo_quick_time_90'), Markup.button.callback('99 мин', 'promo_quick_time_99')],
   [Markup.button.callback('❌ Отмена', 'promo_cancel_create')]
 ]);
 
-// НОВОЕ: Количество от 3 до 50 + безлимит
 const activationsQuickKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('3', 'promo_quick_act_3'), Markup.button.callback('5', 'promo_quick_act_5'), Markup.button.callback('10', 'promo_quick_act_10')],
   [Markup.button.callback('15', 'promo_quick_act_15'), Markup.button.callback('20', 'promo_quick_act_20'), Markup.button.callback('25', 'promo_quick_act_25')],
@@ -269,7 +306,7 @@ function getPromoPostCancelKeyboard() {
 }
 
 // =====================================================
-// Функции постинга промо
+// Функции постинга промо (с safeEditToText)
 // =====================================================
 async function startPromoPost(ctx, promoName) {
   const userId = String(ctx.from.id);
@@ -290,7 +327,7 @@ async function startPromoPost(ctx, promoName) {
     return;
   }
 
-  await ctx.editMessageText(
+  await safeEditToText(ctx,
     `📢 <b>Публикация промокода</b>\n\n` +
     `Промокод: <code>${escapeHtml(promoName)}</code>\n\n` +
     `Выберите канал для публикации:`,
@@ -322,7 +359,7 @@ async function handlePromoPostChannelSelection(ctx) {
   session.step = 'text';
   promoPostSessions.set(userId, session);
 
-  await ctx.editMessageText(
+  await safeEditToText(ctx,
     `📢 Канал: <b>${channel.name}</b>\n\n` +
     `Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
     `Отправьте <b>текст поста</b> для публикации.\n\n` +
@@ -496,7 +533,7 @@ async function handlePromoPostEditText(ctx) {
   session.sourceChatId = null;
   promoPostSessions.set(userId, session);
 
-  await ctx.editMessageText(
+  await safeEditToText(ctx,
     `📢 Канал: <b>${session.channel.name}</b>\n\n` +
     `Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
     `Отправьте <b>новый текст поста</b>:`,
@@ -523,7 +560,7 @@ async function handlePromoPostChangeChannel(ctx) {
   session.sourceChatId = null;
   promoPostSessions.set(userId, session);
 
-  await ctx.editMessageText(
+  await safeEditToText(ctx,
     `📢 <b>Выбор канала</b>\n\n` +
     `Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
     `Выберите канал:`,
@@ -555,8 +592,9 @@ async function showPromoSummary(ctx, promoName) {
     const linkPayload = alias ? `promo_${alias}` : `promo_${promoName}`;
     const promoLink = `https://t.me/${botUsername}?start=${linkPayload}`;
 
+    // НОВОЕ: МСК формат
     let limitStr = promo.activations_left === -1
-      ? `⏳ Время: ${promo.expires_at ? 'до ' + new Date(promo.expires_at * 1000).toLocaleString() : '∞'}`
+      ? `⏳ Время: ${promo.expires_at ? 'до ' + formatMoscowTime(promo.expires_at) : '∞'}`
       : `🔢 Активаций: ${formatNumber(promo.activations_left)}`;
 
     const summaryMsg = `✅ <b>Промокод готов!</b>\n\n` +
@@ -661,10 +699,10 @@ function stepHint(session) {
   switch (session.step) {
     case STEP_NAME: return '✍️ Введите название промокода текстом.';
     case STEP_LIMIT_TYPE: return '🔘 Выберите тип ограничения кнопками ниже.';
-    case STEP_TIME_VALUE: return '⏳ Введите время в минутах числом (или нажмите кнопку).';
-    case STEP_ACT_VALUE: return '🔢 Введите количество активаций числом (или нажмите кнопку).';
+    case STEP_TIME_VALUE: return '⏳ Введите время в минутах (макс 99), например: 10, 1к.';
+    case STEP_ACT_VALUE: return '🔢 Введите количество активаций (например: 5, 50, 1к, 1кк).';
     case STEP_PRIZE_TYPE: return '🔘 Выберите тип приза кнопками ниже.';
-    case STEP_PRIZE_AMOUNT: return '💰 Введите сумму приза числом (или нажмите кнопку).';
+    case STEP_PRIZE_AMOUNT: return '💰 Введите сумму приза (например: 500, 1к, 500к, 1кк).';
     case STEP_STATUS: return '🔘 Выберите минимальный статус кнопками ниже.';
     case STEP_TEMPLATE: return '🖼 Выберите шаблон изображения кнопками ниже.';
     default: return '🔘 Используйте кнопки под сообщением проверки.';
@@ -693,8 +731,13 @@ async function handlePromoCreationMessage(ctx) {
 
     if (session.step === STEP_TIME_VALUE && session.data.isTimeBased) {
       const val = parseNumberWithSuffix(text);
+      // НОВОЕ: Проверка максимума 99 минут
       if (isNaN(val) || val <= 0 || !Number.isInteger(val)) {
         await ctx.reply('❌ Некорректное число. Введите время в минутах (> 0):', { reply_markup: timeQuickKeyboard.reply_markup });
+        return true;
+      }
+      if (val > 99) {
+        await ctx.reply('❌ Максимальное время — 99 минут. Введите значение ≤ 99 или нажмите кнопку:', { reply_markup: timeQuickKeyboard.reply_markup });
         return true;
       }
       session.data.durationMinutes = val;
@@ -777,6 +820,11 @@ async function handlePromoCreationMessage(ctx) {
           await ctx.reply('❌ Ошибка ввода.', { reply_markup: cancelEditKeyboard.reply_markup });
           return true;
         }
+        // НОВОЕ: максимум 99
+        if (val > 99) {
+          await ctx.reply('❌ Максимальное время — 99 минут.', { reply_markup: cancelEditKeyboard.reply_markup });
+          return true;
+        }
         session.data.durationMinutes = val;
         session.editField = null;
         await showSummary(ctx, session);
@@ -827,7 +875,7 @@ ${limitInfo}
   });
 }
 
-// --- ОБРАБОТЧИКИ CALLBACK (КНОПКИ) ---
+// --- ОБРАБОТЧИКИ CALLBACK ---
 async function handleCallback(ctx) {
   const userId = ctx.from.id.toString();
   const data = ctx.callbackQuery.data;
@@ -860,7 +908,7 @@ async function handleCallback(ctx) {
     if (session.step !== STEP_LIMIT_TYPE) return ctx.answerCbQuery('❌ Неверный этап.', { show_alert: true });
     session.data.isTimeBased = true;
     session.step = STEP_TIME_VALUE;
-    await ctx.editMessageText(`✅ Выбрано ограничение по <b>времени</b>.\n\nШаг 3/7: Введите время в минутах:`, {
+    await ctx.editMessageText(`✅ Выбрано ограничение по <b>времени</b> (макс 99 мин).\n\nШаг 3/7: Введите время в минутах:`, {
       parse_mode: 'HTML',
       reply_markup: timeQuickKeyboard.reply_markup
     });
@@ -893,7 +941,6 @@ async function handleCallback(ctx) {
   if (data.startsWith('promo_quick_act_')) {
     if (session.step !== STEP_ACT_VALUE) return ctx.answerCbQuery('❌ Неверный этап.', { show_alert: true });
 
-    // НОВОЕ: Безлимит (999999 активаций)
     if (data === 'promo_quick_act_unlimited') {
       session.data.activations = 999999;
       session.step = STEP_PRIZE_TYPE;
@@ -934,7 +981,6 @@ async function handleCallback(ctx) {
       return ctx.answerCbQuery();
     }
     session.step = STEP_PRIZE_AMOUNT;
-    // НОВОЕ: Динамическая клавиатура в зависимости от типа приза
     await ctx.editMessageText(`✅ Тип приза: <b>${prizeTypeMapping[session.data.prize_type]}</b>.\n\nШаг 5/7: Введите <b>сумму приза</b>:`, {
       parse_mode: 'HTML',
       reply_markup: getPrizeAmountKeyboard(session.data.prize_type).reply_markup
@@ -1146,8 +1192,9 @@ async function finalizePromoCreation(ctx, session) {
     const linkPayload = alias ? `promo_${alias}` : `promo_${d.name}`;
     const promoLink = `https://t.me/${botUsername}?start=${linkPayload}`;
 
+    // НОВОЕ: МСК формат
     let limitStr = d.isTimeBased
-      ? `⏳ Время: ${formatDuration(d.durationMinutes)} (до ${new Date(expiresAt * 1000).toLocaleTimeString()})`
+      ? `⏳ Время: ${formatDuration(d.durationMinutes)} (до ${formatMoscowTimeShort(expiresAt)})`
       : `🔢 Активаций: ${formatNumber(d.activations)}`;
 
     const successMsg = `✅ <b>Промокод создан!</b>\n\n` +
@@ -1157,7 +1204,6 @@ async function finalizePromoCreation(ctx, session) {
       `🔒 Статус: ${getStatusNameById(d.min_status_id)}\n\n` +
       `🔗 <b>Ссылка для активации:</b>\n<code>${promoLink}</code>`;
 
-    // НОВОЕ: Кнопка "Запостить промо" прямо в финальном сообщении
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('📢 Запостить промо', `promo_post_menu_${d.name}`)],
       [Markup.button.callback('➕ Создать ещё', 'promo_create_another')],
@@ -1202,8 +1248,9 @@ async function listPromosHandler(ctx) {
   if (!promos.length) return ctx.reply('Список пуст.');
   let msg = '';
   for (const p of promos) {
+    // НОВОЕ: МСК формат
     let limitInfo = p.activations_left === -1
-      ? `⏳ До: ${p.expires_at ? new Date(p.expires_at * 1000).toLocaleString() : '∞'}`
+      ? `⏳ До: ${p.expires_at ? formatMoscowTime(p.expires_at) : '∞'}`
       : `🔢 Ост: ${formatNumber(p.activations_left)}`;
     const entry = `• <b>ID</b>: ${p.id} | <code>${escapeHtml(p.name)}</code>\n ${limitInfo} | 🎁 ${formatNumber(p.prize_amount)} ${prizeTypeMapping[p.prize_type]}\n\n`;
     if ((msg + entry).length > 4000) {
