@@ -1,6 +1,5 @@
 const { Markup } = require('telegraf');
-const db = require('./db'); 
-const { getUserStatuses } = require('./db'); 
+const { db, getUserStatuses, getPromoByName } = require('./db'); 
 
 const PARTNER_ADMIN_CHAT_ID = '-5564485597';
 const ALLOWED_ADMIN_PRIORITIES = [10, 9, 8]; // Тех админ, Главный админ, Руководитель партнёрки
@@ -21,7 +20,8 @@ const STEP_NAME = 0;
 const STEP_PRIZE_TYPE = 1;
 const STEP_PRIZE_AMOUNT = 2;
 const STEP_AUDIENCE = 3;
-const STEP_SUMMARY = 4;
+const STEP_TEMPLATE = 4;
+const STEP_SUMMARY = 5;
 
 // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 function escapeHtml(text) {
@@ -82,11 +82,18 @@ const partnerAudienceKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('❌ Отмена', 'partner_cancel_req')]
 ]);
 
+const partnerTemplateKeyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('🥶 Жирный', 'partner_template_fat')],
+    [Markup.button.callback('🍬 Обычный', 'partner_template_normal')],
+    [Markup.button.callback('❌ Отмена', 'partner_cancel_req')]
+]);
+
 const partnerEditMenuKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('Изменить название', 'partner_edit_name')],
     [Markup.button.callback('Изменить тип приза', 'partner_edit_prize_type')],
     [Markup.button.callback('Изменить сумму', 'partner_edit_prize_amount')],
     [Markup.button.callback('Изменить аудиторию', 'partner_edit_audience')],
+    [Markup.button.callback('Изменить шаблон', 'partner_edit_template')],
     [Markup.button.callback('⬅️ Назад к проверке', 'partner_back_to_summary')]
 ]);
 
@@ -164,7 +171,7 @@ async function startPartnerRequest(ctx) {
         active: true,
         editField: null
     });
-    await safeEditOrReply(ctx, '🚀 <b>Создание запроса на промокод</b>\n\nШаг 1/4: Введите <b>название</b> промокода (латиница/цифры, без пробелов):', { 
+    await safeEditOrReply(ctx, '🚀 <b>Создание запроса на промокод</b>\n\nШаг 1/5: Введите <b>название</b> промокода:', { 
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([[Markup.button.callback('❌ Отмена', 'partner_cancel_req')]])
     });
@@ -174,6 +181,7 @@ async function showPartnerSummary(ctx, session) {
     const d = session.data;
     const prizeName = PRIZE_TYPES.find(p => p.id === d.prize_type)?.name || d.prize_type;
     const audText = d.audience_type === 'all' ? '🌍 Для всех игроков' : '👥 Только для моих рефералов';
+    const templateText = d.template === 'fat' ? '🥶 Жирный' : '🍬 Обычный';
     
     const summaryText = `
 🎉 <b>Проверьте данные запроса:</b>
@@ -181,6 +189,7 @@ async function showPartnerSummary(ctx, session) {
 🏷 <b>Название:</b> <code>${d.name}</code>
 🎁 <b>Приз:</b> ${d.prize_amount.toLocaleString('ru-RU')} ${prizeName}
 🎯 <b>Аудитория:</b> ${audText}
+🎨 <b>Шаблон:</b> ${templateText}
 
 Нажмите «Отправить», чтобы передать запрос администраторам, или «Редактировать».
     `.trim();
@@ -209,17 +218,20 @@ async function handlePartnerMessage(ctx) {
 
     try {
         if (session.step === STEP_NAME) {
-            if (!/^[a-zA-Z0-9_]+$/.test(text)) {
-                await ctx.reply('❌ Название должно содержать только латинские буквы, цифры и подчеркивания. Попробуйте снова.');
+            // Проверка на уникальность названия (как в оригинальном создании промо)
+            const existing = await getPromoByName(text);
+            if (existing) {
+                await ctx.reply('❌ Промокод с таким названием уже существует. Попробуйте другое название.');
                 return true;
             }
+            
             session.data.name = text;
             if (session.editField === 'name') {
                 session.editField = null;
                 await showPartnerSummary(ctx, session);
             } else {
                 session.step = STEP_PRIZE_TYPE;
-                await ctx.reply(`✅ Название <b>${text}</b> принято.\n\nШаг 2/4: Выберите <b>тип приза</b>:`, {
+                await ctx.reply(`✅ Название <b>${text}</b> принято.\n\nШаг 2/5: Выберите <b>тип приза</b>:`, {
                     parse_mode: 'HTML', ...partnerPrizeTypeKeyboard
                 });
             }
@@ -236,7 +248,7 @@ async function handlePartnerMessage(ctx) {
                 await showPartnerSummary(ctx, session);
             } else {
                 session.step = STEP_AUDIENCE;
-                await ctx.reply(`✅ Сумма приза: <b>${val.toLocaleString('ru-RU')}</b>.\n\nШаг 4/4: Кто сможет активировать этот промокод?`, {
+                await ctx.reply(`✅ Сумма приза: <b>${val.toLocaleString('ru-RU')}</b>.\n\nШаг 4/5: Кто сможет активировать этот промокод?`, {
                     parse_mode: 'HTML', ...partnerAudienceKeyboard
                 });
             }
@@ -291,6 +303,9 @@ async function handlePartnerCallback(ctx) {
         } else if (field === 'audience') {
             session.step = STEP_AUDIENCE;
             await safeEditOrReply(ctx, '✏️ Новая <b>аудитория</b>:', { parse_mode: 'HTML', ...partnerAudienceKeyboard });
+        } else if (field === 'template') {
+            session.step = STEP_TEMPLATE;
+            await safeEditOrReply(ctx, '🎨 Новый <b>шаблон</b>:', { parse_mode: 'HTML', ...partnerTemplateKeyboard });
         }
         return;
     }
@@ -304,7 +319,7 @@ async function handlePartnerCallback(ctx) {
         } else {
             session.step = STEP_PRIZE_AMOUNT;
             const prizeName = PRIZE_TYPES.find(p => p.id === prizeType)?.name || prizeType;
-            await safeEditOrReply(ctx, `✅ Тип приза: <b>${prizeName}</b>.\n\nШаг 3/4: Введите <b>сумму приза</b> (или выберите кнопкой):`, {
+            await safeEditOrReply(ctx, `✅ Тип приза: <b>${prizeName}</b>.\n\nШаг 3/5: Введите <b>сумму приза</b> (или выберите кнопкой):`, {
                 parse_mode: 'HTML', ...getPartnerPrizeAmountKeyboard(prizeType)
             });
         }
@@ -319,7 +334,7 @@ async function handlePartnerCallback(ctx) {
             await showPartnerSummary(ctx, session);
         } else {
             session.step = STEP_AUDIENCE;
-            await safeEditOrReply(ctx, `✅ Сумма приза: <b>${val.toLocaleString('ru-RU')}</b>.\n\nШаг 4/4: Кто сможет активировать этот промокод?`, {
+            await safeEditOrReply(ctx, `✅ Сумма приза: <b>${val.toLocaleString('ru-RU')}</b>.\n\nШаг 4/5: Кто сможет активировать этот промокод?`, {
                 parse_mode: 'HTML', ...partnerAudienceKeyboard
             });
         }
@@ -329,6 +344,20 @@ async function handlePartnerCallback(ctx) {
     if (data === 'partner_aud_all' || data === 'partner_aud_refs') {
         session.data.audience_type = data === 'partner_aud_all' ? 'all' : 'referrals';
         if (session.editField === 'audience') {
+            session.editField = null;
+            await showPartnerSummary(ctx, session);
+        } else {
+            session.step = STEP_TEMPLATE;
+            await safeEditOrReply(ctx, '🎨 Шаг 5/5: Выберите <b>шаблон промокода</b>:', {
+                parse_mode: 'HTML', ...partnerTemplateKeyboard
+            });
+        }
+        return;
+    }
+
+    if (data === 'partner_template_fat' || data === 'partner_template_normal') {
+        session.data.template = data === 'partner_template_fat' ? 'fat' : 'normal';
+        if (session.editField === 'template') {
             session.editField = null;
             await showPartnerSummary(ctx, session);
         } else {
@@ -350,33 +379,35 @@ async function submitRequestToAdmins(ctx, data) {
     try {
         const prizeName = PRIZE_TYPES.find(p => p.id === data.prize_type)?.name || data.prize_type;
         const audText = data.audience_type === 'all' ? '🌍 Для всех игроков' : '👥 Только для рефералов партнера';
+        const templateText = data.template === 'fat' ? '🥶 Жирный' : '🍬 Обычный';
         const userLink = createUserLink(data.partner_id, ctx.from.username || ctx.from.first_name);
 
         const msgText = `📩 <b>Новый запрос на промокод от Партнёра</b>\n\n` +
-             `👤 Партнер: ${userLink}\n` +
-             `🏷 Название: <code>${data.name}</code>\n` +
-             `🎁 Приз: ${data.prize_amount.toLocaleString('ru-RU')} ${prizeName}\n` +
-             `🎯 Аудитория: ${audText}\n\n` +
-             `ID Партнера: <code>${data.partner_id}</code>`;
-             
-         const kb = Markup.inlineKeyboard([
-             [Markup.button.callback('✅ Принять', `admin_req_accept_${data.partner_id}_${data.name}`)],
-             [Markup.button.callback('❌ Отклонить', `admin_req_reject_${data.partner_id}_${data.name}`)],
-             [Markup.button.callback('✏️ Редактировать', `admin_req_edit_${data.partner_id}_${data.name}`)]
-         ]);
+            `👤 Партнер: ${userLink}\n` +
+            `🏷 Название: <code>${data.name}</code>\n` +
+            `🎁 Приз: ${data.prize_amount.toLocaleString('ru-RU')} ${prizeName}\n` +
+            `🎯 Аудитория: ${audText}\n` +
+            `🎨 Шаблон: ${templateText}\n\n` +
+            `ID Партнера: <code>${data.partner_id}</code>`;
+            
+        const kb = Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Принять', `admin_req_accept_${data.partner_id}_${data.name}`)],
+            [Markup.button.callback('❌ Отклонить', `admin_req_reject_${data.partner_id}_${data.name}`)],
+            [Markup.button.callback('✏️ Редактировать', `admin_req_edit_${data.partner_id}_${data.name}`)]
+        ]);
 
-         const stmt = db.prepare('INSERT INTO partner_requests (partner_id, name, prize_type, prize_amount, audience_type) VALUES (?, ?, ?, ?, ?)');
-         const info = stmt.run(data.partner_id, data.name, data.prize_type, data.prize_amount, data.audience_type);
-         const requestId = info.lastInsertRowid;
+        const stmt = db.prepare('INSERT INTO partner_requests (partner_id, name, prize_type, prize_amount, audience_type, template) VALUES (?, ?, ?, ?, ?, ?)');
+        const info = stmt.run(data.partner_id, data.name, data.prize_type, data.prize_amount, data.audience_type, data.template);
+        const requestId = info.lastInsertRowid;
 
-         const sentMsg = await ctx.telegram.sendMessage(PARTNER_ADMIN_CHAT_ID, msgText, { parse_mode: 'HTML', ...kb });
-         db.prepare('UPDATE partner_requests SET admin_message_id = ? WHERE id = ?').run(sentMsg.message_id, requestId);
+        const sentMsg = await ctx.telegram.sendMessage(PARTNER_ADMIN_CHAT_ID, msgText, { parse_mode: 'HTML', ...kb });
+        db.prepare('UPDATE partner_requests SET admin_message_id = ? WHERE id = ?').run(sentMsg.message_id, requestId);
 
-         await safeEditOrReply(ctx, '✅ Ваш запрос успешно отправлен администраторам! Ожидайте решения.', { parse_mode: 'HTML' });
-     } catch (e) {
-         console.error('[PARTNER] Ошибка отправки в админ чат:', e);
-         await safeEditOrReply(ctx, '❌ Ошибка при отправке запроса. Свяжитесь с тех. поддержкой.', { parse_mode: 'HTML' });
-     }
+        await safeEditOrReply(ctx, '✅ Ваш запрос успешно отправлен администраторам! Ожидайте решения.', { parse_mode: 'HTML' });
+    } catch (e) {
+        console.error('[PARTNER] Ошибка отправки в админ чат:', e);
+        await safeEditOrReply(ctx, '❌ Ошибка при отправке запроса. Свяжитесь с тех. поддержкой.', { parse_mode: 'HTML' });
+    }
 }
 
 // ========== АДМИНСКАЯ ЧАСТЬ ==========
@@ -409,15 +440,15 @@ async function handleAdminRequestCallback(ctx) {
         await rejectRequest(ctx, request, ctx.from.id);
     } else if (action === 'edit') {
         adminEditSessions.set(userId, { requestId: request.id, step: 'AWAITING_EDIT_DATA', originalMsg: ctx.callbackQuery.message });
-        await ctx.reply('✏️ <b>Редактирование запроса</b>\n\nОтправьте новые данные одним сообщением в формате:\n<code>Название | ТипПриза | Сумма | Аудитория</code>\n\nПример:\n<code>MY_PROMO | balance | 5000 | referrals</code>\n\nТипы: balance, df_balance, container_type_3, tickets\nАудитория: all, referrals', { parse_mode: 'HTML' });
+        await ctx.reply('✏️ <b>Редактирование запроса</b>\n\nОтправьте новые данные одним сообщением в формате:\n<code>Название | ТипПриза | Сумма | Аудитория | Шаблон</code>\n\nПример:\n<code>MY_PROMO | balance | 5000 | referrals | fat</code>\n\nТипы: balance, df_balance, container_type_3, tickets\nАудитория: all, referrals\nШаблон: fat, normal', { parse_mode: 'HTML' });
     }
 }
 
 async function approveRequest(ctx, request, adminId, customData = null) {
     const data = customData || request;
     try {
-        const insertStmt = db.prepare(`INSERT INTO promos (name, prize_type, prize_amount, activations_left, min_status_id, creator_id, audience_type) VALUES (?, ?, ?, -1, 0, ?, ?)`);
-        insertStmt.run(data.name, data.prize_type, data.prize_amount, data.partner_id, data.audience_type);
+        const insertStmt = db.prepare(`INSERT INTO promos (name, prize_type, prize_amount, activations_left, min_status_id, creator_id, audience_type, template) VALUES (?, ?, ?, -1, 0, ?, ?, ?)`);
+        insertStmt.run(data.name, data.prize_type, data.prize_amount, data.partner_id, data.audience_type, data.template);
 
         db.prepare('UPDATE partner_requests SET status = ? WHERE id = ?').run('approved', request.id);
         
@@ -450,17 +481,18 @@ async function handleAdminEditInput(ctx, adminId, text) {
 
     try {
         const parts = text.split('|').map(p => p.trim());
-        if (parts.length !== 4) {
-            await ctx.reply('❌ Неверный формат. Используйте: <code>Название | Тип | Сумма | Аудитория</code>', { parse_mode: 'HTML' });
+        if (parts.length !== 5) {
+            await ctx.reply('❌ Неверный формат. Используйте: <code>Название | Тип | Сумма | Аудитория | Шаблон</code>', { parse_mode: 'HTML' });
             return;
         }
 
-        const [name, prizeType, amountStr, audience] = parts;
+        const [name, prizeType, amountStr, audience, template] = parts;
         const amount = parseInt(amountStr, 10);
 
         if (!PRIZE_TYPES.find(p => p.id === prizeType)) return ctx.reply('❌ Неверный тип приза.');
         if (isNaN(amount) || amount <= 0) return ctx.reply('❌ Неверная сумма.');
         if (!['all', 'referrals'].includes(audience)) return ctx.reply('❌ Неверная аудитория (должно быть all или referrals).');
+        if (!['fat', 'normal'].includes(template)) return ctx.reply('❌ Неверный шаблон (должно быть fat или normal).');
 
         const reqStmt = db.prepare('SELECT * FROM partner_requests WHERE id = ?');
         const request = reqStmt.get(session.requestId);
@@ -470,7 +502,8 @@ async function handleAdminEditInput(ctx, adminId, text) {
             name: name,
             prize_type: prizeType,
             prize_amount: amount,
-            audience_type: audience
+            audience_type: audience,
+            template: template
         };
 
         await approveRequest(ctx, request, adminId, newData);

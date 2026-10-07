@@ -146,6 +146,23 @@ db.prepare(`
 `).run();
 // ========== КОНЕЦ МИГРАЦИЙ ПАРТНЕРСКОЙ СИСТЕМЫ ==========
 
+
+// ========== МИГРАЦИИ: ШАБЛОН ПРОМОКОДА ==========
+try {
+  db.exec(`ALTER TABLE promos ADD COLUMN template TEXT DEFAULT 'normal'`);
+  console.log('[DB] Migration: added column template to promos');
+} catch (e) {
+  if (!e.message.includes('duplicate column')) console.error('[DB] Migration template:', e.message);
+}
+
+try {
+  db.exec(`ALTER TABLE partner_requests ADD COLUMN template TEXT DEFAULT 'normal'`);
+  console.log('[DB] Migration: added column template to partner_requests');
+} catch (e) {
+  if (!e.message.includes('duplicate column')) console.error('[DB] Migration template:', e.message);
+}
+// ========== КОНЕЦ МИГРАЦИЙ ШАБЛОНА ==========
+
 // Сброс индивидуальных referral_bonus_amount — всем одинаковый из конфига
 try {
   const { REFERRAL_BONUS_REFERRER_PF } = require('./config');
