@@ -18,6 +18,7 @@ const { generatePromoImage } = require('./generatePromoImage');
 const { createUserLink } = require('../bank/bankTransfers');
 const { getPostChannels } = require('../postToChannel');
 const fs = require('fs');
+const path = require('path');
 
 // --- КОНФИГУРАЦИЯ И СПРАВОЧНИКИ ---
 const prizeTypeMapping = {
@@ -48,7 +49,7 @@ const promoSessions = new Map();
 // Хранилище сессий постинга промо
 const promoPostSessions = new Map();
 
-// === ЕДИНАЯ МАШИНА ШАГОВ ===
+// === ЕДИНАЯ МАШИНА ШАГОВ СОЗДАНИЯ ===
 const STEP_NAME = 0;
 const STEP_LIMIT_TYPE = 1;
 const STEP_TIME_VALUE = 2;
@@ -60,7 +61,7 @@ const STEP_TEMPLATE = 7;
 const STEP_SUMMARY = 8;
 
 // =====================================================
-// НОВОЕ: ШАБЛОНЫ ТЕКСТА ДЛЯ ПОСТИНГА
+// ШАБЛОНЫ ТЕКСТА ДЛЯ ПОСТИНГА
 // =====================================================
 const POST_TEMPLATES = [
   {
@@ -86,7 +87,7 @@ const POST_TEMPLATES = [
 ];
 
 // =====================================================
-// НОВОЕ: ФОРМАТИРОВАНИЕ ВРЕМЕНИ ПО МОСКВЕ (24ч, МСК)
+// ФОРМАТИРОВАНИЕ ВРЕМЕНИ ПО МОСКВЕ (24ч, МСК)
 // =====================================================
 function formatMoscowTime(timestamp) {
   return new Intl.DateTimeFormat('ru-RU', {
@@ -112,9 +113,67 @@ function formatMoscowTimeShort(timestamp) {
 }
 
 // =====================================================
-// НОВОЕ: Безопасное редактирование сообщения
-// Если исходное сообщение — фото с капшном, editMessageText падает.
-// В таком случае удаляем старое и отправляем новое.
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// =====================================================
+function formatNumber(num) {
+  if (num === undefined || num === null) return '0';
+  return Number(num).toLocaleString('ru-RU');
+}
+
+function escapeHtml(text) {
+  if (typeof text !== 'string') return text;
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function getStatusNameById(id) {
+  const status = statusesList.find(s => s.id === id);
+  return status ? status.name : 'Неизвестный';
+}
+
+function formatDuration(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h > 0) return `${h} ч ${m} мин`;
+  return `${m} мин`;
+}
+
+function parseNumberWithSuffix(text) {
+  if (text === undefined || text === null) return NaN;
+  let str = String(text).trim().toLowerCase().replace(/\s/g, '').replace(',', '.');
+  if (!str) return NaN;
+
+  let multiplier = 1;
+  if (str.endsWith('кк') || str.endsWith('kk') || str.endsWith('m') || str.endsWith('м')) {
+    multiplier = 1000000;
+    str = str.slice(0, -2);
+  } else if (str.endsWith('к') || str.endsWith('k')) {
+    multiplier = 1000;
+    str = str.slice(0, -1);
+  }
+
+  const num = parseFloat(str);
+  if (isNaN(num)) return NaN;
+  return num * multiplier;
+}
+
+// Ограничение подписи фото лимитом Telegram (1024 символа)
+function fitCaption(text, limit = 1024) {
+  if (text.length <= limit) return text;
+  return text.slice(0, limit - 1) + '…';
+}
+
+async function isAdmin(ctx) {
+  const senderId = ctx.from.id.toString();
+  return process.env.MAIN_ADMIN === senderId || (await getUserStatuses(senderId)).includes('Тех администратор');
+}
+
+// =====================================================
+// БЕЗОПАСНОЕ РЕДАКТИРОВАНИЕ ТЕКСТОВОГО СООБЩЕНИЯ
 // =====================================================
 async function safeEditToText(ctx, text, options) {
   try {
@@ -129,6 +188,99 @@ async function safeEditToText(ctx, text, options) {
     } else {
       throw error;
     }
+  }
+}
+
+// =====================================================
+// НОВОЕ: УНИВЕРСАЛЬНЫЕ ФУНКЦИИ РАБОТЫ С МЕНЮ-СООБЩЕНИЕМ
+// Меню-сообщение всегда содержит картинку промо (если она есть).
+// =====================================================
+async function sendMenuMessage(ctx, session, caption, extra) {
+  const opts = { parse_mode: 'HTML', ...extra };
+  if (session.photoPath && fs.existsSync(session.photoPath)) {
+    const msg = await ctx.replyWithPhoto({ source: session.photoPath }, { caption, ...opts });
+    session.menuIsPhoto = true;
+    return msg;
+  }
+  const msg = await ctx.reply(caption, opts);
+  session.menuIsPhoto = false;
+  return msg;
+}
+
+async function editMenuMessage(ctx, session, caption, extra) {
+  const opts = { parse_mode: 'HTML', ...extra };
+
+  if (session.menuMessageId) {
+    // 1) Пытаемся отредактировать подпись фото
+    try {
+      await ctx.telegram.editMessageCaption(ctx.chat.id, session.menuMessageId, undefined, caption, opts);
+      session.menuIsPhoto = true;
+      return;
+    } catch (e) {
+      // 2) Если это текстовое сообщение — редактируем текст
+      try {
+        await ctx.telegram.editMessageText(ctx.chat.id, session.menuMessageId, undefined, caption, opts);
+        session.menuIsPhoto = false;
+        return;
+      } catch (e2) {
+        // 3) Иначе удаляем и отправляем заново
+        await ctx.telegram.deleteMessage(ctx.chat.id, session.menuMessageId).catch(() => {});
+      }
+    }
+  }
+
+  const msg = await sendMenuMessage(ctx, session, caption, extra);
+  session.menuMessageId = msg.message_id;
+}
+
+// =====================================================
+// НОВОЕ: СБОРКА ИТОГОВОГО ТЕКСТА ПОСТА
+// =====================================================
+function buildPostCaption(session) {
+  let text = session.text || '';
+  const link = session.promoLink || '';
+
+  if (text.includes('{promo_link}')) {
+    // Шаблон с плейсхолдером ссылки
+    if (session.includeLink) {
+      text = text.replace('{promo_link}', `<code>${link}</code>`);
+    } else {
+      text = text
+        .replace(/[ \t]*\{promo_link\}[ \t]*\n?/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+  } else if (session.includeLink && link) {
+    // Свой текст — ссылку добавляем внизу
+    text = text
+      ? `${text}\n\n🔗 Ссылка для активации:\n<code>${link}</code>`
+      : `🔗 Ссылка для активации:\n<code>${link}</code>`;
+  }
+
+  return text;
+}
+
+// =====================================================
+// НОВОЕ: ОТПРАВКА ГОТОВОГО ПОСТА (ФОТО + ТЕКСТ)
+// =====================================================
+async function sendPostToChat(ctx, chatId, session) {
+  const caption = buildPostCaption(session);
+  const hasPhoto = session.photoPath && fs.existsSync(session.photoPath);
+
+  if (hasPhoto && caption.length <= 1024) {
+    await ctx.telegram.sendPhoto(chatId, { source: session.photoPath }, {
+      caption,
+      parse_mode: 'HTML'
+    });
+  } else if (hasPhoto) {
+    // Подпись слишком длинная — фото отдельно, текст отдельно
+    await ctx.telegram.sendPhoto(chatId, { source: session.photoPath }, {
+      caption: `🎁 Промокод: <code>${escapeHtml(session.promoName)}</code>`,
+      parse_mode: 'HTML'
+    });
+    await ctx.telegram.sendMessage(chatId, caption, { parse_mode: 'HTML' });
+  } else {
+    await ctx.telegram.sendMessage(chatId, caption, { parse_mode: 'HTML' });
   }
 }
 
@@ -187,59 +339,7 @@ function getPrizeAmountKeyboard(prizeType) {
   return Markup.inlineKeyboard(keyboardRows);
 }
 
-// --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
-function formatNumber(num) {
-  if (num === undefined || num === null) return '0';
-  return Number(num).toLocaleString('ru-RU');
-}
-
-function escapeHtml(text) {
-  if (typeof text !== 'string') return text;
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-function getStatusNameById(id) {
-  const status = statusesList.find(s => s.id === id);
-  return status ? status.name : 'Неизвестный';
-}
-
-function formatDuration(minutes) {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (h > 0) return `${h} ч ${m} мин`;
-  return `${m} мин`;
-}
-
-function parseNumberWithSuffix(text) {
-  if (text === undefined || text === null) return NaN;
-  let str = String(text).trim().toLowerCase().replace(/\s/g, '').replace(',', '.');
-  if (!str) return NaN;
-
-  let multiplier = 1;
-  if (str.endsWith('кк') || str.endsWith('kk') || str.endsWith('m') || str.endsWith('м')) {
-    multiplier = 1000000;
-    str = str.slice(0, -2);
-  } else if (str.endsWith('к') || str.endsWith('k')) {
-    multiplier = 1000;
-    str = str.slice(0, -1);
-  }
-
-  const num = parseFloat(str);
-  if (isNaN(num)) return NaN;
-  return num * multiplier;
-}
-
-async function isAdmin(ctx) {
-  const senderId = ctx.from.id.toString();
-  return process.env.MAIN_ADMIN === senderId || (await getUserStatuses(senderId)).includes('Тех администратор');
-}
-
-// --- КЛАВИАТУРЫ ---
+// --- КЛАВИАТУРЫ СОЗДАНИЯ ПРОМО ---
 const cancelKeyboard = Markup.inlineKeyboard([
   Markup.button.callback('🔴 Отменить создание', 'promo_cancel_create')
 ]);
@@ -249,7 +349,6 @@ const limitTypeKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('🔙 Отмена', 'promo_cancel_create')]
 ]);
 
-// НОВОЕ: Возвращена кнопка 120 минут
 const timeQuickKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('3 мин', 'promo_quick_time_3'), Markup.button.callback('5 мин', 'promo_quick_time_5'), Markup.button.callback('10 мин', 'promo_quick_time_10')],
   [Markup.button.callback('15 мин', 'promo_quick_time_15'), Markup.button.callback('30 мин', 'promo_quick_time_30'), Markup.button.callback('45 мин', 'promo_quick_time_45')],
@@ -309,7 +408,7 @@ const cancelEditKeyboard = Markup.inlineKeyboard([
 ]);
 
 // =====================================================
-// Клавиатуры для постинга промо
+// НОВОЕ: КЛАВИАТУРЫ ПОСТИНГА ПРОМО
 // =====================================================
 function getPromoPostChannelKeyboard() {
   const channels = getPostChannels();
@@ -320,14 +419,10 @@ function getPromoPostChannelKeyboard() {
   return Markup.inlineKeyboard(rows);
 }
 
-function getPromoPostReadyKeyboard() {
+function getPromoPostTextKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('👁 Предпросмотр', 'promo_post_preview')],
-    [Markup.button.callback('📨 Опубликовать', 'promo_post_send')],
     [Markup.button.callback('📝 Выбрать шаблон', 'promo_post_select_template')],
-    [Markup.button.callback('✏️ Редактировать текст', 'promo_post_edit_text')],
-    [Markup.button.callback('🔄 Сменить канал', 'promo_post_change_channel')],
-    [Markup.button.callback('⬅️ Назад к промо', 'promo_post_back')],
+    [Markup.button.callback('❌ Отменить постинг', 'promo_post_cancel')],
   ]);
 }
 
@@ -335,32 +430,88 @@ function getPromoPostTemplateKeyboard() {
   const rows = POST_TEMPLATES.map((template, index) => [
     Markup.button.callback(template.name, `promo_post_template_${index}`),
   ]);
-  rows.push([Markup.button.callback('⬅️ Назад', 'promo_post_back_to_ready')]);
+  rows.push([Markup.button.callback('⬅️ Назад', 'promo_post_template_back')]);
   return Markup.inlineKeyboard(rows);
 }
 
-function getPromoPostCancelKeyboard() {
+function getPromoPostEditKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('❌ Отменить постинг', 'promo_post_cancel')],
+    [Markup.button.callback('⬅️ Отменить редактирование', 'promo_post_back_to_ready')],
+  ]);
+}
+
+function getPromoPostReadyKeyboard(session) {
+  const linkIcon = session.includeLink ? '✅' : '❌';
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('👁 Предпросмотр', 'promo_post_preview'), Markup.button.callback('📨 Опубликовать', 'promo_post_send')],
+    [Markup.button.callback('✏️ Редактировать текст', 'promo_post_edit_text'), Markup.button.callback('📝 Шаблон', 'promo_post_select_template')],
+    [Markup.button.callback(`🔗 Ссылка в посте: ${linkIcon}`, 'promo_post_toggle_link'), Markup.button.callback('🔄 Сменить канал', 'promo_post_change_channel')],
+    [Markup.button.callback('⬅️ Назад к промо', 'promo_post_back')],
   ]);
 }
 
 // =====================================================
-// Функции постинга промо (с safeEditToText)
+// НОВОЕ: ЭКРАНЫ ПОСТИНГА (ВСЕГДА С КАРТИНКОЙ ПРОМО)
 // =====================================================
-async function startPromoPost(ctx, promoName, photoPath = null) {
-  const userId = String(ctx.from.id);
+async function showPostTextStep(ctx, session) {
+  session.step = 'text';
+  const caption = fitCaption(
+    `📢 Канал: <b>${session.channel.name}</b>\n` +
+    `🏷 Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
+    `🖼 Картинка промокода прикреплена к этому сообщению и будет в посте.\n\n` +
+    `Введите <b>свой текст поста</b> — или выберите готовый шаблон кнопкой ниже.`
+  );
+  await editMenuMessage(ctx, session, caption, { reply_markup: getPromoPostTextKeyboard().reply_markup });
+}
 
-  promoPostSessions.set(userId, {
-    step: 'channel',
-    promoName: promoName,
-    channel: null,
-    text: null,
-    messageId: null,
-    sourceChatId: null,
-    photoPath: photoPath, // НОВОЕ: сохраняем путь к картинке
-    customText: null, // НОВОЕ: для редактирования шаблона
-  });
+async function showPostTemplateStep(ctx, session) {
+  session.step = 'template';
+  const caption = fitCaption(
+    `📝 <b>Выберите шаблон текста:</b>\n` +
+    `🏷 Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
+    `Ссылка на промо подставится в шаблон автоматически.\n` +
+    `Её можно отключить кнопкой «🔗 Ссылка в посте» на следующем шаге.`
+  );
+  await editMenuMessage(ctx, session, caption, { reply_markup: getPromoPostTemplateKeyboard().reply_markup });
+}
+
+async function showPostEditStep(ctx, session) {
+  session.step = 'edit';
+  const caption = fitCaption(
+    `✏️ <b>Редактирование текста поста</b>\n\n` +
+    `Текущий текст:\n${buildPostCaption(session) || '<i>пусто</i>'}\n\n` +
+    `Отправьте новый текст сообщением.`
+  );
+  await editMenuMessage(ctx, session, caption, { reply_markup: getPromoPostEditKeyboard().reply_markup });
+}
+
+async function showPostReadyMenu(ctx, session) {
+  session.step = 'ready';
+  const linkState = session.includeLink ? 'добавляется' : 'НЕ добавляется';
+  const caption = fitCaption(
+    `📢 Канал: <b>${session.channel.name}</b>\n` +
+    `🏷 Промокод: <code>${escapeHtml(session.promoName)}</code>\n` +
+    `🔗 Ссылка в посте: <b>${linkState}</b>\n\n` +
+    `<b>Текст поста (как будет опубликован):</b>\n${buildPostCaption(session) || '<i>пусто</i>'}`
+  );
+  await editMenuMessage(ctx, session, caption, { reply_markup: getPromoPostReadyKeyboard(session).reply_markup });
+}
+
+async function showPostChannelStep(ctx, session) {
+  session.step = 'channel';
+  const caption = fitCaption(
+    `📢 <b>Публикация промокода</b>\n\n` +
+    `Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
+    `Выберите канал для публикации:`
+  );
+  await editMenuMessage(ctx, session, caption, { reply_markup: getPromoPostChannelKeyboard().reply_markup });
+}
+
+// =====================================================
+// СТАРТ ПОСТИНГА
+// =====================================================
+async function startPromoPost(ctx, promoName, photoPath = null, promoLink = null) {
+  const userId = String(ctx.from.id);
 
   const channels = getPostChannels();
   if (channels.length === 0) {
@@ -369,61 +520,44 @@ async function startPromoPost(ctx, promoName, photoPath = null) {
     return;
   }
 
-  await safeEditToText(ctx,
-    `📢 <b>Публикация промокода</b>\n\n` +
-    `Промокод: <code>${escapeHtml(promoName)}</code>\n\n` +
-    `Выберите канал для публикации:`,
-    {
-      parse_mode: 'HTML',
-      ...getPromoPostChannelKeyboard(),
-    }
-  );
-}
+  promoPostSessions.set(userId, {
+    step: 'channel',
+    promoName: promoName,
+    photoPath: photoPath,
+    promoLink: promoLink,
+    channel: null,
+    text: null,
+    includeLink: true,
+    prevStep: null,
+    menuMessageId: ctx.callbackQuery ? ctx.callbackQuery.message.message_id : null,
+    menuIsPhoto: false,
+  });
 
-async function handlePromoPostChannelSelection(ctx) {
-  const userId = String(ctx.from.id);
   const session = promoPostSessions.get(userId);
 
-  if (!session) {
-    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
-  }
-
-  const data = ctx.callbackQuery?.data || '';
-  const channelIndex = Number(data.replace('promo_post_channel_', ''));
-  const channels = getPostChannels();
-  const channel = channels[channelIndex];
-
-  if (!channel) {
-    return ctx.answerCbQuery('❌ Канал не найден.', true);
-  }
-
-  session.channel = channel;
-  session.step = 'text';
-  promoPostSessions.set(userId, session);
-
-  await safeEditToText(ctx,
-    `📢 Канал: <b>${channel.name}</b>\n\n` +
-    `Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
-    `Отправьте <b>текст поста</b> для публикации.\n\n` +
-    `💡 Можно отправить:\n` +
-    `• Просто текст\n` +
-    `• Фото с подписью\n` +
-    `• Стикеры, видео, премиум-эмодзи\n\n` +
-    `Всё будет скопировано целиком и опубликовано в канале.`,
-    {
-      parse_mode: 'HTML',
-      ...getPromoPostCancelKeyboard(),
-    }
+  const caption = fitCaption(
+    `📢 <b>Публикация промокода</b>\n\n` +
+    `Промокод: <code>${escapeHtml(promoName)}</code>\n\n` +
+    `Выберите канал для публикации:`
   );
 
-  return ctx.answerCbQuery();
+  await safeEditToText(ctx, caption, {
+    parse_mode: 'HTML',
+    ...getPromoPostChannelKeyboard(),
+  });
+
+  session.menuMessageId = ctx.callbackQuery ? ctx.callbackQuery.message.message_id : session.menuMessageId;
+  session.menuIsPhoto = false;
 }
 
+// =====================================================
+// ПРИЁМ ТЕКСТА ОТ АДМИНА (свой текст / редактирование)
+// =====================================================
 async function handlePromoPostMessage(ctx) {
   const userId = String(ctx.from.id);
   const session = promoPostSessions.get(userId);
 
-  if (!session || session.step !== 'text') {
+  if (!session || (session.step !== 'text' && session.step !== 'edit')) {
     return false;
   }
 
@@ -437,313 +571,242 @@ async function handlePromoPostMessage(ctx) {
   }
 
   const text = ctx.message.text?.trim();
+
   if (text && text.toLowerCase() === 'отмена') {
     promoPostSessions.delete(userId);
     await ctx.reply('❌ Постинг промо отменён.');
     return true;
   }
 
-  session.messageId = ctx.message.message_id;
-  session.sourceChatId = ctx.chat.id;
-  session.step = 'ready';
+  // Принимаем только текст
+  if (!text) {
+    await ctx.reply('❕ Отправьте текст сообщением (без фото/стикеров). Картинка промо прикрепится автоматически.');
+    return true;
+  }
+
+  session.text = ctx.message.text;
   promoPostSessions.set(userId, session);
 
-  await ctx.reply(
-    `✅ Сообщение принято!\n\n` +
-    `📢 Канал: <b>${session.channel.name}</b>\n` +
-    `🏷 Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
-    `Выберите действие:`,
-    {
-      parse_mode: 'HTML',
-      ...getPromoPostReadyKeyboard(),
-    }
-  );
-
+  await showPostReadyMenu(ctx, session);
   return true;
 }
 
-async function handlePromoPostPreview(ctx) {
+// =====================================================
+// РОУТЕР CALLBACK ПОСТИНГА
+// =====================================================
+async function handlePromoPostCallback(ctx) {
+  if (!(await isAdmin(ctx))) {
+    return ctx.answerCbQuery('❌ Нет доступа.', true);
+  }
+
+  const data = ctx.callbackQuery?.data;
+  if (!data) return ctx.answerCbQuery();
+
   const userId = String(ctx.from.id);
   const session = promoPostSessions.get(userId);
 
-  if (!session || !session.messageId) {
-    return ctx.answerCbQuery('❌ Сообщение не найдено.', true);
+  // --- Старт постинга ---
+  if (data.startsWith('promo_post_menu_')) {
+    const promoName = data.replace('promo_post_menu_', '');
+
+    const promoImagesDir = path.join(__dirname, '../promo_images');
+    const photoPath = path.join(promoImagesDir, `${promoName}_promo.png`);
+
+    const botUsername = process.env.BOT_USERNAME || 'F_roobot';
+    let alias = null;
+    try {
+      const { generatePromoAlias, savePromoAlias } = require('../db');
+      alias = generatePromoAlias(promoName);
+      if (alias) savePromoAlias(alias, promoName);
+    } catch (e) {}
+    const linkPayload = alias ? `promo_${alias}` : `promo_${promoName}`;
+    const promoLink = `https://t.me/${botUsername}?start=${linkPayload}`;
+
+    await startPromoPost(ctx, promoName, fs.existsSync(photoPath) ? photoPath : null, promoLink);
+    return ctx.answerCbQuery();
   }
 
-  try {
-    await ctx.telegram.copyMessage(ctx.chat.id, session.sourceChatId, session.messageId);
-    await ctx.answerCbQuery('👁 Предпросмотр отправлен выше.');
-  } catch (error) {
-    console.error('[PROMO POST PREVIEW ERROR]', error);
-    await ctx.answerCbQuery('❌ Не удалось создать предпросмотр.', true);
-  }
-}
-
-async function handlePromoPostPublish(ctx) {
-  const userId = String(ctx.from.id);
-  const session = promoPostSessions.get(userId);
-
-  if (!session || !session.channel || !session.messageId) {
-    return ctx.answerCbQuery('❌ Данные поста не заполнены.', true);
+  if (!session) {
+    return ctx.answerCbQuery('❌ Сессия постинга не найдена.', true);
   }
 
-  try {
-    console.log(`[PROMO POST] Копирование сообщения ${session.messageId} из ${session.sourceChatId} в канал ${session.channel.id}`);
+  // --- Выбор канала ---
+  if (data.startsWith('promo_post_channel_')) {
+    const channelIndex = Number(data.replace('promo_post_channel_', ''));
+    const channels = getPostChannels();
+    const channel = channels[channelIndex];
 
-    // НОВОЕ: Если есть картинка промокода, отправляем фото с текстом
-    if (session.photoPath && fs.existsSync(session.photoPath)) {
-      // Получаем текст поста
-      let postText = '';
-      if (session.customText) {
-        postText = session.customText;
-      } else if (session.messageId && session.sourceChatId) {
-        // Копируем текст из исходного сообщения
-        try {
-          const messages = await ctx.telegram.getChat(session.sourceChatId);
-          // Пытаемся получить текст из сообщения
-          const msg = await ctx.telegram.forwardMessage(ctx.chat.id, session.sourceChatId, session.messageId);
-          postText = msg.text || msg.caption || '';
-          await ctx.telegram.deleteMessage(ctx.chat.id, msg.message_id).catch(() => {});
-        } catch (e) {
-          postText = `🎁 Промокод: ${session.promoName}`;
-        }
+    if (!channel) {
+      return ctx.answerCbQuery('❌ Канал не найден.', true);
+    }
+
+    session.channel = channel;
+
+    // Если раньше меню было текстовым (первый вход) — создаём новое сообщение с фото
+    if (!session.menuIsPhoto) {
+      if (session.text) {
+        await showPostReadyMenu(ctx, session);
+      } else {
+        // Отправляем новое меню-сообщение с картинкой
+        const caption = fitCaption(
+          `📢 Канал: <b>${session.channel.name}</b>\n` +
+          `🏷 Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
+          `🖼 Картинка промокода прикреплена к этому сообщению и будет в посте.\n\n` +
+          `Введите <b>свой текст поста</b> — или выберите готовый шаблон кнопкой ниже.`
+        );
+        const msg = await sendMenuMessage(ctx, session, caption, { reply_markup: getPromoPostTextKeyboard().reply_markup });
+        session.menuMessageId = msg.message_id;
+        session.step = 'text';
       }
+    } else {
+      if (session.text) {
+        await showPostReadyMenu(ctx, session);
+      } else {
+        await showPostTextStep(ctx, session);
+      }
+    }
 
-      // Отправляем фото с caption в канал
-      await ctx.telegram.sendPhoto(
-        session.channel.id,
-        { source: session.photoPath },
+    promoPostSessions.set(userId, session);
+    return ctx.answerCbQuery();
+  }
+
+  // --- Открыть список шаблонов ---
+  if (data === 'promo_post_select_template') {
+    session.prevStep = session.step;
+    await showPostTemplateStep(ctx, session);
+    promoPostSessions.set(userId, session);
+    return ctx.answerCbQuery();
+  }
+
+  // --- Назад из шаблонов ---
+  if (data === 'promo_post_template_back') {
+    if (session.prevStep === 'ready' && session.text) {
+      await showPostReadyMenu(ctx, session);
+    } else {
+      await showPostTextStep(ctx, session);
+    }
+    promoPostSessions.set(userId, session);
+    return ctx.answerCbQuery();
+  }
+
+  // --- Выбор шаблона ---
+  if (data.startsWith('promo_post_template_')) {
+    const templateIndex = Number(data.replace('promo_post_template_', ''));
+    const template = POST_TEMPLATES[templateIndex];
+
+    if (!template) {
+      return ctx.answerCbQuery('❌ Шаблон не найден.', true);
+    }
+
+    session.text = template.text;
+    await showPostReadyMenu(ctx, session);
+    promoPostSessions.set(userId, session);
+    return ctx.answerCbQuery();
+  }
+
+  // --- Редактировать текст ---
+  if (data === 'promo_post_edit_text') {
+    await showPostEditStep(ctx, session);
+    promoPostSessions.set(userId, session);
+    return ctx.answerCbQuery();
+  }
+
+  // --- Вернуться в готовое меню ---
+  if (data === 'promo_post_back_to_ready') {
+    await showPostReadyMenu(ctx, session);
+    promoPostSessions.set(userId, session);
+    return ctx.answerCbQuery();
+  }
+
+  // --- Переключатель ссылки ---
+  if (data === 'promo_post_toggle_link') {
+    session.includeLink = !session.includeLink;
+    await showPostReadyMenu(ctx, session);
+    promoPostSessions.set(userId, session);
+    return ctx.answerCbQuery();
+  }
+
+  // --- Сменить канал ---
+  if (data === 'promo_post_change_channel') {
+    await showPostChannelStep(ctx, session);
+    promoPostSessions.set(userId, session);
+    return ctx.answerCbQuery();
+  }
+
+  // --- Предпросмотр ---
+  if (data === 'promo_post_preview') {
+    try {
+      await sendPostToChat(ctx, ctx.chat.id, session);
+      await ctx.answerCbQuery('👁 Предпросмотр отправлен выше.');
+    } catch (error) {
+      console.error('[PROMO POST PREVIEW ERROR]', error);
+      await ctx.answerCbQuery('❌ Не удалось создать предпросмотр.', true);
+    }
+    return;
+  }
+
+  // --- Публикация ---
+  if (data === 'promo_post_send') {
+    if (!session.channel) {
+      return ctx.answerCbQuery('❌ Канал не выбран.', true);
+    }
+    if (!session.text) {
+      return ctx.answerCbQuery('❌ Текст поста не задан.', true);
+    }
+
+    try {
+      console.log(`[PROMO POST] Публикация промо "${session.promoName}" в канал ${session.channel.id}`);
+      await sendPostToChat(ctx, session.channel.id, session);
+
+      const promoName = session.promoName;
+      promoPostSessions.delete(userId);
+
+      await editMenuMessage(ctx, session,
+        `✅ <b>Промокод успешно опубликован!</b>\n\n` +
+        `📢 Канал: <b>${session.channel.name}</b>\n` +
+        `🏷 Промокод: <code>${escapeHtml(promoName)}</code>`,
         {
-          caption: postText,
-          parse_mode: 'HTML'
+          reply_markup: Markup.inlineKeyboard([
+            [Markup.button.callback('🔄 Запостить ещё раз', `promo_post_menu_${promoName}`)],
+          ]).reply_markup
         }
       );
-    } else {
-      // Если картинки нет, используем стандартное копирование
-      await ctx.telegram.copyMessage(session.channel.id, session.sourceChatId, session.messageId);
+    } catch (error) {
+      console.error('[PROMO POST PUBLISH ERROR]', error);
+      if (error.description) {
+        console.error(`[PROMO POST] Telegram API Error: ${error.description}`);
+      }
+      await ctx.answerCbQuery(
+        '❌ Ошибка публикации.\n' +
+        '1. Бот админ в канале?\n' +
+        '2. Есть право постить?\n' +
+        '3. ID канала верный?',
+        true
+      );
     }
+    return;
+  }
 
+  // --- Назад к промо / отмена ---
+  if (data === 'promo_post_back' || data === 'promo_post_cancel') {
     const promoName = session.promoName;
+    const menuMessageId = session.menuMessageId;
     promoPostSessions.delete(userId);
 
-    await ctx.editMessageText(
-      `✅ <b>Промокод успешно опубликован!</b>\n\n` +
-      `📢 Канал: <b>${session.channel.name}</b>\n` +
-      `🏷 Промокод: <code>${escapeHtml(promoName)}</code>`,
-      {
-        parse_mode: 'HTML',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('🔄 Запостить ещё раз', `promo_post_menu_${promoName}`)],
-        ]),
-      }
-    );
-  } catch (error) {
-    console.error('[PROMO POST PUBLISH ERROR]', error);
-    if (error.description) {
-      console.error(`[PROMO POST] Telegram API Error: ${error.description}`);
+    if (menuMessageId) {
+      await ctx.telegram.deleteMessage(ctx.chat.id, menuMessageId).catch(() => {});
     }
 
-    await ctx.editMessageText(
-      `❌ Не удалось опубликовать промокод.\n\n` +
-      `Проверьте:\n` +
-      `1. Бот админ в канале.\n` +
-      `2. У бота есть право постить сообщения.\n` +
-      `3. ID канала корректен.`,
-      {
-        parse_mode: 'HTML',
-        ...getPromoPostReadyKeyboard(),
-      }
-    );
+    await showPromoSummary(ctx, promoName, session.photoPath);
+    return ctx.answerCbQuery();
   }
-
-  return ctx.answerCbQuery();
-}
-
-async function handlePromoPostCancel(ctx) {
-  const userId = String(ctx.from.id);
-  const session = promoPostSessions.get(userId);
-
-  if (!session) {
-    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
-  }
-
-  const promoName = session.promoName;
-  promoPostSessions.delete(userId);
-
-  try {
-    await ctx.editMessageText(`❌ Постинг отменён.\n\nВозвращаемся к промокоду...`);
-  } catch (e) {}
-
-  await showPromoSummary(ctx, promoName);
-  return ctx.answerCbQuery();
-}
-
-async function handlePromoPostBack(ctx) {
-  const userId = String(ctx.from.id);
-  const session = promoPostSessions.get(userId);
-
-  if (!session) {
-    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
-  }
-
-  const promoName = session.promoName;
-  promoPostSessions.delete(userId);
-
-  await showPromoSummary(ctx, promoName);
-  return ctx.answerCbQuery();
-}
-
-async function handlePromoPostEditText(ctx) {
-  const userId = String(ctx.from.id);
-  const session = promoPostSessions.get(userId);
-
-  if (!session) {
-    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
-  }
-
-  session.step = 'text';
-  session.messageId = null;
-  session.sourceChatId = null;
-  promoPostSessions.set(userId, session);
-
-  await safeEditToText(ctx,
-    `📢 Канал: <b>${session.channel.name}</b>\n\n` +
-    `Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
-    `Отправьте <b>новый текст поста</b>:`,
-    {
-      parse_mode: 'HTML',
-      ...getPromoPostCancelKeyboard(),
-    }
-  );
-
-  return ctx.answerCbQuery();
-}
-
-async function handlePromoPostChangeChannel(ctx) {
-  const userId = String(ctx.from.id);
-  const session = promoPostSessions.get(userId);
-
-  if (!session) {
-    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
-  }
-
-  session.step = 'channel';
-  session.channel = null;
-  session.messageId = null;
-  session.sourceChatId = null;
-  promoPostSessions.set(userId, session);
-
-  await safeEditToText(ctx,
-    `📢 <b>Выбор канала</b>\n\n` +
-    `Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
-    `Выберите канал:`,
-    {
-      parse_mode: 'HTML',
-      ...getPromoPostChannelKeyboard(),
-    }
-  );
 
   return ctx.answerCbQuery();
 }
 
 // =====================================================
-// НОВОЕ: Обработчики шаблонов текста
+// СВОДКА О ПРОМО (с картинкой)
 // =====================================================
-async function handlePromoPostSelectTemplate(ctx) {
-  const userId = String(ctx.from.id);
-  const session = promoPostSessions.get(userId);
-
-  if (!session) {
-    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
-  }
-
-  await safeEditToText(ctx,
-    `📝 <b>Выберите шаблон текста:</b>\n\n` +
-    `Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
-    `Ссылка будет добавлена автоматически.`,
-    {
-      parse_mode: 'HTML',
-      ...getPromoPostTemplateKeyboard(),
-    }
-  );
-
-  return ctx.answerCbQuery();
-}
-
-async function handlePromoPostTemplateSelection(ctx) {
-  const userId = String(ctx.from.id);
-  const session = promoPostSessions.get(userId);
-
-  if (!session) {
-    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
-  }
-
-  const data = ctx.callbackQuery?.data || '';
-  const templateIndex = Number(data.replace('promo_post_template_', ''));
-  const template = POST_TEMPLATES[templateIndex];
-
-  if (!template) {
-    return ctx.answerCbQuery('❌ Шаблон не найден.', true);
-  }
-
-  // Получаем ссылку на промо
-  const botUsername = process.env.BOT_USERNAME || 'F_roobot';
-  let alias = null;
-  try {
-    const { generatePromoAlias, savePromoAlias } = require('../db');
-    alias = generatePromoAlias(session.promoName);
-    if (alias) savePromoAlias(alias, session.promoName);
-  } catch (e) {}
-  
-  const linkPayload = alias ? `promo_${alias}` : `promo_${session.promoName}`;
-  const promoLink = `https://t.me/${botUsername}?start=${linkPayload}`;
-
-  // Подставляем ссылку в шаблон
-  const finalText = template.text.replace('{promo_link}', promoLink);
-  
-  session.customText = finalText;
-  session.step = 'ready';
-  promoPostSessions.set(userId, session);
-
-  await safeEditToText(ctx,
-    `✅ <b>Шаблон выбран!</b>\n\n` +
-    `📢 Канал: <b>${session.channel.name}</b>\n` +
-    `🏷 Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
-    `<b>Текст поста:</b>\n${finalText}\n\n` +
-    `Выберите действие:`,
-    {
-      parse_mode: 'HTML',
-      ...getPromoPostReadyKeyboard(),
-    }
-  );
-
-  return ctx.answerCbQuery();
-}
-
-async function handlePromoPostBackToReady(ctx) {
-  const userId = String(ctx.from.id);
-  const session = promoPostSessions.get(userId);
-
-  if (!session) {
-    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
-  }
-
-  session.step = 'ready';
-  promoPostSessions.set(userId, session);
-
-  await safeEditToText(ctx,
-    `📢 Канал: <b>${session.channel.name}</b>\n` +
-    `🏷 Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
-    `Выберите действие:`,
-    {
-      parse_mode: 'HTML',
-      ...getPromoPostReadyKeyboard(),
-    }
-  );
-
-  return ctx.answerCbQuery();
-}
-
 async function showPromoSummary(ctx, promoName, photoPath = null) {
   try {
     const promo = await getPromoByName(promoName);
@@ -763,7 +826,6 @@ async function showPromoSummary(ctx, promoName, photoPath = null) {
     const linkPayload = alias ? `promo_${alias}` : `promo_${promoName}`;
     const promoLink = `https://t.me/${botUsername}?start=${linkPayload}`;
 
-    // НОВОЕ: МСК формат
     let limitStr = promo.activations_left === -1
       ? `⏳ Время: ${promo.expires_at ? 'до ' + formatMoscowTime(promo.expires_at) : '∞'}`
       : `🔢 Активаций: ${formatNumber(promo.activations_left)}`;
@@ -780,7 +842,6 @@ async function showPromoSummary(ctx, promoName, photoPath = null) {
       [Markup.button.callback('➕ Создать ещё', 'promo_create_another')],
     ]);
 
-    // НОВОЕ: Если есть картинка, отправляем с ней
     if (photoPath && fs.existsSync(photoPath)) {
       await ctx.replyWithPhoto({ source: photoPath }, {
         caption: summaryMsg,
@@ -799,71 +860,7 @@ async function showPromoSummary(ctx, promoName, photoPath = null) {
   }
 }
 
-async function handlePromoPostCallback(ctx) {
-  if (!(await isAdmin(ctx))) {
-    return ctx.answerCbQuery('❌ Нет доступа.', true);
-  }
-
-  const data = ctx.callbackQuery?.data;
-  if (!data) return ctx.answerCbQuery();
-
-  if (data.startsWith('promo_post_menu_')) {
-    const promoName = data.replace('promo_post_menu_', '');
-    
-    // НОВОЕ: Пытаемся найти картинку промокода
-    const promoImagesDir = require('path').join(__dirname, '../promo_images');
-    const photoPath = require('path').join(promoImagesDir, `${promoName}_promo.png`);
-    const photoExists = fs.existsSync(photoPath);
-    
-    await startPromoPost(ctx, promoName, photoExists ? photoPath : null);
-    return ctx.answerCbQuery();
-  }
-
-  if (data.startsWith('promo_post_channel_')) {
-    return handlePromoPostChannelSelection(ctx);
-  }
-
-  if (data === 'promo_post_preview') {
-    return handlePromoPostPreview(ctx);
-  }
-
-  if (data === 'promo_post_send') {
-    return handlePromoPostPublish(ctx);
-  }
-
-  if (data === 'promo_post_cancel') {
-    return handlePromoPostCancel(ctx);
-  }
-
-  if (data === 'promo_post_back') {
-    return handlePromoPostBack(ctx);
-  }
-
-  if (data === 'promo_post_edit_text') {
-    return handlePromoPostEditText(ctx);
-  }
-
-  if (data === 'promo_post_change_channel') {
-    return handlePromoPostChangeChannel(ctx);
-  }
-
-  // НОВОЕ: Обработчики шаблонов
-  if (data === 'promo_post_select_template') {
-    return handlePromoPostSelectTemplate(ctx);
-  }
-
-  if (data.startsWith('promo_post_template_')) {
-    return handlePromoPostTemplateSelection(ctx);
-  }
-
-  if (data === 'promo_post_back_to_ready') {
-    return handlePromoPostBackToReady(ctx);
-  }
-
-  return ctx.answerCbQuery();
-}
-
-// --- ОСНОВНАЯ ЛОГИКА ПОШАГОВОГО ВВОДА ---
+// --- ОСНОВНАЯ ЛОГИКА ПОШАГОВОГО ВВОДА СОЗДАНИЯ ---
 async function startPromoCreationSession(ctx) {
   if (!(await isAdmin(ctx))) {
     return ctx.reply('❌ У вас нет прав для создания промокодов.');
@@ -930,7 +927,6 @@ async function handlePromoCreationMessage(ctx) {
 
     if (session.step === STEP_TIME_VALUE && session.data.isTimeBased) {
       const val = parseNumberWithSuffix(text);
-      // НОВОЕ: Убрано ограничение в 99 минут
       if (isNaN(val) || val <= 0 || !Number.isInteger(val)) {
         await ctx.reply('❌ Некорректное число. Введите время в минутах (> 0):', { reply_markup: timeQuickKeyboard.reply_markup });
         return true;
@@ -1015,7 +1011,6 @@ async function handlePromoCreationMessage(ctx) {
           await ctx.reply('❌ Ошибка ввода.', { reply_markup: cancelEditKeyboard.reply_markup });
           return true;
         }
-        // НОВОЕ: Убрано ограничение в 99 минут
         session.data.durationMinutes = val;
         session.editField = null;
         await showSummary(ctx, session);
@@ -1066,7 +1061,7 @@ ${limitInfo}
   });
 }
 
-// --- ОБРАБОТЧИКИ CALLBACK ---
+// --- ОБРАБОТЧИКИ CALLBACK СОЗДАНИЯ ---
 async function handleCallback(ctx) {
   const userId = ctx.from.id.toString();
   const data = ctx.callbackQuery.data;
@@ -1383,7 +1378,6 @@ async function finalizePromoCreation(ctx, session) {
     const linkPayload = alias ? `promo_${alias}` : `promo_${d.name}`;
     const promoLink = `https://t.me/${botUsername}?start=${linkPayload}`;
 
-    // НОВОЕ: МСК формат
     let limitStr = d.isTimeBased
       ? `⏳ Время: ${formatDuration(d.durationMinutes)} (до ${formatMoscowTimeShort(expiresAt)})`
       : `🔢 Активаций: ${formatNumber(d.activations)}`;
@@ -1439,7 +1433,6 @@ async function listPromosHandler(ctx) {
   if (!promos.length) return ctx.reply('Список пуст.');
   let msg = '';
   for (const p of promos) {
-    // НОВОЕ: МСК формат
     let limitInfo = p.activations_left === -1
       ? `⏳ До: ${p.expires_at ? formatMoscowTime(p.expires_at) : '∞'}`
       : `🔢 Ост: ${formatNumber(p.activations_left)}`;
@@ -1552,5 +1545,4 @@ module.exports = {
   handlePromoPostMessage,
   handlePromoPostCallback,
   showPromoSummary,
-  
 };
