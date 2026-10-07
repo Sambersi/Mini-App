@@ -2012,12 +2012,18 @@ if (!reportText) {
   if (ctx.chat.type !== 'private') return ctx.reply('Используйте эту команду в личных сообщениях с ботом.');
   await showPartnerMenu(ctx);
 },
-
+'партнёр': async (ctx) => {
+  if (ctx.chat.type !== 'private') return ctx.reply('Используйте эту команду в личных сообщениях с ботом.');
+  await showPartnerMenu(ctx);
+},
 'партнёрка': async (ctx) => {
   if (ctx.chat.type !== 'private') return ctx.reply('Используйте эту команду в личных сообщениях с ботом.');
   await showPartnerMenu(ctx);
 },
-
+'партнерка': async (ctx) => {
+  if (ctx.chat.type !== 'private') return ctx.reply('Используйте эту команду в личных сообщениях с ботом.');
+  await showPartnerMenu(ctx);
+},
 };
 
 

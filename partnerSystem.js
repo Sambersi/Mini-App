@@ -22,7 +22,7 @@ try {
   console.warn('[PARTNER] generatePromoImage не найдена.');
 }
 
-const PARTNER_ADMIN_CHAT_ID = '-5564485597';
+const PARTNER_ADMIN_CHAT_ID = '-1004397248092';
 const ALLOWED_ADMIN_PRIORITIES = [10, 9, 8]; // Тех админ, Главный админ, Руководитель партнёрки
 
 const partnerSessions = new Map();
