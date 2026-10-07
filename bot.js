@@ -78,8 +78,8 @@ const {handleTechAdminCallback, handleTechAdminMessage } = require('./admin/tech
   
   const { 
   startPromoCreationSession, 
-  handlePromoCreationMessage, 
-  handleCallback, 
+  handlePromoPostMessage,
+  handlePromoPostCallback,
   listPromosHandler, 
   deletePromoHandler, 
   usePromoHandler 
@@ -2728,6 +2728,8 @@ bot.on('text', async (ctx) => {
 
     const { handlePostMessage } = require('./postToChannel');
     if (await handlePostMessage(ctx)) return;
+    // НОВОЕ: Перехват сообщений для постинга промокодов
+    if (await handlePromoPostMessage(ctx)) return;
     // =========================================================
     // ПРОВЕРКА: Если пользователь в процессе создания промокода
     const { handlePromoCreationMessage } = require('./handlers/promoHandler');
@@ -5083,6 +5085,10 @@ bot.action(/^tech_post_/, async (ctx) => {
   await handlePostCallback(ctx);
 });
 
+bot.action(/^promo_/, async (ctx) => {
+  const { handleCallback } = require('./handlers/promoHandler');
+  await handleCallback(ctx);
+});
 
 // Глобальный обработчик ошибок
 setupGlobalErrorHandler(bot);

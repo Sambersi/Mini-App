@@ -16,6 +16,8 @@ const {
 } = require('../db');
 const { generatePromoImage } = require('./generatePromoImage');
 const { createUserLink } = require('../bank/bankTransfers');
+// Импортируем функции каналов из postToChannel
+const { getPostChannels } = require('../postToChannel');
 
 // --- КОНФИГУРАЦИЯ И СПРАВОЧНИКИ ---
 const prizeTypeMapping = {
@@ -25,6 +27,7 @@ const prizeTypeMapping = {
   'npf_shares': 'NPF-акция',
   'tickets': 'Билетики',
 };
+
 const statusesList = [
   { id: 0, name: 'Все пользователи' },
   { id: 7, name: 'Beto-tester' },
@@ -35,22 +38,20 @@ const statusesList = [
   { id: 2, name: 'Тех админ' },
   { id: 1, name: 'Администратор' },
 ];
+
 const LOG_GIVE_CHAT_ID = process.env.LOG_GIVE_CHAT_ID;
 const LOG_CHAT_PROMO_ID = process.env.LOG_CHAT_PROMO_ID;
 
-// Хранилище сессий
+// Хранилище сессий создания промокодов
 const promoSessions = new Map();
 
+// =====================================================
+// НОВОЕ: Хранилище сессий постинга промо
+// Шаги: 'channel' → 'text' → 'ready'
+// =====================================================
+const promoPostSessions = new Map();
+
 // === ЕДИНАЯ МАШИНА ШАГОВ ===
-// 0 = ждём название
-// 1 = ждём тип лимита (кнопки)
-// 2 = ждём время в минутах (текст/кнопки) [isTimeBased]
-// 3 = ждём кол-во активаций (текст/кнопки) [!isTimeBased]
-// 4 = ждём тип приза (кнопки)
-// 5 = ждём сумму приза (текст/кнопки)
-// 6 = ждём мин. статус (кнопки)
-// 7 = ждём шаблон изображения (кнопки)
-// 8 = проверка / редактирование (кнопки; текст только если editField)
 const STEP_NAME = 0;
 const STEP_LIMIT_TYPE = 1;
 const STEP_TIME_VALUE = 2;
@@ -66,6 +67,7 @@ function formatNumber(num) {
   if (num === undefined || num === null) return '0';
   return Number(num).toLocaleString('ru-RU');
 }
+
 function escapeHtml(text) {
   if (typeof text !== 'string') return text;
   return text
@@ -73,18 +75,21 @@ function escapeHtml(text) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/'/g, '&#039;');
 }
+
 function getStatusNameById(id) {
   const status = statusesList.find(s => s.id === id);
   return status ? status.name : 'Неизвестный';
 }
+
 function formatDuration(minutes) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   if (h > 0) return `${h} ч ${m} мин`;
   return `${m} мин`;
 }
+
 async function isAdmin(ctx) {
   const senderId = ctx.from.id.toString();
   return process.env.MAIN_ADMIN === senderId || (await getUserStatuses(senderId)).includes('Тех администратор');
@@ -94,18 +99,22 @@ async function isAdmin(ctx) {
 const cancelKeyboard = Markup.inlineKeyboard([
   Markup.button.callback('🔴 Отменить создание', 'promo_cancel_create')
 ]);
+
 const limitTypeKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('🔢 По количеству', 'promo_limit_type_count'), Markup.button.callback('⏳ По времени', 'promo_limit_type_time')],
   [Markup.button.callback('🔙 Отмена', 'promo_cancel_create')]
 ]);
+
 const timeQuickKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('10 мин', 'promo_quick_time_10'), Markup.button.callback('25 мин', 'promo_quick_time_25'), Markup.button.callback('45 мин', 'promo_quick_time_45')],
   [Markup.button.callback('❌ Отмена', 'promo_cancel_create')]
 ]);
+
 const activationsQuickKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('5', 'promo_quick_act_5'), Markup.button.callback('10', 'promo_quick_act_10'), Markup.button.callback('15', 'promo_quick_act_15')],
   [Markup.button.callback('❌ Отмена', 'promo_cancel_create')]
 ]);
+
 const prizeTypeKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('📦 GOLD-контейнер', 'promo_prize_container_type_3')],
   [Markup.button.callback('💰 PF', 'promo_prize_balance'), Markup.button.callback('💎 DF', 'promo_prize_df_balance')],
@@ -113,10 +122,12 @@ const prizeTypeKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('🎫 Билетики', 'promo_prize_tickets')],
   [Markup.button.callback('🔙 Отмена', 'promo_cancel_create')]
 ]);
+
 const prizeAmountQuickKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('10k', 'promo_quick_sum_10000'), Markup.button.callback('25k', 'promo_quick_sum_25000'), Markup.button.callback('100k', 'promo_quick_sum_100000')],
   [Markup.button.callback('❌ Отмена', 'promo_cancel_create')]
 ]);
+
 const statusKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('🌍 Все', 'promo_status_0')],
   [Markup.button.callback('🧪 Beto-tester', 'promo_status_7')],
@@ -126,15 +137,18 @@ const statusKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('👑 Администратор', 'promo_status_1')],
   [Markup.button.callback('🔙 Отмена', 'promo_cancel_create')]
 ]);
+
 const templateKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('🤖 Авто', 'promo_template_auto')],
   [Markup.button.callback('🟢 Жирный', 'promo_template_fat'), Markup.button.callback('🔵 Обычный', 'promo_template_default')],
   [Markup.button.callback('🔙 Отмена', 'promo_cancel_create')]
 ]);
+
 const finalConfirmKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('✅ Подтвердить и создать', 'promo_confirm_final')],
   [Markup.button.callback('✏️ Редактировать данные', 'promo_edit_menu')]
 ]);
+
 const editMenuKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('Изменить название', 'promo_edit_name')],
   [Markup.button.callback('Изменить лимит (кол/время)', 'promo_edit_limit_type')],
@@ -144,16 +158,426 @@ const editMenuKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('🖼 Сменить шаблон изображения', 'promo_edit_template')],
   [Markup.button.callback('⬅️ Назад к проверке', 'promo_back_to_check')]
 ]);
+
 const cancelEditKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback('❌ Отмена редактирования', 'promo_back_to_check')]
 ]);
+
+// =====================================================
+// НОВОЕ: Клавиатуры для постинга промо
+// =====================================================
+function getPromoPostChannelKeyboard() {
+  const channels = getPostChannels();
+  const rows = channels.map((channel, index) => [
+    Markup.button.callback(channel.name, `promo_post_channel_${index}`),
+  ]);
+  rows.push([Markup.button.callback('⬅️ Назад к промо', 'promo_post_back')]);
+  return Markup.inlineKeyboard(rows);
+}
+
+function getPromoPostReadyKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('👁 Предпросмотр', 'promo_post_preview')],
+    [Markup.button.callback('📨 Опубликовать', 'promo_post_send')],
+    [Markup.button.callback('✏️ Изменить текст', 'promo_post_edit_text')],
+    [Markup.button.callback('🔄 Сменить канал', 'promo_post_change_channel')],
+    [Markup.button.callback('⬅️ Назад к промо', 'promo_post_back')],
+  ]);
+}
+
+function getPromoPostCancelKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('❌ Отменить постинг', 'promo_post_cancel')],
+  ]);
+}
+
+// =====================================================
+// НОВОЕ: Функции постинга промо
+// =====================================================
+
+// Начать процесс постинга промо
+async function startPromoPost(ctx, promoName) {
+  const userId = String(ctx.from.id);
+  
+  promoPostSessions.set(userId, {
+    step: 'channel',
+    promoName: promoName,
+    channel: null,
+    text: null,
+    messageId: null,
+    sourceChatId: null,
+  });
+
+  const channels = getPostChannels();
+  if (channels.length === 0) {
+    promoPostSessions.delete(userId);
+    await ctx.reply('❌ Нет доступных каналов для постинга. Проверьте .env переменные CHANNEL_ID, GIFT_CHANNEL_ID, TEST_CHANNEL_ID.');
+    return;
+  }
+
+  await ctx.editMessageText(
+    `📢 <b>Публикация промокода</b>\n\n` +
+    `Промокод: <code>${escapeHtml(promoName)}</code>\n\n` +
+    `Выберите канал для публикации:`,
+    {
+      parse_mode: 'HTML',
+      ...getPromoPostChannelKeyboard(),
+    }
+  );
+}
+
+// Обработка выбора канала
+async function handlePromoPostChannelSelection(ctx) {
+  const userId = String(ctx.from.id);
+  const session = promoPostSessions.get(userId);
+  
+  if (!session) {
+    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
+  }
+
+  const data = ctx.callbackQuery?.data || '';
+  const channelIndex = Number(data.replace('promo_post_channel_', ''));
+  const channels = getPostChannels();
+  const channel = channels[channelIndex];
+
+  if (!channel) {
+    return ctx.answerCbQuery('❌ Канал не найден.', true);
+  }
+
+  session.channel = channel;
+  session.step = 'text';
+  promoPostSessions.set(userId, session);
+
+  await ctx.editMessageText(
+    `📢 Канал: <b>${channel.name}</b>\n\n` +
+    `Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
+    `Отправьте <b>текст поста</b> для публикации.\n\n` +
+    `💡 Можно отправить:\n` +
+    `• Просто текст\n` +
+    `• Фото с подписью\n` +
+    `• Стикеры, видео, премиум-эмодзи\n\n` +
+    `Всё будет скопировано целиком и опубликовано в канале.`,
+    {
+      parse_mode: 'HTML',
+      ...getPromoPostCancelKeyboard(),
+    }
+  );
+
+  return ctx.answerCbQuery();
+}
+
+// Обработка сообщения (текст / фото / стикер) для промо-поста
+async function handlePromoPostMessage(ctx) {
+  const userId = String(ctx.from.id);
+  const session = promoPostSessions.get(userId);
+
+  // Если нет активной сессии или не на шаге ввода текста — пропускаем
+  if (!session || session.step !== 'text') {
+    return false;
+  }
+
+  if (!(await isAdmin(ctx))) {
+    promoPostSessions.delete(userId);
+    return false;
+  }
+
+  if (!ctx.message) {
+    return false;
+  }
+
+  // Обработка текстовой команды "отмена"
+  const text = ctx.message.text?.trim();
+  if (text && text.toLowerCase() === 'отмена') {
+    promoPostSessions.delete(userId);
+    await ctx.reply('❌ Постинг промо отменён.');
+    return true;
+  }
+
+  // Сохраняем ID сообщения и чата-источника
+  session.messageId = ctx.message.message_id;
+  session.sourceChatId = ctx.chat.id;
+  session.step = 'ready';
+  promoPostSessions.set(userId, session);
+
+  await ctx.reply(
+    `✅ Сообщение принято!\n\n` +
+    `📢 Канал: <b>${session.channel.name}</b>\n` +
+    `🏷 Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
+    `Выберите действие:`,
+    {
+      parse_mode: 'HTML',
+      ...getPromoPostReadyKeyboard(),
+    }
+  );
+
+  return true;
+}
+
+// Предпросмотр промо-поста
+async function handlePromoPostPreview(ctx) {
+  const userId = String(ctx.from.id);
+  const session = promoPostSessions.get(userId);
+
+  if (!session || !session.messageId) {
+    return ctx.answerCbQuery('❌ Сообщение не найдено.', true);
+  }
+
+  try {
+    await ctx.telegram.copyMessage(ctx.chat.id, session.sourceChatId, session.messageId);
+    await ctx.answerCbQuery('👁 Предпросмотр отправлен выше.');
+  } catch (error) {
+    console.error('[PROMO POST PREVIEW ERROR]', error);
+    await ctx.answerCbQuery('❌ Не удалось создать предпросмотр.', true);
+  }
+}
+
+// Публикация промо-поста в канал
+async function handlePromoPostPublish(ctx) {
+  const userId = String(ctx.from.id);
+  const session = promoPostSessions.get(userId);
+
+  if (!session || !session.channel || !session.messageId) {
+    return ctx.answerCbQuery('❌ Данные поста не заполнены.', true);
+  }
+
+  try {
+    console.log(`[PROMO POST] Копирование сообщения ${session.messageId} из ${session.sourceChatId} в канал ${session.channel.id}`);
+
+    await ctx.telegram.copyMessage(session.channel.id, session.sourceChatId, session.messageId);
+
+    const promoName = session.promoName;
+    promoPostSessions.delete(userId);
+
+    await ctx.editMessageText(
+      `✅ <b>Промокод успешно опубликован!</b>\n\n` +
+      `📢 Канал: <b>${session.channel.name}</b>\n` +
+      `🏷 Промокод: <code>${escapeHtml(promoName)}</code>`,
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🔄 Запостить ещё раз', `promo_post_menu_${promoName}`)],
+        ]),
+      }
+    );
+  } catch (error) {
+    console.error('[PROMO POST PUBLISH ERROR]', error);
+    if (error.description) {
+      console.error(`[PROMO POST] Telegram API Error: ${error.description}`);
+    }
+
+    await ctx.editMessageText(
+      `❌ Не удалось опубликовать промокод.\n\n` +
+      `Проверьте:\n` +
+      `1. Бот админ в канале.\n` +
+      `2. У бота есть право постить сообщения.\n` +
+      `3. ID канала корректен.`,
+      {
+        parse_mode: 'HTML',
+        ...getPromoPostReadyKeyboard(),
+      }
+    );
+  }
+
+  return ctx.answerCbQuery();
+}
+
+// Отмена постинга и возврат к промо
+async function handlePromoPostCancel(ctx) {
+  const userId = String(ctx.from.id);
+  const session = promoPostSessions.get(userId);
+
+  if (!session) {
+    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
+  }
+
+  const promoName = session.promoName;
+  promoPostSessions.delete(userId);
+
+  try {
+    await ctx.editMessageText(
+      `❌ Постинг отменён.\n\nВозвращаемся к промокоду...`
+    );
+  } catch (e) {
+    // Игнорируем ошибку редактирования
+  }
+
+  // Восстанавливаем информацию о промокоде
+  await showPromoSummary(ctx, promoName);
+  return ctx.answerCbQuery();
+}
+
+// Назад к промо (из любого шага постинга)
+async function handlePromoPostBack(ctx) {
+  const userId = String(ctx.from.id);
+  const session = promoPostSessions.get(userId);
+
+  if (!session) {
+    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
+  }
+
+  const promoName = session.promoName;
+  promoPostSessions.delete(userId);
+
+  await showPromoSummary(ctx, promoName);
+  return ctx.answerCbQuery();
+}
+
+// Изменить текст поста — возврат к шагу ввода
+async function handlePromoPostEditText(ctx) {
+  const userId = String(ctx.from.id);
+  const session = promoPostSessions.get(userId);
+
+  if (!session) {
+    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
+  }
+
+  session.step = 'text';
+  session.messageId = null;
+  session.sourceChatId = null;
+  promoPostSessions.set(userId, session);
+
+  await ctx.editMessageText(
+    `📢 Канал: <b>${session.channel.name}</b>\n\n` +
+    `Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
+    `Отправьте <b>новый текст поста</b>:`,
+    {
+      parse_mode: 'HTML',
+      ...getPromoPostCancelKeyboard(),
+    }
+  );
+
+  return ctx.answerCbQuery();
+}
+
+// Сменить канал — возврат к выбору канала
+async function handlePromoPostChangeChannel(ctx) {
+  const userId = String(ctx.from.id);
+  const session = promoPostSessions.get(userId);
+
+  if (!session) {
+    return ctx.answerCbQuery('❌ Сессия не найдена.', true);
+  }
+
+  session.step = 'channel';
+  session.channel = null;
+  session.messageId = null;
+  session.sourceChatId = null;
+  promoPostSessions.set(userId, session);
+
+  await ctx.editMessageText(
+    `📢 <b>Выбор канала</b>\n\n` +
+    `Промокод: <code>${escapeHtml(session.promoName)}</code>\n\n` +
+    `Выберите канал:`,
+    {
+      parse_mode: 'HTML',
+      ...getPromoPostChannelKeyboard(),
+    }
+  );
+
+  return ctx.answerCbQuery();
+}
+
+// Показывает итоговое сообщение о промокоде (с кнопкой постинга)
+async function showPromoSummary(ctx, promoName) {
+  try {
+    const promo = await getPromoByName(promoName);
+    if (!promo) {
+      await ctx.reply(`❌ Промокод <code>${escapeHtml(promoName)}</code> не найден.`);
+      return;
+    }
+
+    const botUsername = process.env.BOT_USERNAME || 'F_roobot';
+    const { getPromoNameByAlias } = require('../db');
+    let alias = null;
+    try {
+      const { generatePromoAlias, savePromoAlias } = require('../db');
+      alias = generatePromoAlias(promoName);
+      if (alias) savePromoAlias(alias, promoName);
+    } catch (e) {}
+
+    const linkPayload = alias ? `promo_${alias}` : `promo_${promoName}`;
+    const promoLink = `https://t.me/${botUsername}?start=${linkPayload}`;
+
+    let limitStr = promo.activations_left === -1
+      ? `⏳ Время: ${promo.expires_at ? 'до ' + new Date(promo.expires_at * 1000).toLocaleString() : '∞'}`
+      : `🔢 Активаций: ${formatNumber(promo.activations_left)}`;
+
+    const summaryMsg = `✅ <b>Промокод готов!</b>\n\n` +
+      `🏷 Название: <code>${escapeHtml(promoName)}</code>\n` +
+      `${limitStr}\n` +
+      `🎁 Приз: ${formatNumber(promo.prize_amount)} ${prizeTypeMapping[promo.prize_type]}\n` +
+      `🔒 Статус: ${getStatusNameById(promo.min_status_id)}\n\n` +
+      `🔗 <b>Ссылка для активации:</b>\n${promoLink}`;
+
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.url('🚀 Активировать промокод', promoLink)],
+      [Markup.button.callback('📢 Запостить промо', `promo_post_menu_${promoName}`)],
+    ]);
+
+    await ctx.reply(summaryMsg, {
+      parse_mode: 'HTML',
+      ...keyboard,
+    });
+  } catch (error) {
+    console.error('[PROMO SUMMARY ERROR]', error);
+    await ctx.reply('❌ Ошибка при показе информации о промокоде.');
+  }
+}
+
+// Роутер callback-ов для постинга промо
+async function handlePromoPostCallback(ctx) {
+  if (!(await isAdmin(ctx))) {
+    return ctx.answerCbQuery('❌ Нет доступа.', true);
+  }
+
+  const data = ctx.callbackQuery?.data;
+  if (!data) return ctx.answerCbQuery();
+
+  if (data.startsWith('promo_post_menu_')) {
+    const promoName = data.replace('promo_post_menu_', '');
+    await startPromoPost(ctx, promoName);
+    return ctx.answerCbQuery();
+  }
+
+  if (data.startsWith('promo_post_channel_')) {
+    return handlePromoPostChannelSelection(ctx);
+  }
+
+  if (data === 'promo_post_preview') {
+    return handlePromoPostPreview(ctx);
+  }
+
+  if (data === 'promo_post_send') {
+    return handlePromoPostPublish(ctx);
+  }
+
+  if (data === 'promo_post_cancel') {
+    return handlePromoPostCancel(ctx);
+  }
+
+  if (data === 'promo_post_back') {
+    return handlePromoPostBack(ctx);
+  }
+
+  if (data === 'promo_post_edit_text') {
+    return handlePromoPostEditText(ctx);
+  }
+
+  if (data === 'promo_post_change_channel') {
+    return handlePromoPostChangeChannel(ctx);
+  }
+
+  return ctx.answerCbQuery();
+}
 
 // --- ОСНОВНАЯ ЛОГИКА ПОШАГОВОГО ВВОДА ---
 async function startPromoCreationSession(ctx) {
   if (!(await isAdmin(ctx))) {
     return ctx.reply('❌ У вас нет прав для создания промокодов.');
   }
+
   const userId = ctx.from.id.toString();
+
   promoSessions.set(userId, {
     step: STEP_NAME,
     data: {
@@ -170,13 +594,13 @@ async function startPromoCreationSession(ctx) {
     editField: null,
     forceImageTemplate: null
   });
+
   await ctx.reply('🚀 <b>Создание нового промокода</b>\n\nШаг 1/7: Введите <b>название</b> промокода:', {
     parse_mode: 'HTML',
     reply_markup: cancelKeyboard.reply_markup
   });
 }
 
-// Подсказка, что ждать на текущем шаге (для непонятного текста)
 function stepHint(session) {
   switch (session.step) {
     case STEP_NAME: return '✍️ Введите название промокода текстом.';
@@ -194,12 +618,13 @@ function stepHint(session) {
 async function handlePromoCreationMessage(ctx) {
   const userId = ctx.from.id.toString();
   const session = promoSessions.get(userId);
+
   if (!session || !session.active || session.waitingForEdit) return false;
+
   const text = ctx.message?.text?.trim();
   if (!text) return false;
 
   try {
-    // Шаг 0: название
     if (session.step === STEP_NAME) {
       session.data.name = text;
       session.step = STEP_LIMIT_TYPE;
@@ -209,7 +634,7 @@ async function handlePromoCreationMessage(ctx) {
       });
       return true;
     }
-    // Шаг 2: время (текстом)
+
     if (session.step === STEP_TIME_VALUE && session.data.isTimeBased) {
       const val = parseInt(text, 10);
       if (isNaN(val) || val <= 0) {
@@ -224,7 +649,7 @@ async function handlePromoCreationMessage(ctx) {
       });
       return true;
     }
-    // Шаг 3: кол-во активаций (текстом)
+
     if (session.step === STEP_ACT_VALUE && !session.data.isTimeBased) {
       const val = parseInt(text, 10);
       if (isNaN(val) || val <= 0) {
@@ -239,7 +664,7 @@ async function handlePromoCreationMessage(ctx) {
       });
       return true;
     }
-    // Шаг 5: сумма приза (текстом)
+
     if (session.step === STEP_PRIZE_AMOUNT) {
       const val = parseFloat(text.replace(',', '.'));
       if (isNaN(val) || val <= 0) {
@@ -254,7 +679,7 @@ async function handlePromoCreationMessage(ctx) {
       });
       return true;
     }
-    // Шаг 8: текстовое редактирование полей
+
     if (session.step === STEP_SUMMARY && session.editField) {
       const field = session.editField;
       if (field === 'name') {
@@ -297,7 +722,7 @@ async function handlePromoCreationMessage(ctx) {
         return true;
       }
     }
-    // Текст не подошёл ни к одному шагу — подсказываем, а не молчим
+
     await ctx.reply(`❓ Не понял ввод.\n${stepHint(session)}`);
     return true;
   } catch (error) {
@@ -316,14 +741,15 @@ async function showSummary(ctx, session) {
   } else {
     limitInfo = `🔢 <b>Активаций:</b> ${formatNumber(d.activations)}`;
   }
+
   let templateInfo = '🤖 Авто';
   if (session.forceImageTemplate === 'fat') templateInfo = '🟢 Жирный';
   if (session.forceImageTemplate === 'default') templateInfo = '🔵 Обычный';
   if (session.forceImageTemplate === 'fat_time') templateInfo = '🟢 Жирный (Время)';
   if (session.forceImageTemplate === 'default_time') templateInfo = '🔵 Обычный (Время)';
+
   const summaryText = `
 🎉 <b>Проверьте данные промокода:</b>
-
 🏷 <b>Название:</b> <code>${escapeHtml(d.name)}</code>
 ${limitInfo}
 🎁 <b>Приз:</b> ${formatNumber(d.prize_amount)} ${prizeTypeMapping[d.prize_type]}
@@ -332,6 +758,7 @@ ${limitInfo}
 
 Нажмите «Подтвердить», чтобы создать, или «Редактировать».
 `.trim();
+
   session.step = STEP_SUMMARY;
   await ctx.reply(summaryText, {
     parse_mode: 'HTML',
@@ -343,8 +770,15 @@ ${limitInfo}
 async function handleCallback(ctx) {
   const userId = ctx.from.id.toString();
   const data = ctx.callbackQuery.data;
-  const session = promoSessions.get(userId);
 
+  // =====================================================
+  // НОВОЕ: Сначала проверяем, относится ли callback к постингу промо
+  // =====================================================
+  if (data.startsWith('promo_post_')) {
+    return handlePromoPostCallback(ctx);
+  }
+
+  const session = promoSessions.get(userId);
   if (!session && data !== 'promo_cancel_create') {
     return ctx.answerCbQuery('❌ Сессия истекла.', { show_alert: true });
   }
@@ -355,9 +789,9 @@ async function handleCallback(ctx) {
     await ctx.reply('Можете начать заново: создать');
     return ctx.answerCbQuery();
   }
+
   if (!session) return ctx.answerCbQuery();
 
-  // --- Шаг 1: тип лимита ---
   if (data === 'promo_limit_type_time') {
     if (session.step !== STEP_LIMIT_TYPE) return ctx.answerCbQuery('❌ Неверный этап.', { show_alert: true });
     session.data.isTimeBased = true;
@@ -368,6 +802,7 @@ async function handleCallback(ctx) {
     });
     return ctx.answerCbQuery();
   }
+
   if (data === 'promo_limit_type_count') {
     if (session.step !== STEP_LIMIT_TYPE) return ctx.answerCbQuery('❌ Неверный этап.', { show_alert: true });
     session.data.isTimeBased = false;
@@ -379,7 +814,6 @@ async function handleCallback(ctx) {
     return ctx.answerCbQuery();
   }
 
-  // --- Шаг 2: быстрые кнопки времени ---
   if (data.startsWith('promo_quick_time_')) {
     if (session.step !== STEP_TIME_VALUE) return ctx.answerCbQuery('❌ Неверный этап.', { show_alert: true });
     const val = parseInt(data.replace('promo_quick_time_', ''), 10);
@@ -392,7 +826,6 @@ async function handleCallback(ctx) {
     return ctx.answerCbQuery();
   }
 
-  // --- Шаг 3: быстрые кнопки активаций ---
   if (data.startsWith('promo_quick_act_')) {
     if (session.step !== STEP_ACT_VALUE) return ctx.answerCbQuery('❌ Неверный этап.', { show_alert: true });
     const val = parseInt(data.replace('promo_quick_act_', ''), 10);
@@ -405,7 +838,6 @@ async function handleCallback(ctx) {
     return ctx.answerCbQuery();
   }
 
-  // --- Шаг 4: тип приза ---
   if (data.startsWith('promo_prize_')) {
     const isEdit = session.step === STEP_SUMMARY && session.editField === 'prize_type';
     if (session.step !== STEP_PRIZE_TYPE && !isEdit) return ctx.answerCbQuery('❌ Неверный этап.', { show_alert: true });
@@ -416,8 +848,6 @@ async function handleCallback(ctx) {
       'df_balance': 'df_balance',
       'npf_shares': 'npf_shares',
       'tickets': 'tickets'
-
-      
     };
     if (!map[typeKey]) return ctx.answerCbQuery('❌ Неизвестный тип приза.');
     session.data.prize_type = map[typeKey];
@@ -435,11 +865,9 @@ async function handleCallback(ctx) {
     return ctx.answerCbQuery();
   }
 
-  // --- Шаг 5: быстрые кнопки суммы (МЯГКИЕ: работают и если шаг уже ушёл вперёд) ---
   if (data.startsWith('promo_quick_sum_')) {
     const val = parseInt(data.replace('promo_quick_sum_', ''), 10);
     if (isNaN(val) || val <= 0) return ctx.answerCbQuery('❌ Некорректная сумма.');
-    // Обычный ввод суммы
     if (session.step === STEP_PRIZE_AMOUNT) {
       session.data.prize_amount = val;
       session.step = STEP_STATUS;
@@ -449,7 +877,6 @@ async function handleCallback(ctx) {
       });
       return ctx.answerCbQuery();
     }
-    // Нажали кнопку суммы на УЖЕ ПРОШЕДШЕМ шаге — обновляем значение и возвращаем на текущий этап без ошибки
     if (session.step === STEP_STATUS) {
       session.data.prize_amount = val;
       await ctx.editMessageText(`✅ Сумма обновлена: <b>${formatNumber(val)}</b> ${prizeTypeMapping[session.data.prize_type]}.\n\nШаг 6/7: Выберите <b>мин. статус</b>:`, {
@@ -472,11 +899,9 @@ async function handleCallback(ctx) {
       await showSummary(ctx, session);
       return ctx.answerCbQuery();
     }
-    // Сюда попадаем только если сумма ещё не доступна (не выбран тип приза)
     return ctx.answerCbQuery('❌ Сначала выберите тип приза.', { show_alert: true });
   }
 
-  // --- Шаг 6: мин. статус ---
   if (data.startsWith('promo_status_')) {
     const isEdit = session.step === STEP_SUMMARY && session.editField === 'status';
     if (session.step !== STEP_STATUS && !isEdit) return ctx.answerCbQuery('❌ Неверный этап.', { show_alert: true });
@@ -496,7 +921,6 @@ async function handleCallback(ctx) {
     return ctx.answerCbQuery();
   }
 
-  // --- Шаг 7: шаблон ---
   if (data.startsWith('promo_template_')) {
     const isEdit = session.step === STEP_SUMMARY && session.editField === 'template';
     if (session.step !== STEP_TEMPLATE && !isEdit) return ctx.answerCbQuery('❌ Неверный этап.', { show_alert: true });
@@ -516,14 +940,12 @@ async function handleCallback(ctx) {
     return ctx.answerCbQuery();
   }
 
-  // --- Подтверждение ---
   if (data === 'promo_confirm_final') {
     if (session.step !== STEP_SUMMARY) return ctx.answerCbQuery('❌ Неверный этап.', { show_alert: true });
     await finalizePromoCreation(ctx, session);
     return;
   }
 
-  // --- Меню редактирования ---
   if (data === 'promo_edit_menu') {
     session.waitingForEdit = true;
     await ctx.editMessageText('✏️ <b>Редактирование</b>\n\nВыберите поле:', {
@@ -532,12 +954,14 @@ async function handleCallback(ctx) {
     });
     return ctx.answerCbQuery();
   }
+
   if (data === 'promo_back_to_check') {
     session.waitingForEdit = false;
     session.editField = null;
     await showSummary(ctx, session);
     return ctx.answerCbQuery();
   }
+
   if (data.startsWith('promo_edit_')) {
     const field = data.replace('promo_edit_', '');
     session.waitingForEdit = false;
@@ -561,7 +985,7 @@ async function handleCallback(ctx) {
     }
     if (field === 'prize_type') {
       session.editField = 'prize_type';
-      session.step = STEP_SUMMARY; // кнопки типа приза проверяют isEdit
+      session.step = STEP_SUMMARY;
       await ctx.editMessageText('✏️ Новый <b>тип приза</b>:', {
         parse_mode: 'HTML',
         reply_markup: prizeTypeKeyboard.reply_markup
@@ -604,7 +1028,6 @@ async function handleCallback(ctx) {
 async function finalizePromoCreation(ctx, session) {
   const d = session.data;
   const adminId = ctx.from.id.toString();
-  
   try {
     const existingPromo = await getPromoByName(d.name);
     if (existingPromo) {
@@ -622,16 +1045,12 @@ async function finalizePromoCreation(ctx, session) {
       expiresAt = now + (d.durationMinutes * 60);
     }
 
-    // Передаем expiresAt в createPromo, если функция в db.js обновлена, 
-    // иначе он сохранится как NULL (проверь db.js ниже)
     const result = await createPromo(d.name, activationsLeft, d.prize_type, d.prize_amount, adminId, d.min_status_id, expiresAt);
-
     if (!result.success) {
       promoSessions.delete(ctx.from.id.toString());
       return ctx.reply(`❌ Ошибка: ${result.message}`);
     }
 
-    // --- ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЯ ---
     let photoPath = null;
     try {
       const templateHint = session.forceImageTemplate;
@@ -640,16 +1059,7 @@ async function finalizePromoCreation(ctx, session) {
       console.error('[PROMO IMG ERROR]', imgErr);
     }
 
-    // --- ФОРМИРОВАНИЕ ССЫЛКИ ---
-    // Берем юзернейм бота из env или дефолтный
-    const botUsername = process.env.BOT_USERNAME || 'F_roobot'; 
-    // Формируем deep link: https://t.me/BOT?start=promo_NAME
-    // Важно: имя промокода не должно содержать пробелов для корректной работы ссылки, 
-    // но так как мы используем его как аргумент, лучше закодировать или убедиться, что валидно.
-    // Telegram start payload допускает A-Z, a-z, 0-9, _ и -. 
-    // Если в названии промо есть другие символы, ссылка может не сработать.
-    // Для надежности используем encodeURIComponent, хотя Telegram требует специфический формат.
-    // Лучше всего работают латиница и цифры.
+    const botUsername = process.env.BOT_USERNAME || 'F_roobot';
     const { generatePromoAlias, savePromoAlias } = require('../db');
     const alias = generatePromoAlias(d.name);
     if (alias) {
@@ -669,27 +1079,28 @@ async function finalizePromoCreation(ctx, session) {
       `🔒 Статус: ${getStatusNameById(d.min_status_id)}\n\n` +
       `🔗 <b>Ссылка для активации:</b>\n${promoLink}`;
 
-    // Клавиатура с кнопкой "Поделиться" или просто ссылкой
+    // =====================================================
+    // НОВОЕ: Добавляем кнопку "Запостить промо" в клавиатуру
+    // =====================================================
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.url('🚀 Активировать промокод', promoLink)],
-      [Markup.button.callback(' Создать ещё', 'promo_create_another')] // Если есть такой обработчик, или убери строку
+      [Markup.button.callback('📢 Запостить промо', `promo_post_menu_${d.name}`)],
     ]);
 
     if (photoPath) {
-      await ctx.replyWithPhoto({ source: photoPath }, { 
-        caption: successMsg, 
+      await ctx.replyWithPhoto({ source: photoPath }, {
+        caption: successMsg,
         parse_mode: 'HTML',
-        reply_markup: keyboard.reply_markup 
+        reply_markup: keyboard.reply_markup
       });
     } else {
-      await ctx.reply(successMsg, { 
+      await ctx.reply(successMsg, {
         parse_mode: 'HTML',
-        reply_markup: keyboard.reply_markup 
+        reply_markup: keyboard.reply_markup
       });
     }
 
     promoSessions.delete(ctx.from.id.toString());
-
   } catch (error) {
     console.error('[PROMO FINALIZE ERROR]', error);
     await ctx.reply('❌ Ошибка при сохранении.');
@@ -718,7 +1129,7 @@ async function listPromosHandler(ctx) {
     let limitInfo = p.activations_left === -1
       ? `⏳ До: ${p.expires_at ? new Date(p.expires_at * 1000).toLocaleString() : '∞'}`
       : `🔢 Ост: ${formatNumber(p.activations_left)}`;
-    const entry = `• <b>ID</b>: ${p.id} | <code>${escapeHtml(p.name)}</code>\n  ${limitInfo} | 🎁 ${formatNumber(p.prize_amount)} ${prizeTypeMapping[p.prize_type]}\n\n`;
+    const entry = `• <b>ID</b>: ${p.id} | <code>${escapeHtml(p.name)}</code>\n ${limitInfo} | 🎁 ${formatNumber(p.prize_amount)} ${prizeTypeMapping[p.prize_type]}\n\n`;
     if ((msg + entry).length > 4000) {
       await ctx.reply(msg, { parse_mode: 'HTML' });
       msg = '';
@@ -824,4 +1235,8 @@ module.exports = {
   deletePromoHandler,
   listPromosHandler,
   usePromoHandler,
+  // НОВОЕ: функции для постинга промо
+  handlePromoPostMessage,
+  handlePromoPostCallback,
+  showPromoSummary,
 };
