@@ -23,7 +23,7 @@ const prizeTypeDisplay = {
 };
 
 // ============================================================
-// 1. КООРДИНАТЫ ДЛЯ ОБЫЧНОГО ШАБЛОНА (Твои настройки)
+// 1. КООРДИНАТЫ ДЛЯ ОБЫЧНОГО ШАБЛОНА (БЕЗ ВРЕМЕНИ)
 // ============================================================
 const TEXT_COORDS_DEFAULT = {
   name: {
@@ -37,44 +37,104 @@ const TEXT_COORDS_DEFAULT = {
     font: 'bold 32px "Arial", sans-serif',
   },
   right: {
-    // Для обычного шаблона right - это просто число активаций
     x: 1385, y: 350,
     font: 'bold 32px "Arial", sans-serif',
   },
 };
 
 // ============================================================
-// 2. КООРДИНАТЫ ДЛЯ ВРЕМЕННОГО ШАБЛОНА (Новая логика)
+// 2. КООРДИНАТЫ ДЛЯ ЖИРНОГО ШАБЛОНА (БЕЗ ВРЕМЕНИ)
 // ============================================================
-const TEXT_COORDS_TIME = {
+const TEXT_COORDS_FAT = {
   name: {
-    x: null, y: 580, // Можно изменить Y, если на тайм-шаблоне плашка ниже/выше
+    x: null, y: 580,
     font: 'bold 80px "Arial", sans-serif',
     fontSmall: 'bold 60px "Arial", sans-serif',
     smallIfLongerThan: 15,
   },
   prize: {
-    x: 1042, y: 358, // Координаты приза (обычно совпадают или чуть сдвинуты)
+    x: 1042, y: 350,
     font: 'bold 32px "Arial", sans-serif',
   },
-  // Настройки для времени (HH:MM)
+  right: {
+    x: 1385, y: 350,
+    font: 'bold 32px "Arial", sans-serif',
+  },
+};
+
+// ============================================================
+// 3. КООРДИНАТЫ ДЛЯ ОБЫЧНОГО ВРЕМЕННОГО ШАБЛОНА
+// ============================================================
+const TEXT_COORDS_DEFAULT_TIME = {
+  name: {
+    x: null, y: 580,
+    font: 'bold 80px "Arial", sans-serif',
+    fontSmall: 'bold 60px "Arial", sans-serif',
+    smallIfLongerThan: 15,
+  },
+  prize: {
+    x: 1042, y: 358,
+    font: 'bold 32px "Arial", sans-serif',
+  },
   timeSettings: {
-    font: 'bold 45px "Courier New", monospace', // Шрифт для цифр времени
+    font: 'bold 45px "Courier New", monospace',
     color: '#000000',
   },
-  // КООРДИНАТЫ КАЖДОЙ ЦИФРЫ И ДВОЕТОЧИЯ
-  // Здесь ты можешь двигать каждую цифру независимо (x, y)
   timeDigits: {
-    h1: { x: 1274, y: 360 }, // Первая цифра часа
-    h2: { x: 1333, y: 360 }, // Вторая цифра часа
-    m1: { x: 1395, y: 360 }, // Первая цифра минут
-    m2: { x: 1450, y: 360 }, // Вторая цифра минут
+    h1: { x: 1274, y: 360 },
+    h2: { x: 1333, y: 360 },
+    m1: { x: 1395, y: 360 },
+    m2: { x: 1450, y: 360 },
+  }
+};
+
+// ============================================================
+// 4. КООРДИНАТЫ ДЛЯ ЖИРНОГО ВРЕМЕННОГО ШАБЛОНА
+// ============================================================
+const TEXT_COORDS_FAT_TIME = {
+  name: {
+    x: null, y: 580,
+    font: 'bold 80px "Arial", sans-serif',
+    fontSmall: 'bold 60px "Arial", sans-serif',
+    smallIfLongerThan: 15,
+  },
+  prize: {
+    x: 1022, y: 358,
+    font: 'bold 32px "Arial", sans-serif',
+  },
+  timeSettings: {
+    font: 'bold 45px "Courier New", monospace',
+    color: '#000000',
+  },
+  timeDigits: {
+    h1: { x: 1254, y: 360 },
+    h2: { x: 1313, y: 360 },
+    m1: { x: 1375, y: 360 },
+    m2: { x: 1430, y: 360 },
   }
 };
 
 // Функция форматирования числа
 function formatNumberWithDots(number) {
   return number.toLocaleString('ru-RU');
+}
+
+// ============================================================
+// НОВОЕ: Определяет, является ли шаблон "жирным"
+// ============================================================
+function isFatTemplate(templatePath) {
+  return templatePath === promoFatPath || templatePath === promoFatTimePath;
+}
+
+// ============================================================
+// НОВОЕ: Выбор конфига координат на основе типа шаблона
+// ============================================================
+function resolveCoords(templatePath, isTimeBased) {
+  const fat = isFatTemplate(templatePath);
+  if (isTimeBased) {
+    return fat ? TEXT_COORDS_FAT_TIME : TEXT_COORDS_DEFAULT_TIME;
+  }
+  return fat ? TEXT_COORDS_FAT : TEXT_COORDS_DEFAULT;
 }
 
 // Выбор пути к шаблону
@@ -109,23 +169,18 @@ async function saveCanvas(canvas, outputPath) {
 }
 
 // Отрисовка прицелов (Guides) для теста
-function drawGuides(ctx, templateWidth, isTimeBased) {
-  // Выбираем активный конфиг координат
-  const coords = isTimeBased ? TEXT_COORDS_TIME : TEXT_COORDS_DEFAULT;
-  
+function drawGuides(ctx, templateWidth, COORDS, isTimeBased) {
   const points = [
-    { key: 'name', x: coords.name.x === null ? Math.floor(templateWidth / 2) : coords.name.x, y: coords.name.y },
-    { key: 'prize', x: coords.prize.x, y: coords.prize.y },
+    { key: 'name', x: COORDS.name.x === null ? Math.floor(templateWidth / 2) : COORDS.name.x, y: COORDS.name.y },
+    { key: 'prize', x: COORDS.prize.x, y: COORDS.prize.y },
   ];
 
-  // Если это временной шаблон, добавляем точки для каждой цифры времени
-  if (isTimeBased && coords.timeDigits) {
-    Object.entries(coords.timeDigits).forEach(([key, pos]) => {
+  if (isTimeBased && COORDS.timeDigits) {
+    Object.entries(COORDS.timeDigits).forEach(([key, pos]) => {
       points.push({ key: `time_${key}`, x: pos.x, y: pos.y });
     });
-  } else if (!isTimeBased) {
-    // Для обычного - точка количества активаций
-    points.push({ key: 'right', x: coords.right.x, y: coords.right.y });
+  } else if (!isTimeBased && COORDS.right) {
+    points.push({ key: 'right', x: COORDS.right.x, y: COORDS.right.y });
   }
 
   ctx.save();
@@ -136,18 +191,15 @@ function drawGuides(ctx, templateWidth, isTimeBased) {
   ctx.textBaseline = 'top';
 
   for (const p of points) {
-    // Перекрестие
     ctx.beginPath();
     ctx.moveTo(p.x - 30, p.y); ctx.lineTo(p.x + 30, p.y);
     ctx.moveTo(p.x, p.y - 30); ctx.lineTo(p.x, p.y + 30);
     ctx.stroke();
     
-    // Круг
     ctx.beginPath();
     ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Подпись
     const label = `${p.key}: ${p.x},${p.y}`;
     const tw = ctx.measureText(label).width;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
@@ -169,11 +221,10 @@ async function drawPromoImage({ name, value, prizeAmount, prizeType, forceTempla
   const canvas = createCanvas(template.width, template.height);
   const ctx = canvas.getContext('2d');
 
-  // Фон
   ctx.drawImage(template, 0, 0, template.width, template.height);
 
-  // Выбираем конфиг координат в зависимости от типа
-  const COORDS = isTimeBased ? TEXT_COORDS_TIME : TEXT_COORDS_DEFAULT;
+  // НОВОЕ: Выбираем конфиг координат на основе реального пути шаблона
+  const COORDS = resolveCoords(templatePath, isTimeBased);
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -192,7 +243,6 @@ async function drawPromoImage({ name, value, prizeAmount, prizeType, forceTempla
 
   // --- 3. ПРАВАЯ ЧАСТЬ (Время или Активации) ---
   if (isTimeBased) {
-    // ЛОГИКА ДЛЯ ВРЕМЕНИ (ПОЦИФРОВО)
     const totalMinutes = value;
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
@@ -200,11 +250,9 @@ async function drawPromoImage({ name, value, prizeAmount, prizeType, forceTempla
     const hStr = hours.toString().padStart(2, '0');
     const mStr = minutes.toString().padStart(2, '0');
     
-    // Применяем шрифт для времени
     ctx.font = COORDS.timeSettings.font;
     ctx.fillStyle = COORDS.timeSettings.color;
 
-    // Рисуем каждую цифру в её координатах
     if (COORDS.timeDigits) {
       ctx.fillText(hStr[0], COORDS.timeDigits.h1.x, COORDS.timeDigits.h1.y);
       ctx.fillText(hStr[1], COORDS.timeDigits.h2.x, COORDS.timeDigits.h2.y);
@@ -212,7 +260,6 @@ async function drawPromoImage({ name, value, prizeAmount, prizeType, forceTempla
       ctx.fillText(mStr[1], COORDS.timeDigits.m2.x, COORDS.timeDigits.m2.y);
     }
   } else {
-    // ЛОГИКА ДЛЯ ОБЫЧНОГО (число активаций)
     const rightText = formatNumberWithDots(value);
     ctx.font = COORDS.right.font;
     ctx.fillText(rightText, COORDS.right.x, COORDS.right.y);
@@ -220,16 +267,13 @@ async function drawPromoImage({ name, value, prizeAmount, prizeType, forceTempla
 
   // --- 4. ПРИЦЕЛЫ (TEST MODE) ---
   if (guides) {
-    drawGuides(ctx, template.width, isTimeBased);
+    drawGuides(ctx, template.width, COORDS, isTimeBased);
   }
 
   await saveCanvas(canvas, outputPath);
   return outputPath;
 }
 
-/**
- * Генерация изображения промокода
- */
 async function generatePromoImage(name, value, prizeAmount, prizeType, forceTemplate = null, isTimeBased = false) {
   try {
     const outputPath = path.join(promoImagesDir, `${name}_promo.png`);
@@ -242,14 +286,11 @@ async function generatePromoImage(name, value, prizeAmount, prizeType, forceTemp
   }
 }
 
-/**
- * ТЕСТОВАЯ генерация (с прицелами)
- */
 async function generatePromoTestImage(templateKey = 'default', sample = {}) {
   const isTimeBased = String(templateKey).endsWith('_time');
   const data = {
     name: sample.name || 'ТЕСТОВЫЙ ПРОМОКОД',
-    value: sample.value != null ? sample.value : (isTimeBased ? 75 : 12345), // 75 мин или 12к активаций
+    value: sample.value != null ? sample.value : (isTimeBased ? 75 : 12345),
     prizeAmount: sample.prizeAmount != null ? sample.prizeAmount : 100000,
     prizeType: sample.prizeType || 'balance',
   };
@@ -261,6 +302,8 @@ async function generatePromoTestImage(templateKey = 'default', sample = {}) {
 module.exports = { 
   generatePromoImage, 
   generatePromoTestImage, 
-  TEXT_COORDS_DEFAULT, // Экспортируем оба, чтобы можно было дебажить
-  TEXT_COORDS_TIME 
+  TEXT_COORDS_DEFAULT,
+  TEXT_COORDS_FAT,
+  TEXT_COORDS_DEFAULT_TIME,
+  TEXT_COORDS_FAT_TIME,
 };
