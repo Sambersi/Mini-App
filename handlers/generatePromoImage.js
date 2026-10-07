@@ -99,7 +99,7 @@ const TEXT_COORDS_FAT_TIME = {
     smallIfLongerThan: 15,
   },
   prize: {
-    x: 1062, y: 358,
+    x: 1072, y: 358,
     font: 'bold 32px "Arial", sans-serif',
   },
   timeSettings: {
@@ -107,10 +107,10 @@ const TEXT_COORDS_FAT_TIME = {
     color: '#000000',
   },
   timeDigits: {
-    h1: { x: 1294, y: 360 },
-    h2: { x: 1353, y: 360 },
-    m1: { x: 1415, y: 360 },
-    m2: { x: 1470, y: 360 },
+    h1: { x: 1314, y: 360 },
+    h2: { x: 1363, y: 360 },
+    m1: { x: 1425, y: 360 },
+    m2: { x: 1480, y: 360 },
   }
 };
 
