@@ -222,9 +222,13 @@ class DiceGame {
                 const keyboard = Markup.inlineKeyboard([
                     Markup.button.callback('🤖 Сыграть с F BOT', `play_with_bot_${roundId}`)
                 ]);
+                const creatorId = realPlayers[0];
+                const creatorUsername = participants[creatorId]?.username || 'Неизвестный';
+                const creatorLink = createUserLink(creatorId, creatorUsername);
+                
                 await bot.telegram.sendMessage(
                     chatId,
-                    `🤖 <b>F BOT</b> заметил, что вам скучно одному!\nСыграть с ним на ${round.roundAmount.toLocaleString('ru-RU')} PF?`,
+                    `🤖 <b>F BOT</b> заметил, что вам скучно одному, ${creatorLink}!\nСыграть с ним на ${round.roundAmount.toLocaleString('ru-RU')} PF?`,
                     { parse_mode: 'HTML', ...keyboard }
                 );
                 
