@@ -5,7 +5,8 @@ const fs = require('fs');
 const {
     saveDiceRound, isDiceChat, saveDiceBet, getUserById, updateUserBalance,
     updateDiceResults, getDiceBetsByRoundId, getAllActiveDiceChats,
-    logDiceRound, logDiceBet, finishDiceRoundLog, updateDiceBetResult, getLastDiceBetsInChat
+    logDiceRound, logDiceBet, finishDiceRoundLog, updateDiceBetResult, getLastDiceBetsInChat,
+    deactivateDiceMode
 } = require('../db');
 const { generateDiceResultsImage } = require('./generateDiceResultsImage');
 const { Markup } = require('telegraf');
@@ -19,27 +20,34 @@ class DiceGame {
             this.isRoundCanceled = {};
             this.warningTimers = {};
 
+            // Поля для автоматических предложений и логирования
             this.chatLastActivity = {};
             this.pendingSuggestions = {};
-            this.inactivityMultiplier = {}; // Множитель диапазона для каждого чата
-            this.nextInactivityTime = {};   // Время следующей проверки неактивности
-            this.botInstance = null;
+            this.inactivityMultiplier = {};
+            this.nextInactivityTime = {};
 
+            // === ДИАПАЗОН НЕАКТИВНОСТИ ===
+            // ДЛЯ ТЕСТА: 30–31 секунда.
+            // В БОЕВОМ РЕЖИМЕ поставьте: 15 * 60 * 1000 и 35 * 60 * 1000
+            this.INACTIVITY_MIN_MS = 30 * 1000;
+            this.INACTIVITY_MAX_MS = 31 * 1000;
+
+            this.botInstance = null;
             DiceGame.instance = this;
         }
         return DiceGame.instance;
     }
 
-    // Генерирует следующее время проверки неактивности в диапазоне 15-35 минут * множитель
+    // Генерирует следующее время проверки неактивности в диапазоне MIN–MAX * множитель
     scheduleNextInactivity(chatId) {
         const multiplier = this.inactivityMultiplier[chatId] || 1.0;
-        const minMs = 30 * 1000 * multiplier;
-        const maxMs = 31 * 1000 * multiplier;
+        const minMs = this.INACTIVITY_MIN_MS * multiplier;
+        const maxMs = this.INACTIVITY_MAX_MS * multiplier;
         const delay = minMs + Math.random() * (maxMs - minMs);
         this.nextInactivityTime[chatId] = Date.now() + delay;
     }
 
-    // Сбрасывает таймер неактивности при любой активности в чате
+    // Сбрасывает таймер неактивности при любой игровой активности в чате
     resetInactivity(chatId) {
         this.inactivityMultiplier[chatId] = 1.0;
         this.scheduleNextInactivity(chatId);
@@ -49,7 +57,7 @@ class DiceGame {
     init(bot) {
         this.botInstance = bot;
 
-        // Инициализация таймеров для всех активных чатов
+        // Инициализация таймеров для всех активных дайc-чатов
         (async () => {
             try {
                 const chats = await getAllActiveDiceChats();
@@ -63,6 +71,7 @@ class DiceGame {
             }
         })();
 
+        // Глобальный интервал проверки неактивности чатов
         setInterval(async () => {
             try {
                 const activeChats = await getAllActiveDiceChats();
@@ -78,14 +87,14 @@ class DiceGame {
             } catch (e) {
                 console.error('[DiceGame] AutoSuggestion Interval Error:', e.message);
             }
-        }, 10000);
+        }, 10000); // Проверка каждые 10 секунд
     }
 
     async sendAutoSuggestion(chatId, bot) {
         if (!bot) return;
 
-        // Берём последние 15 ставок, чтобы получить больше уникальных сумм
-        let recentAmounts = getLastDiceBetsInChat(chatId, 15);
+        // Последние 5 уникальных ставок чата
+        let recentAmounts = getLastDiceBetsInChat(chatId);
         if (recentAmounts.length === 0) {
             recentAmounts = [1000, 5000, 10000, 50000, 100000];
         }
@@ -94,7 +103,6 @@ class DiceGame {
 
         const buttons = [];
         const addedAmounts = new Set();
-
         const addBtn = (amt, text) => {
             if (amt >= 100 && amt <= 4000000 && !addedAmounts.has(amt)) {
                 addedAmounts.add(amt);
@@ -102,35 +110,31 @@ class DiceGame {
             }
         };
 
-        // Основная кнопка
         addBtn(baseAmount, `✅ Согласиться (${baseAmount.toLocaleString('ru-RU')} PF)`);
-        // Удвоение и уменьшение
         addBtn(baseAmount * 2, `⬆️ Удвоить (${(baseAmount * 2).toLocaleString('ru-RU')} PF)`);
         addBtn(Math.floor(baseAmount / 2), `⬇️ Уменьшить (${Math.floor(baseAmount / 2).toLocaleString('ru-RU')} PF)`);
 
-        // Все оставшиеся уникальные суммы из истории (до 7 кнопок)
-        const otherAmounts = recentAmounts.filter(a => !addedAmounts.has(a));
-        for (const amt of otherAmounts) {
-            if (buttons.length >= 10) break; // Максимум 10 кнопок
+        // Остальные уникальные суммы из последних 5 ставок (без повторок)
+        for (const amt of recentAmounts) {
+            if (buttons.length >= 10) break;
             addBtn(amt, `🎲 Играть на ${amt.toLocaleString('ru-RU')} PF`);
         }
 
-        if (buttons.length === 0) {
-            addBtn(1000, `✅ Сыграть на 1 000 PF`);
-        }
+        if (buttons.length === 0) addBtn(1000, `✅ Сыграть на 1 000 PF`);
 
         try {
+            // КАК ВЕЗДЕ: клавиатура раскрывается через спред, без двойного reply_markup
+            const keyboard = Markup.inlineKeyboard(buttons);
             const msg = await bot.telegram.sendMessage(
                 chatId,
-                `🤖 <b>Давно не было игр!</b>\nПредлагаю сыграть в дайc на <b>${baseAmount.toLocaleString('ru-RU')} PF</b>.\nУ вас есть 30 секунд, чтобы согласиться или выбрать другую сумму!`,
-                { parse_mode: 'HTML', reply_markup: Markup.inlineKeyboard(buttons) }
+                `🤖 <b>Давно не было игр!</b>\nПредлагаю сыграть в дайс на <b>${baseAmount.toLocaleString('ru-RU')} PF</b>.\nУ вас есть 30 секунд, чтобы согласиться или выбрать другую сумму!`,
+                { parse_mode: 'HTML', ...keyboard }
             );
 
             const timeoutId = setTimeout(async () => {
                 try { await bot.telegram.deleteMessage(chatId, msg.message_id); } catch (e) {}
                 delete this.pendingSuggestions[chatId];
-
-                // Никто не принял: уменьшаем диапазон в 2 раза и ставим следующий таймер
+                // Никто не принял: следующий диапазон неактивности в 2 раза меньше
                 this.inactivityMultiplier[chatId] = (this.inactivityMultiplier[chatId] || 1.0) * 0.5;
                 this.scheduleNextInactivity(chatId);
             }, 30000);
@@ -138,7 +142,16 @@ class DiceGame {
             this.pendingSuggestions[chatId] = { messageId: msg.message_id, timeoutId, baseAmount };
         } catch (e) {
             console.error('[DiceGame] AutoSuggestion error:', e.message);
-            // При ошибке отправки также ставим следующий таймер
+
+            // Если бот удалён из чата — деактивируем режим дайса, чтобы не спамить ошибками
+            if (e.response && e.response.error_code === 400 && String(e.response.description).includes('chat not found')) {
+                try {
+                    deactivateDiceMode(chatId);
+                    console.log(`[DiceGame] Чат ${chatId} не найден. Режим дайса автоматически деактивирован.`);
+                } catch (dbErr) {
+                    console.error('[DiceGame] Ошибка при деактивации режима дайса:', dbErr.message);
+                }
+            }
             this.scheduleNextInactivity(chatId);
         }
     }
@@ -153,17 +166,16 @@ class DiceGame {
         try { await bot.telegram.deleteMessage(chatId, messageId); } catch (e) {}
         delete this.pendingSuggestions[chatId];
 
-        // Создаём раунд через обычный handleBet
+        // Создаём комнату через обычный handleBet (спишет средства, создаст раунд)
         const result = await this.handleBet(userId, username, amount.toString(), chatId, bot);
         if (!result.success) return result;
 
-        // Автоматически добавляем бота в созданный раунд
+        // Бот автоматически становится вторым участником комнаты
         const activeRounds = this.chatRounds[chatId] || [];
         const round = activeRounds.find(r => r.roundId === result.roundId);
         if (round && !round.participants['F_BOT']) {
             round.participants['F_BOT'] = { username: 'F BOT', amount: round.roundAmount, isBot: true };
-            round.state = 'HAS_BOT'; // Помечаем, что бот уже в игре
-
+            round.state = 'HAS_BOT';
             await bot.telegram.sendMessage(
                 chatId,
                 `🤖 <b>F BOT</b> автоматически присоединился к раунду! Ожидаем других игроков или начинаем игру.`,
@@ -171,9 +183,7 @@ class DiceGame {
             );
         }
 
-        // Сбрасываем таймер неактивности, так как игра началась
         this.resetInactivity(chatId);
-
         return result;
     }
 
@@ -200,8 +210,6 @@ class DiceGame {
 
         if (!this.chatRounds[chatId]) this.chatRounds[chatId] = [];
         this.chatRounds[chatId].push(newRound);
-
-        // Активность: сбрасываем таймер неактивности
         this.resetInactivity(chatId);
 
         const participateButton = Markup.inlineKeyboard([
@@ -278,8 +286,6 @@ class DiceGame {
         try {
             await updateUserBalance(userId, -amount);
             currentRound.participants[userId.toString()] = { username, amount };
-
-            // Активность: сбрасываем таймер неактивности
             this.resetInactivity(chatId);
 
             if (currentRound.roundId) {
@@ -288,20 +294,28 @@ class DiceGame {
                 currentRound.participants[userId.toString()].logId = betLogId;
             }
 
+            // Продление таймера на 10 секунд за каждого нового игрока
             if (isExistingRound) {
                 const addedTime = 10 * 1000;
                 currentRound.endTime += addedTime;
                 const timerKey = `${chatId}_${currentRound.roundId}`;
-                clearTimeout(this.roundTimers[timerKey]); clearTimeout(this.cancelRoundTimers[timerKey]); clearTimeout(this.warningTimers[timerKey]);
+                clearTimeout(this.roundTimers[timerKey]);
+                clearTimeout(this.cancelRoundTimers[timerKey]);
+                clearTimeout(this.warningTimers[timerKey]);
 
                 const remainingTime = currentRound.endTime - Date.now();
 
-                this.roundTimers[timerKey] = setTimeout(async () => { await this.endRound(bot, chatId, currentRound.roundId); }, remainingTime);
+                this.roundTimers[timerKey] = setTimeout(async () => {
+                    await this.endRound(bot, chatId, currentRound.roundId);
+                }, remainingTime);
 
                 if (remainingTime > 5000 && !currentRound.warnedFiveSeconds) {
                     this.warningTimers[timerKey] = setTimeout(async () => {
                         const r = this.chatRounds[chatId]?.find(r => r.roundId === currentRound.roundId);
-                        if (r && !r.warnedFiveSeconds) { r.warnedFiveSeconds = true; await bot.telegram.sendMessage(chatId, `<b>⏳ До итогов раунда осталось менее 5 секунд!</b>`, { parse_mode: 'HTML' }); }
+                        if (r && !r.warnedFiveSeconds) {
+                            r.warnedFiveSeconds = true;
+                            await bot.telegram.sendMessage(chatId, `<b>⏳ До итогов раунда осталось менее 5 секунд!</b>`, { parse_mode: 'HTML' });
+                        }
                     }, remainingTime - 5000);
                 }
 
@@ -311,7 +325,7 @@ class DiceGame {
             return { success: true, message: `✔️ Ставка ${amount} PF принята.`, roundId: currentRound.roundId, amount: amount };
         } catch (error) {
             console.error(`[ERROR] Ошибка при сохранении ставки: ${error.message}`);
-            try { await updateUserBalance(userId, amount); } catch(e) {}
+            try { await updateUserBalance(userId, amount); } catch (e) {}
             return { success: false, message: '❕ Произошла ошибка при обработке ставки.' };
         }
     };
@@ -333,7 +347,9 @@ class DiceGame {
         const timerKey = `${chatId}_${roundId}`;
         clearTimeout(this.cancelRoundTimers[timerKey]);
 
-        this.roundTimers[timerKey] = setTimeout(async () => { await this.endRound(bot, chatId, roundId); }, addedTime);
+        this.roundTimers[timerKey] = setTimeout(async () => {
+            await this.endRound(bot, chatId, roundId);
+        }, addedTime);
 
         await bot.telegram.sendMessage(chatId, `🤖 <b>F BOT</b> принимает вызов! У других игроков есть 10 секунд, чтобы присоединиться.`, { parse_mode: 'HTML' });
 
@@ -348,14 +364,12 @@ class DiceGame {
 
         const participants = round.participants || {};
         const realPlayers = Object.keys(participants).filter(id => id !== 'F_BOT');
-
-        // Активность: сбрасываем таймер неактивности
         this.resetInactivity(chatId);
 
         if (realPlayers.length === 0) { this.resetRound(chatId, roundId); return; }
 
-        // Логика предложения бота: только если бота ещё нет в раунде
-        if (realPlayers.length === 1 && !participants['F_BOT'] && round.state !== 'HAS_BOT') {
+        // Одинокий создатель: 50% шанс предложения сыграть с F BOT
+        if (realPlayers.length === 1 && !participants['F_BOT']) {
             if (Math.random() < 0.5) {
                 round.state = 'WAITING_FOR_BOT';
                 const creatorId = realPlayers[0];
@@ -397,7 +411,8 @@ class DiceGame {
         const results = {};
         const hasBot = 'F_BOT' in participants;
 
-        if (hasBot && realPlayers.length === 1) {
+        // 55% в пользу бота ТОЛЬКО если он вызван кнопкой и никто больше не зашёл
+        if (hasBot && realPlayers.length === 1 && round.state === 'EXTENDED_BY_BOT') {
             const botWins = Math.random() < 0.55;
             const creatorId = realPlayers[0];
             if (botWins) {
@@ -408,6 +423,7 @@ class DiceGame {
                 results['F_BOT'] = { dice1: 5, dice2: 6, totalPoints: 11 };
             }
         } else {
+            // Во всех остальных случаях (включая авто-присоединение бота) — равные шансы
             let hasDuplicates = true;
             while (hasDuplicates) {
                 hasDuplicates = false;
@@ -421,7 +437,8 @@ class DiceGame {
             }
         }
 
-        let maxPoints = -Infinity; const winners = [];
+        let maxPoints = -Infinity;
+        const winners = [];
         for (const userId in results) {
             if (results[userId].totalPoints > maxPoints) { maxPoints = results[userId].totalPoints; winners.length = 0; winners.push(userId); }
             else if (results[userId].totalPoints === maxPoints) winners.push(userId);
@@ -459,9 +476,12 @@ class DiceGame {
         }
         finalMessage += `\n💰 Банк: ${totalBank.toLocaleString('ru-RU')} PF\n`;
 
-        if (winners.includes('F_BOT') && realWinners.length === 0) finalMessage += `🏆 Победитель: <b>F BOT</b>\n💰 Банк сгорает!\n`;
-        else if (realWinners.length === 1) finalMessage += `🏆 Победитель: ${createUserLink(realWinners[0], participants[realWinners[0]].username)}\n<b>🤑 Выигрыш:</b> ${prizePerWinner.toLocaleString('ru-RU')} PF\n💶 Комиссия: ${commissionRate}%\n`;
-        else if (realWinners.length > 1) {
+        // НОВЫЙ ТЕКСТ: бот считается полноценным игроком и забирает банк
+        if (winners.includes('F_BOT') && realWinners.length === 0) {
+            finalMessage += `🏆 Победитель: 🤖 <b>F BOT</b>\n💰 F BOT забрал весь банк: ${totalBank.toLocaleString('ru-RU')} PF!\n`;
+        } else if (realWinners.length === 1) {
+            finalMessage += `🏆 Победитель: ${createUserLink(realWinners[0], participants[realWinners[0]].username)}\n<b>🤑 Выигрыш:</b> ${prizePerWinner.toLocaleString('ru-RU')} PF\n💶 Комиссия: ${commissionRate}%\n`;
+        } else if (realWinners.length > 1) {
             finalMessage += `🏆 Победители (${realWinners.length}):\n`;
             for (const w of realWinners) finalMessage += `- ${createUserLink(w, participants[w].username)}\n`;
             finalMessage += `\n<b>Каждый выиграл:</b> ${prizePerWinner.toLocaleString('ru-RU')} PF\n💶 Комиссия: ${commissionRate}%\n`;
@@ -529,9 +549,7 @@ class DiceGame {
     };
 
     getParticipateKeyboard(roundId, amount) {
-        return Markup.inlineKeyboard([
-            Markup.button.callback(`Участвовать (${amount.toLocaleString('ru-RU')} PF)`, `participate_${roundId}`)
-        ]);
+        return Markup.inlineKeyboard([Markup.button.callback(`Участвовать (${amount.toLocaleString('ru-RU')} PF)`, `participate_${roundId}`)]);
     }
 }
 
