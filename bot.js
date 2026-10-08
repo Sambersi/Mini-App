@@ -2600,13 +2600,13 @@ else if (isDiceChatEnabled) {
   // Просмотр банка
   else if (lowerText === 'банк') {
     try {
-      const bankInfo = diceGame.showBank(chatId);
-      await ctx.reply(bankInfo, { parse_mode: 'HTML' });
+        const bankInfo = diceGame.showBank(chatId);
+        await ctx.reply(bankInfo.text, { parse_mode: 'HTML', reply_markup: bankInfo.reply_markup });
     } catch (error) {
-      logError(error);
-      await ctx.reply('Произошла ошибка при просмотре ставок.');
+        logError(error);
+        await ctx.reply('Произошла ошибка при просмотре ставок.');
     }
-  } 
+}
   // Игнорирование остальных команд
   else {
     console.warn(`Игнорирование команды "${command}" в чате "дайс".`);
@@ -3109,58 +3109,69 @@ const feedbackMessage = feedbackType === 'like'
   }
 });
 
-// Обработчик кнопки "участвовать"
+// Обработчик кнопки "участвовать" (присоединение к раунду)
 bot.action(/^participate_(.+)$/, async (ctx) => {
   if (await checkUserStatus(ctx)) {
     await handleCallbackWithErrorHandling(ctx, async () => {
-      const roundId = ctx.match[1]; // Извлекаем roundId из callback_data
+      const roundId = ctx.match[1];
       const chatId = ctx.chat.id;
       const userId = ctx.from.id.toString();
       const usernameFromTelegram = ctx.from.username;
 
-      // Получаем активные раунды для чата
       const activeRounds = diceGame.chatRounds[chatId] || [];
       const round = activeRounds.find((r) => r.roundId === roundId);
 
-      // Проверяем, существует ли раунд
       if (!round) {
         return ctx.answerCbQuery('❌ Раунд не найден или уже завершен.');
       }
 
-      // Проверяем, не истекло ли время регистрации
       if (Date.now() > round.endTime) {
         return ctx.answerCbQuery('❌ Время регистрации ставок истекло.');
       }
 
-      // Проверяем, участвует ли пользователь уже в раунде
       if (Object.keys(round.participants || {}).includes(userId)) {
         return ctx.answerCbQuery('❌ Вы уже участвуете в этом раунде.');
       }
 
-      // Проверяем ограничение по количеству участников
       if (Object.keys(round.participants || {}).length >= round.maxParticipants) {
         return ctx.answerCbQuery('❌ Максимальное количество участников достигнуто.');
       }
 
-      // Регистрируем ставку
       const result = await diceGame.handleBet(userId, usernameFromTelegram, round.roundAmount, chatId, bot);
       if (result.success) {
-        // Создаем гиперссылку на пользователя
         const userLink = createUserLink(userId, usernameFromTelegram || 'Неизвестный');
+        
+        // Получаем клавиатуру для других игроков
+        const keyboard = diceGame.getParticipateKeyboard(round.roundId, round.roundAmount);
 
-        // Отправляем сообщение в чат
         await ctx.telegram.sendMessage(
           chatId,
           `🎲 ${userLink} зарегистрировался в раунде дайса с суммой ставки ${round.roundAmount.toLocaleString('ru-RU')} PF.`,
-          { parse_mode: 'HTML' }
+          { parse_mode: 'HTML', ...keyboard }
         );
 
-        // Подтверждаем действие пользователю
         await ctx.answerCbQuery(`✅ Ставка ${round.roundAmount.toLocaleString('ru-RU')} PF принята.`);
       } else {
         await ctx.answerCbQuery(`❌ ${result.message}`);
       }
     });
+  }
+});
+
+bot.action(/^play_with_bot_(.+)$/, async (ctx) => {
+  if (await checkUserStatus(ctx)) {
+      await handleCallbackWithErrorHandling(ctx, async () => {
+          const roundId = ctx.match[1];
+          const chatId = ctx.chat.id;
+          const userId = ctx.from.id.toString();
+          const result = await diceGame.handleBotChallenge(bot, chatId, roundId, userId);
+          if (result.success) {
+              await ctx.answerCbQuery('✅ F BOT принял вызов!');
+              try { await ctx.deleteMessage(); } catch(e) {}
+          } else {
+              await ctx.answerCbQuery(result.message || 'Ошибка', { show_alert: true });
+          }
+      });
   }
 });
 
@@ -4303,30 +4314,37 @@ bot.action(/^bet_(x\d+|GAME)_(\d+)$/, async (ctx) => {
   }
 });
 
-// Обработчик callback-запросов для кнопок дайса
+// Обработчик callback-запросов для кнопок дайса (создание раунда)
 bot.action(/^start_dice_(\d+)$/, async (ctx) => {
   if (await checkUserStatus(ctx)) {
     await handleCallbackWithErrorHandling(ctx, async () => {
       try {
-        const betAmount = parseInt(ctx.match[1], 10); // Получаем сумму ставки из callback_data
+        const betAmount = parseInt(ctx.match[1], 10);
         const chatId = ctx.chat.id;
         const userId = ctx.from.id;
         const userFromDb = await getUserById(userId.toString());
         const username = userFromDb?.username || 'Неизвестный';
 
-        // Проверяем, достаточно ли у пользователя средств для этой ставки
         if (userFromDb.balance < betAmount) {
           return ctx.answerCbQuery('Недостаточно средств для данной ставки.');
         }
 
-        // Начинаем новый раунд дайса
         const startResult = diceGame.startRound(chatId, bot, betAmount);
         if (!startResult.success) {
           return ctx.answerCbQuery(startResult.message || 'Произошла ошибка при создании раунда.');
         }
 
-        // Ответ пользователю
-        ctx.answerCbQuery(`Ставка ${betAmount.toLocaleString('ru-RU')} PF принята. Раунд запущен.`);
+        // Дополнительный анонс в чат с кнопкой для других игроков
+        const userLink = createUserLink(userId, username);
+        const keyboard = diceGame.getParticipateKeyboard(startResult.round.roundId, betAmount);
+        
+        await ctx.telegram.sendMessage(
+          chatId,
+          `🎲 ${userLink} создал новую комнату дайса со ставкой <b>${betAmount.toLocaleString('ru-RU')} PF</b>.`,
+          { parse_mode: 'HTML', ...keyboard }
+        );
+
+        await ctx.answerCbQuery(`Ставка ${betAmount.toLocaleString('ru-RU')} PF принята. Раунд запущен.`);
       } catch (error) {
         console.error('Ошибка при обработке кнопки начала раунда дайса:', error);
         ctx.answerCbQuery('Произошла ошибка. Попробуйте позже.');
