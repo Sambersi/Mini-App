@@ -33,8 +33,8 @@ class DiceGame {
     // Генерирует следующее время проверки неактивности в диапазоне 15-35 минут * множитель
     scheduleNextInactivity(chatId) {
         const multiplier = this.inactivityMultiplier[chatId] || 1.0;
-        const minMs = 15 * 60 * 1000 * multiplier;
-        const maxMs = 35 * 60 * 1000 * multiplier;
+        const minMs = 30 * 1000 * multiplier;
+        const maxMs = 31 * 1000 * multiplier;
         const delay = minMs + Math.random() * (maxMs - minMs);
         this.nextInactivityTime[chatId] = Date.now() + delay;
     }
