@@ -209,6 +209,8 @@ if (agent) {
 const bot = new Telegraf(process.env.BOT_TOKEN, botOptions);
 
 
+diceGame.init(bot);
+
 
 
 // Автоматическое обновление статусов при старте бота
@@ -3152,6 +3154,37 @@ bot.action(/^participate_(.+)$/, async (ctx) => {
         await ctx.answerCbQuery(`❌ ${result.message}`);
       }
     });
+  }
+});
+
+
+bot.action(/^dice_accept_auto_(\d+)$/, async (ctx) => {
+  if (await checkUserStatus(ctx)) {
+      await handleCallbackWithErrorHandling(ctx, async () => {
+          const amount = parseInt(ctx.match[1], 10);
+          const chatId = ctx.chat.id;
+          const userId = ctx.from.id.toString();
+          const username = ctx.from.username || 'Неизвестный';
+          const messageId = ctx.callbackQuery.message.message_id;
+          
+          const userFromDb = await getUserById(userId);
+          if (!userFromDb || userFromDb.balance < amount) {
+              return ctx.answerCbQuery('❌ Недостаточно средств для этой ставки.');
+          }
+          
+          const result = await diceGame.handleAutoAccept(chatId, userId, username, amount, bot, messageId);
+          if (result.success) {
+              await ctx.answerCbQuery(`✅ Вы создали комнату на ${amount} PF!`);
+              const userLink = createUserLink(userId, username);
+              await ctx.telegram.sendMessage(
+                  chatId,
+                  `🎲 ${userLink} принял автоматическое предложение и создал комнату на <b>${amount.toLocaleString('ru-RU')} PF</b>!`,
+                  { parse_mode: 'HTML' }
+              );
+          } else {
+              await ctx.answerCbQuery(result.message || 'Ошибка', { show_alert: true });
+          }
+      });
   }
 });
 

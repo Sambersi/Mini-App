@@ -5776,8 +5776,12 @@ function runLogsCleanup() {
   try {
     if (typeof cleanupOldMessageLogs === 'function') cleanupOldMessageLogs(30);   // message_log: 30 дней
     if (typeof cleanupFinanceLog === 'function') cleanupFinanceLog(365);          // finance_log: 365 дней
-    cleanupDoubleRounds(3);      // double_rounds: 3 суток
-    cleanupDoubleBetsLog(30);    // double_bets_log: 30 дней
+    
+    cleanupDoubleRounds(90);      // double_rounds: 3 месяца (90 дней)
+    cleanupDoubleBetsLog(90);     // double_bets_log: 3 месяца (90 дней)
+    
+    if (typeof cleanupDiceLogs === 'function') cleanupDiceLogs(90); // dice_logs: 3 месяца (90 дней)
+    
     console.log('[DB] Плановая очистка логов завершена.');
   } catch (error) {
     console.error('[DB] Ошибка при плановой очистке логов:', error);
@@ -6514,6 +6518,59 @@ function getFinishedPartnerRequests(limit = 20) {
   const stmt = db.prepare("SELECT * FROM partner_requests WHERE status != 'pending' ORDER BY created_at DESC LIMIT ?");
   return stmt.all(limit);
 }
+// === ТАБЛИЦЫ ДЛЯ ЛОГИРОВАНИЯ ДАЙСА ===
+db.prepare(`CREATE TABLE IF NOT EXISTS dice_rounds_log (
+  round_id TEXT PRIMARY KEY, chat_id TEXT NOT NULL, start_ts INTEGER NOT NULL,
+  end_ts INTEGER DEFAULT NULL, round_amount INTEGER NOT NULL, total_bank INTEGER DEFAULT 0,
+  participants_count INTEGER DEFAULT 0, winner_id TEXT DEFAULT NULL, status TEXT DEFAULT 'active'
+)`).run();
+
+db.prepare(`CREATE TABLE IF NOT EXISTS dice_bets_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, round_id TEXT NOT NULL,
+  chat_id TEXT NOT NULL, user_id TEXT NOT NULL, username TEXT NOT NULL, amount INTEGER NOT NULL,
+  dice1 INTEGER DEFAULT NULL, dice2 INTEGER DEFAULT NULL, total_points INTEGER DEFAULT NULL,
+  is_winner INTEGER DEFAULT 0, win_amount INTEGER DEFAULT 0
+)`).run();
+
+db.prepare(`CREATE INDEX IF NOT EXISTS idx_dice_bets_chat_ts ON dice_bets_log(chat_id, ts DESC)`).run();
+db.prepare(`CREATE INDEX IF NOT EXISTS idx_dice_bets_round ON dice_bets_log(round_id)`).run();
+
+function logDiceRound(roundId, chatId, startTs, roundAmount) {
+  try { db.prepare(`INSERT OR IGNORE INTO dice_rounds_log (round_id, chat_id, start_ts, round_amount, status) VALUES (?, ?, ?, ?, 'active')`).run(roundId, chatId.toString(), startTs, roundAmount); } 
+  catch (e) { console.error('[DB] logDiceRound:', e.message); }
+}
+function logDiceBet(roundId, chatId, userId, username, amount) {
+  try { return db.prepare(`INSERT INTO dice_bets_log (ts, round_id, chat_id, user_id, username, amount) VALUES (?, ?, ?, ?, ?, ?)`).run(Date.now(), roundId, chatId.toString(), userId.toString(), username, amount).lastInsertRowid; } 
+  catch (e) { console.error('[DB] logDiceBet:', e.message); return null; }
+}
+function finishDiceRoundLog(roundId, winnerId, totalBank, participantsCount) {
+  try { db.prepare(`UPDATE dice_rounds_log SET end_ts = ?, winner_id = ?, total_bank = ?, participants_count = ?, status = 'finished' WHERE round_id = ?`).run(Date.now(), winnerId, totalBank, participantsCount, roundId); } 
+  catch (e) { console.error('[DB] finishDiceRoundLog:', e.message); }
+}
+function updateDiceBetResult(betId, dice1, dice2, totalPoints, isWinner, winAmount) {
+  try { db.prepare(`UPDATE dice_bets_log SET dice1 = ?, dice2 = ?, total_points = ?, is_winner = ?, win_amount = ? WHERE id = ?`).run(dice1, dice2, totalPoints, isWinner ? 1 : 0, winAmount, betId); } 
+  catch (e) { console.error('[DB] updateDiceBetResult:', e.message); }
+}
+function getLastDiceBetsInChat(chatId, limit = 5) {
+  try {
+      const bets = db.prepare(`SELECT amount FROM dice_bets_log WHERE chat_id = ? ORDER BY ts DESC LIMIT 20`).all(chatId.toString());
+      return [...new Set(bets.map(b => b.amount))].filter(a => a >= 100 && a <= 4000000).slice(0, 5);
+  } catch (e) { console.error('[DB] getLastDiceBetsInChat:', e.message); return []; }
+}
+function cleanupDiceLogs(maxAgeDays = 90) {
+  try {
+    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    
+    const deletedBets = db.prepare('DELETE FROM dice_bets_log WHERE ts < ?').run(cutoff);
+    const deletedRounds = db.prepare('DELETE FROM dice_rounds_log WHERE start_ts < ?').run(cutoff);
+    
+    if (deletedBets.changes > 0 || deletedRounds.changes > 0) {
+      console.log(`[DB] Очищено dice_logs: ${deletedBets.changes} ставок, ${deletedRounds.changes} раундов (старше ${maxAgeDays} дн.)`);
+    }
+  } catch (error) {
+    console.error('[DB] Ошибка при очистке dice_logs:', error);
+  }
+}
 
 
 // Экспортируем функции
@@ -6801,6 +6858,7 @@ module.exports = {
   createPartnerCurrencyRequest,
   getUserStatusIds,
   getPendingPartnerRequests, getFinishedPartnerRequests,
-
-
+  logDiceRound, logDiceBet, finishDiceRoundLog, updateDiceBetResult, getLastDiceBetsInChat, cleanupDiceLogs,
+  runLogsCleanup,
+  
 };
