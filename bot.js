@@ -179,15 +179,12 @@ async function sendMiniAppMessage(ctx) {
 // === НАСТРОЙКА ПРОКСИ ===
 let agent = null;
 
-// Проверяем переменную окружения USE_PROXY. 
-// Если она равна 'true', ИЛИ если мы на Windows (твой ноут) и переменная не задана явно как 'false'
-const useProxy = process.env.USE_PROXY === 'true' || 
-                 (process.platform === 'win32' && process.env.USE_PROXY !== 'false');
+// Прокси используется ТОЛЬКО если переменная окружения USE_PROXY строго равна 'true'
+const useProxy = process.env.USE_PROXY === 'true';
 
 if (useProxy) {
     try {
         const { SocksProxyAgent } = require('socks-proxy-agent');
-        // Твой локальный прокси
         const proxyUrl = process.env.PROXY_URL || 'socks5://127.0.0.1:10808';
         agent = new SocksProxyAgent(proxyUrl);
         console.log(`[BOT] Используется прокси: ${proxyUrl}`);
@@ -205,12 +202,12 @@ const botOptions = {
     }
 };
 
-// Если агент создан, добавляем его в опции
 if (agent) {
     botOptions.telegram.agent = agent;
 }
 
 const bot = new Telegraf(process.env.BOT_TOKEN, botOptions);
+
 
 
 
