@@ -5206,6 +5206,30 @@ setupGlobalErrorHandler(bot);
 
 const MAIN_ADMIN_ID = process.env.MAIN_ADMIN; // ID главного администратора
 
+async function sendShutdownNotification(bot, reason) {
+  try {
+    const message = `⚠️ <b>БОТ ВЫКЛЮЧЕН</b> ... <b>Причина:</b> ${reason} ...`;
+    await bot.telegram.sendMessage(MAIN_ADMIN_ID, message, { parse_mode: 'HTML' });
+    console.log('Уведомление о выключении отправлено администратору.');
+  } catch (error) {
+    console.error('Не удалось отправить уведомление о выключении (сетевая ошибка):', error.message);
+  }
+}
+
+
+// Функция для отправки уведомления о включении
+async function sendStartupNotification(bot) {
+  try {
+    const message = `✅ <b>БОТ ВКЛЮЧЕН</b> ✅ <b>Дата:</b> ${new Date().toLocaleString()}`.trim();
+    // Оборачиваем в try...catch, чтобы ошибка сети не крашила процесс
+    await bot.telegram.sendMessage(MAIN_ADMIN_ID, message, { parse_mode: 'HTML' });
+    console.log('Уведомление о включении отправлено администратору.');
+  } catch (error) {
+    // Просто логируем ошибку в консоль, но НЕ падаем
+    console.error('Не удалось отправить уведомление о включении (сетевая ошибка):', error.message);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // Обработчики критических сбоев процесса
 // ─────────────────────────────────────────────────────────────
@@ -5257,11 +5281,12 @@ startCourseUpdater();
 startAutoUnmute(bot);
 startAutoUnban(bot);
 
-// Стало:
 bot.launch()
-  .then(() => {
+  .then(async () => {
     console.log('Бот успешно запущен и слушает обновления!');
     scheduleDailyBackup();
+    // Уведомляем владельца об успешном запуске
+    await sendStartupNotification(bot);
   })
   .catch((error) => {
     console.error('❌ Ошибка при запуске ботика:', error);
