@@ -5275,8 +5275,8 @@ process.on('unhandledRejection', async (reason) => {
 bot.launch()
   .then(async () => {
     console.log('[BOT] Успешно запущен и слушает обновления!');
+    await sendStartupNotification(bot); // ← ПЕРВЫМ делом
     scheduleDailyBackup();
-    await sendStartupNotification(bot); // ← уведомление о старте
   })
   .catch((error) => {
     console.error('❌ Ошибка при запуске бота:', error);
