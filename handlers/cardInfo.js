@@ -64,7 +64,7 @@ async function cardInfoHandler(ctx) {
     // Получаем уровень карты
     const cardLevel = await getCardLevel(userId); // Предполагается, что такая функция есть в db.js
 
-    // Генерируем изображение карты
+    // Генерируем изображение карты (временный файл создаётся в os.tmpdir())
     const cardImagePath = await generateCardImage(userId, cardDetails.card_number);
 
     // Получаем информацию о текущем активном скине
@@ -83,8 +83,9 @@ async function cardInfoHandler(ctx) {
     const skinRarityEmoji = skinInfo ? getRarityEmoji(skinInfo.rarity) : null; // Получаем смайлик редкости
 
     // Отправляем изображение и текстовые данные карты одним сообщением
-    if (fs.existsSync(cardImagePath)) {
-      const caption = `
+    try {
+      if (fs.existsSync(cardImagePath)) {
+        const caption = `
 🪪 <b>Данные вашей карты:</b>
 
 👤 Имя владельца: ${user.username}
@@ -93,21 +94,25 @@ async function cardInfoHandler(ctx) {
 ${skinInfo ? `${skinRarityEmoji} Скин: ${skinInfo.name}` : ''}
 `.trim();
 
-      // Создание клавиатуры для меню карты (3 ряда)
-      function createCardMenuKeyboard() {
-        return Markup.inlineKeyboard([
-          [Markup.button.callback('💳 Управление картой', 'manage_card'), Markup.button.callback('🖼 Мои скины', 'my_skins')],
-          [Markup.button.callback('🎨 Скин шоп', 'skin_shop'), Markup.button.callback('ℹ️ Инфо', 'card_info')],
-          [Markup.button.callback('📈 Прокачка уровня', 'upgrade_card_level'), Markup.button.callback('❌ Закрыть меню', 'close_card_menu')],
-        ]);
-      }
+        // Создание клавиатуры для меню карты (3 ряда)
+        function createCardMenuKeyboard() {
+          return Markup.inlineKeyboard([
+            [Markup.button.callback('💳 Управление картой', 'manage_card'), Markup.button.callback('🖼 Мои скины', 'my_skins')],
+            [Markup.button.callback('🎨 Скин шоп', 'skin_shop'), Markup.button.callback('ℹ️ Инфо', 'card_info')],
+            [Markup.button.callback('📈 Прокачка уровня', 'upgrade_card_level'), Markup.button.callback('❌ Закрыть меню', 'close_card_menu')],
+          ]);
+        }
 
-      await ctx.replyWithPhoto(
-        { source: cardImagePath },
-        { caption, parse_mode: 'HTML', reply_markup: createCardMenuKeyboard().reply_markup }
-      );
-    } else {
-      return ctx.reply('Не удалось сгенерировать изображение карты.');
+        await ctx.replyWithPhoto(
+          { source: cardImagePath },
+          { caption, parse_mode: 'HTML', reply_markup: createCardMenuKeyboard().reply_markup }
+        );
+      } else {
+        return ctx.reply('Не удалось сгенерировать изображение карты.');
+      }
+    } finally {
+      // Удаляем временный файл независимо от исхода отправки
+      try { fs.unlinkSync(cardImagePath); } catch (e) {}
     }
   } catch (error) {
     console.error('Ошибка при получении данных карты:', error);
@@ -145,7 +150,7 @@ async function registerCardHandler(ctx) {
     // Сохраняем данные карты в базу данных
     await saveCardNumber(userId, cardNumber);
 
-    // Генерируем изображение карты
+    // Генерируем изображение карты (временный файл создаётся в os.tmpdir())
     const cardImagePath = await generateCardImage(userId, cardNumber);
 
     // Создаем инлайн-клавиатуру с кнопкой "карта"
@@ -154,18 +159,23 @@ async function registerCardHandler(ctx) {
     ]);
 
     // Отправляем изображение и текстовые данные карты одним сообщением
-    if (fs.existsSync(cardImagePath)) {
-      const caption = `🎉 Ваша карта успешно создана!\n\nИмя владельца: ${user.username}\nНомер карты: <code>${cardNumber}</code>`;
-      await ctx.replyWithPhoto(
-        { source: cardImagePath },
-        {
-          caption,
-          parse_mode: 'HTML',
-          reply_markup: keyboard.reply_markup // Добавляем клавиатуру
-        }
-      );
-    } else {
-      return ctx.reply('Не удалось сгенерировать изображение карты.');
+    try {
+      if (fs.existsSync(cardImagePath)) {
+        const caption = `🎉 Ваша карта успешно создана!\n\nИмя владельца: ${user.username}\nНомер карты: <code>${cardNumber}</code>`;
+        await ctx.replyWithPhoto(
+          { source: cardImagePath },
+          {
+            caption,
+            parse_mode: 'HTML',
+            reply_markup: keyboard.reply_markup // Добавляем клавиатуру
+          }
+        );
+      } else {
+        return ctx.reply('Не удалось сгенерировать изображение карты.');
+      }
+    } finally {
+      // Удаляем временный файл независимо от исхода отправки
+      try { fs.unlinkSync(cardImagePath); } catch (e) {}
     }
   } catch (error) {
     console.error('Ошибка при регистрации карты:', error);
@@ -203,7 +213,7 @@ async function handleRegisterCardAction(ctx) {
     // Сохраняем данные карты в базу данных
     await saveCardNumber(userId, cardNumber);
 
-    // Генерируем изображение карты
+    // Генерируем изображение карты (временный файл создаётся в os.tmpdir())
     const cardImagePath = await generateCardImage(userId, cardNumber);
 
     // Создаем инлайн-клавиатуру с кнопкой "карта"
@@ -212,18 +222,23 @@ async function handleRegisterCardAction(ctx) {
     ]);
 
     // Отправляем изображение и текстовые данные карты одним сообщением
-    if (fs.existsSync(cardImagePath)) {
-      const caption = `🎉 Ваша карта успешно создана!\n\nИмя владельца: ${user.username}\nНомер карты: <code>${cardNumber}</code>`;
-      await ctx.replyWithPhoto(
-        { source: cardImagePath },
-        {
-          caption,
-          parse_mode: 'HTML',
-          reply_markup: keyboard.reply_markup // Добавляем клавиатуру
-        }
-      );
-    } else {
-      return ctx.reply('Не удалось сгенерировать изображение карты.');
+    try {
+      if (fs.existsSync(cardImagePath)) {
+        const caption = `🎉 Ваша карта успешно создана!\n\nИмя владельца: ${user.username}\nНомер карты: <code>${cardNumber}</code>`;
+        await ctx.replyWithPhoto(
+          { source: cardImagePath },
+          {
+            caption,
+            parse_mode: 'HTML',
+            reply_markup: keyboard.reply_markup // Добавляем клавиатуру
+          }
+        );
+      } else {
+        return ctx.reply('Не удалось сгенерировать изображение карты.');
+      }
+    } finally {
+      // Удаляем временный файл независимо от исхода отправки
+      try { fs.unlinkSync(cardImagePath); } catch (e) {}
     }
   } catch (error) {
     console.error('Ошибка при обработке действия регистрации карты:', error);

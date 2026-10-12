@@ -1,10 +1,11 @@
+// top.js
 const { getUserById, getUserStatuses, toggleHyperlink, isHyperlinkDisabled, getCardDetails, getNumericIdByUserId, getSelectedSkinFileName } = require('../db');
 const { topReferralsHandler } = require('./referralSystem'); // Импортируем обработчики
 const { getTopDonators } = require('./donationStats');
 const { createCanvas, loadImage } = require('canvas');
 const path = require('path');
-const topPfImagePath = path.join(__dirname, '..', 'images', 'top_pf.png');
 const fs = require('fs');
+const os = require('os'); // Системная temp-папка
 
 async function generateTopImage(topPlayers) {
   try {
@@ -80,7 +81,6 @@ async function generateTopImage(topPlayers) {
       const settings = playerSettings[i]; // Получаем настройки для текущего игрока
 
       const skinFileName = await getSelectedSkinFileName(player.id); // Получаем имя файла скина
-
       if (skinFileName) {
         const skinPath = path.join(__dirname, '..', 'images', skinFileName); // Исправленный путь
 
@@ -105,7 +105,6 @@ async function generateTopImage(topPlayers) {
             left: 361,
             right: 361,
           };
-
           const croppedWidth = originalSkin.width - crop.left - crop.right;
           const croppedHeight = originalSkin.height - crop.top - crop.bottom;
 
@@ -185,7 +184,6 @@ async function generateTopImage(topPlayers) {
 
     for (let i = 0; i < Math.min(3, additionalImages.length); i++) {
       const imagePath = path.join(__dirname, '..', 'images', additionalImages[i]);
-
       if (fs.existsSync(imagePath)) {
         const image = await loadImage(imagePath);
         const { position, size } = additionalImageSettings[i];
@@ -197,8 +195,11 @@ async function generateTopImage(topPlayers) {
       }
     }
 
-    // Сохраняем изображение во временную папку
-    const outputPath = path.join(__dirname, '..', 'temp', `top_image_${Date.now()}.png`);
+    // Сохраняем изображение во временную системную папку (уникальное имя)
+    const outputPath = path.join(
+      os.tmpdir(),
+      `top_image_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.png`
+    );
     const out = fs.createWriteStream(outputPath);
     const stream = canvas.createPNGStream();
     stream.pipe(out);
@@ -245,8 +246,8 @@ function createUserLink(userId, username, disableHyperlink) {
   const escapedUsername = username
     ? username.replace(/([<>&"'])/g, (match) => {
         const escapeMap = {
-          '<': '<',
-          '>': '>',
+          '<': '&lt;',
+          '>': '&gt;',
           '&': '&amp;',
           '"': '&quot;',
           "'": '&#39;',
@@ -258,7 +259,6 @@ function createUserLink(userId, username, disableHyperlink) {
   if (disableHyperlink) {
     return escapedUsername;
   }
-
   return `<a href="tg://user?id=${userId}">${escapedUsername}</a>`;
 }
 
@@ -291,7 +291,7 @@ function formatBalance(totalBalance) {
 
 async function getTopPlayers(db) {
   const stmt = db.prepare(`
-    SELECT id, username, balance, card_balance 
+    SELECT id, username, balance, card_balance
     FROM users
     WHERE is_hidden_in_top = 0 -- Исключаем скрытых пользователей
     ORDER BY (balance + card_balance) DESC
@@ -303,16 +303,17 @@ async function forbesHandler(ctx, db) {
   try {
     // Получаем всех игроков, отсортированных по суммарному балансу
     const allPlayers = await getTopPlayers(db);
+
     if (!allPlayers || allPlayers.length === 0) {
       return ctx.reply('Список игроков пуст.');
     }
-    
+
     let message = '';
     const callingUserId = ctx.from.id.toString(); // ID пользователя, вызвавшего команду
     let userPosition = null; // Переменная для хранения позиции пользователя
     let userBalance = null; // Переменная для хранения баланса пользователя
     let topPlayersList = []; // Массив для хранения игроков, которые попадут в топ
-    
+
     // Формируем начальное обращение
     if (ctx.chat.type !== 'private') {
       const callingUser = await getUserById(callingUserId);
@@ -327,16 +328,16 @@ async function forbesHandler(ctx, db) {
     // Фильтруем игроков, исключая технических администраторов
     for (const player of allPlayers) {
       const userId = player.id;
-      
+
       // Исключаем технических администраторов
       const statuses = await getUserStatuses(userId);
       if (statuses.includes('Тех администратор')) {
         continue;
       }
-      
+
       // Добавляем игрока в топ
       topPlayersList.push(player);
-      
+
       // Ограничиваем топ до 10 игроков
       if (topPlayersList.length >= 10) {
         break;
@@ -356,12 +357,11 @@ async function forbesHandler(ctx, db) {
       const username = player.username || `User${userId}`;
       const totalBalance = player.balance + player.card_balance;
       const formattedBalance = formatBalance(totalBalance);
-      
       const disableHyperlink = isHyperlinkDisabled(userId);
       const userLink = createUserLink(userId, username, disableHyperlink);
-      
+
       message += `${position} ${userLink} — ${formattedBalance}\n`;
-      
+
       if (userId === callingUserId) {
         userPosition = index + 1;
         userBalance = formattedBalance;
@@ -376,21 +376,19 @@ async function forbesHandler(ctx, db) {
         const totalBalance = allPlayers[userIndex].balance + allPlayers[userIndex].card_balance;
         userBalance = formatBalance(totalBalance);
       }
-      
+
       if (userPosition > 10) {
         message += `\n————————————————\n`;
         const positionEmoji = numberToEmoji(userPosition);
-        
         const callingUser = await getUserById(callingUserId);
         const username = callingUser?.username || 'Неизвестный';
         const disableHyperlink = isHyperlinkDisabled(callingUserId);
         const userLink = createUserLink(callingUserId, username, disableHyperlink);
-        
         message += `${positionEmoji} ${userLink} — ${userBalance}`;
       }
     }
 
-    // Генерируем изображение с активными скинами трёх первых игроков
+    // Генерируем изображение с активными скинами трёх первых игроков (во временной системной папке)
     const topImagePath = await generateTopImage(topPlayersList);
 
     // Создаем клавиатуру с кнопками выбора других топов
@@ -402,15 +400,17 @@ async function forbesHandler(ctx, db) {
       ],
     };
 
-    // Отправляем сообщение с изображением и текстом
-    await ctx.replyWithPhoto({ source: topImagePath }, {
-      caption: message,
-      parse_mode: 'HTML', // Используем HTML вместо Markdown
-      reply_markup: keyboard,
-    });
-
-    // Удаляем временный файл
-    fs.unlinkSync(topImagePath);
+    // Отправляем сообщение с изображением и текстом, гарантированно удаляя временный файл
+    try {
+      await ctx.replyWithPhoto({ source: topImagePath }, {
+        caption: message,
+        parse_mode: 'HTML',
+        reply_markup: keyboard,
+      });
+    } finally {
+      // Удаляем временный файл после отправки при любом исходе (успех/ошибка/return)
+      try { fs.unlinkSync(topImagePath); } catch (e) {}
+    }
   } catch (error) {
     console.error('Ошибка при обработке команды "форбс":', error);
     await ctx.reply('Произошла ошибка. Пожалуйста, попробуйте позже.');
@@ -432,7 +432,7 @@ async function handleTopReferrals(ctx) {
   try {
     await topReferralsHandler(ctx); // Вызываем обработчик топа рефералов
   } catch (error) {
-    console.error('Ошибка при обработке запроса "топ рефералов":', error);
+    console.error('Ошибка при обработке запроса"топ рефералов":', error);
     await ctx.reply('Произошла ошибка при получении топа рефералов.');
   }
 }

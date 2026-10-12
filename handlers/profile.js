@@ -192,18 +192,21 @@ ${banInfo}
 
       // Генерируем изображение карты с учётом скина или дефолтного файла
       const cardImagePath = await generateCardImage(userId, cardDetails.card_number, skinFileName);
-
-      // Проверяем, существует ли файл изображения
-      if (fs.existsSync(cardImagePath)) {
-        // Отправляем изображение и текстовые данные одним сообщением
-        return ctx.replyWithPhoto(
-          { source: cardImagePath },
-          { 
-            caption: profileText, 
-            parse_mode: 'HTML',
-            reply_markup: keyboard
-          }
-        );
+      try {
+        if (fs.existsSync(cardImagePath)) {
+          await ctx.replyWithPhoto(
+            { source: cardImagePath },
+            {
+              caption: profileText,
+              parse_mode: 'HTML',
+              reply_markup: keyboard
+            }
+          );
+          return;
+        }
+      } finally {
+        // Удаляем временный файл после отправки при любом исходе
+        try { fs.unlinkSync(cardImagePath); } catch (e) {}
       }
     }
 
