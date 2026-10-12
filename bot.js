@@ -139,7 +139,7 @@ const { handleNpfTechInfo, handleForceUpdateCourse } = require('./bank/bankTechC
 const { candyShopMenu, buyPfWithCandy, buyFortuneTicket, buyGoldContainers } = require('./Events/Halloween/candyShop');
 const { showSecretGiftMenu, openSecretGift, closeSecretGiftMenu } = require('./Events/secretGift');
 const { handleTestCommand, handleTestButton, handleConfirmAction } = require('./handlers/testHandler');
-// Импорт модуля последовательного ввода
+const { sendErrorNotification } = require('./utils/errorNotifier');
 const { sequentialMiddleware, startSequentialInput, handleCancel } = require('./handlers/sequentialInput');
 
 // Функция для отправки сообщения с кнопкой Mini App
@@ -5206,44 +5206,45 @@ setupGlobalErrorHandler(bot);
 
 const MAIN_ADMIN_ID = process.env.MAIN_ADMIN; // ID главного администратора
 
-// Функция для отправки уведомления о выключении
-// Функция для отправки уведомления о выключении
-async function sendShutdownNotification(bot, reason) {
-  try {
-      const message = `
-⚠️ <b>БОТ ВЫКЛЮЧЕН</b> ⚠️
-<b>Причина:</b> ${reason}
-<b>Дата:</b> ${new Date().toLocaleString()}
-`.trim();
-      
-      // Оборачиваем в try...catch, чтобы ошибка сети не крашила процесс
-      await bot.telegram.sendMessage(MAIN_ADMIN_ID, message, { parse_mode: 'HTML' });
-      console.log('Уведомление о выключении отправлено администратору.');
-  } catch (error) {
-      // Просто логируем ошибку в консоль, но НЕ падаем
-      console.error('Не удалось отправить уведомление о выключении (сетевая ошибка):', error.message);
-  }
-}
+// ─────────────────────────────────────────────────────────────
+// Обработчики критических сбоев процесса
+// ─────────────────────────────────────────────────────────────
 
-// Обработка сигнала SIGTERM (например, завершение через систему)
+// Системное завершение контейнера (штатная остановка) — exit оправдан
 process.on('SIGTERM', async () => {
-    console.log('Получен сигнал SIGTERM. Выключение бота...');
-    await sendShutdownNotification(bot, 'SIGTERM (системное завершение)');
-    process.exit(0); // Завершаем процесс
+  console.log('[SYSTEM] Получен сигнал SIGTERM. Завершение...');
+  await sendErrorNotification(bot, 'SIGTERM', {
+      critical: true,
+      context: 'Системное завершение контейнера хостингом',
+  });
+  process.exit(0);
 });
 
-// Обработка необработанных исключений
+process.on('SIGINT', async () => {
+  console.log('[SYSTEM] Получен сигнал SIGINT (Ctrl+C). Завершение...');
+  await sendErrorNotification(bot, 'SIGINT', {
+      critical: true,
+      context: 'Ручная остановка (Ctrl+C)',
+  });
+  process.exit(0);
+});
+
+// Необработанное исключение — уведомляем, НЕ падаем
 process.on('uncaughtException', async (error) => {
-    console.error('Необработанное исключение:', error);
-    await sendShutdownNotification(bot, `Необработанное исключение: ${error.message}`);
-    process.exit(1); // Завершаем процесс с ошибкой
+  console.error('[ERROR] Необработанное исключение:', error);
+  await sendErrorNotification(bot, error, {
+      critical: false,
+      context: 'uncaughtException',
+  });
 });
 
-// Обработка необработанных промисов
+// Необработанный промис — уведомляем, НЕ падаем
 process.on('unhandledRejection', async (reason) => {
-    console.error('Необработанный промис:', reason);
-    await sendShutdownNotification(bot, `Необработанный промис: ${reason}`);
-    process.exit(1); // Завершаем процесс с ошибкой
+  console.error('[ERROR] Необработанный промис:', reason);
+  await sendErrorNotification(bot, reason, {
+      critical: false,
+      context: 'unhandledRejection',
+  });
 });
 
 

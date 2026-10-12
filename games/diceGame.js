@@ -29,8 +29,8 @@ class DiceGame {
             // === ДИАПАЗОН НЕАКТИВНОСТИ ===
             // ДЛЯ ТЕСТА: 30–31 секунда.
             // В БОЕВОМ РЕЖИМЕ поставьте: 15 * 60 * 1000 и 35 * 60 * 1000
-            this.INACTIVITY_MIN_MS = 30 * 1000;
-            this.INACTIVITY_MAX_MS = 31 * 1000;
+            this.INACTIVITY_MIN_MS = 15 * 60 * 1000;
+            this.INACTIVITY_MAX_MS = 35 * 60 * 1000;
 
             this.botInstance = null;
             DiceGame.instance = this;
@@ -38,7 +38,6 @@ class DiceGame {
         return DiceGame.instance;
     }
 
-    // Генерирует следующее время проверки неактивности в диапазоне MIN–MAX * множитель
     scheduleNextInactivity(chatId) {
         const multiplier = this.inactivityMultiplier[chatId] || 1.0;
         const minMs = this.INACTIVITY_MIN_MS * multiplier;
@@ -47,7 +46,6 @@ class DiceGame {
         this.nextInactivityTime[chatId] = Date.now() + delay;
     }
 
-    // Сбрасывает таймер неактивности при любой игровой активности в чате
     resetInactivity(chatId) {
         this.inactivityMultiplier[chatId] = 1.0;
         this.scheduleNextInactivity(chatId);
@@ -57,7 +55,6 @@ class DiceGame {
     init(bot) {
         this.botInstance = bot;
 
-        // Инициализация таймеров для всех активных дайc-чатов
         (async () => {
             try {
                 const chats = await getAllActiveDiceChats();
@@ -71,7 +68,6 @@ class DiceGame {
             }
         })();
 
-        // Глобальный интервал проверки неактивности чатов
         setInterval(async () => {
             try {
                 const activeChats = await getAllActiveDiceChats();
@@ -87,13 +83,12 @@ class DiceGame {
             } catch (e) {
                 console.error('[DiceGame] AutoSuggestion Interval Error:', e.message);
             }
-        }, 10000); // Проверка каждые 10 секунд
+        }, 10000);
     }
 
     async sendAutoSuggestion(chatId, bot) {
         if (!bot) return;
 
-        // Последние 5 уникальных ставок чата
         let recentAmounts = getLastDiceBetsInChat(chatId);
         if (recentAmounts.length === 0) {
             recentAmounts = [1000, 5000, 10000, 50000, 100000];
@@ -114,7 +109,6 @@ class DiceGame {
         addBtn(baseAmount * 2, `⬆️ Удвоить (${(baseAmount * 2).toLocaleString('ru-RU')} PF)`);
         addBtn(Math.floor(baseAmount / 2), `⬇️ Уменьшить (${Math.floor(baseAmount / 2).toLocaleString('ru-RU')} PF)`);
 
-        // Остальные уникальные суммы из последних 5 ставок (без повторок)
         for (const amt of recentAmounts) {
             if (buttons.length >= 10) break;
             addBtn(amt, `🎲 Играть на ${amt.toLocaleString('ru-RU')} PF`);
@@ -123,7 +117,6 @@ class DiceGame {
         if (buttons.length === 0) addBtn(1000, `✅ Сыграть на 1 000 PF`);
 
         try {
-            // КАК ВЕЗДЕ: клавиатура раскрывается через спред, без двойного reply_markup
             const keyboard = Markup.inlineKeyboard(buttons);
             const msg = await bot.telegram.sendMessage(
                 chatId,
@@ -134,7 +127,6 @@ class DiceGame {
             const timeoutId = setTimeout(async () => {
                 try { await bot.telegram.deleteMessage(chatId, msg.message_id); } catch (e) {}
                 delete this.pendingSuggestions[chatId];
-                // Никто не принял: следующий диапазон неактивности в 2 раза меньше
                 this.inactivityMultiplier[chatId] = (this.inactivityMultiplier[chatId] || 1.0) * 0.5;
                 this.scheduleNextInactivity(chatId);
             }, 30000);
@@ -143,7 +135,6 @@ class DiceGame {
         } catch (e) {
             console.error('[DiceGame] AutoSuggestion error:', e.message);
 
-            // Если бот удалён из чата — деактивируем режим дайса, чтобы не спамить ошибками
             if (e.response && e.response.error_code === 400 && String(e.response.description).includes('chat not found')) {
                 try {
                     deactivateDiceMode(chatId);
@@ -166,11 +157,9 @@ class DiceGame {
         try { await bot.telegram.deleteMessage(chatId, messageId); } catch (e) {}
         delete this.pendingSuggestions[chatId];
 
-        // Создаём комнату через обычный handleBet (спишет средства, создаст раунд)
         const result = await this.handleBet(userId, username, amount.toString(), chatId, bot);
         if (!result.success) return result;
 
-        // Бот автоматически становится вторым участником комнаты
         const activeRounds = this.chatRounds[chatId] || [];
         const round = activeRounds.find(r => r.roundId === result.roundId);
         if (round && !round.participants['F_BOT']) {
@@ -294,7 +283,6 @@ class DiceGame {
                 currentRound.participants[userId.toString()].logId = betLogId;
             }
 
-            // Продление таймера на 10 секунд за каждого нового игрока
             if (isExistingRound) {
                 const addedTime = 10 * 1000;
                 currentRound.endTime += addedTime;
@@ -368,7 +356,6 @@ class DiceGame {
 
         if (realPlayers.length === 0) { this.resetRound(chatId, roundId); return; }
 
-        // Одинокий создатель: 50% шанс предложения сыграть с F BOT
         if (realPlayers.length === 1 && !participants['F_BOT']) {
             if (Math.random() < 0.5) {
                 round.state = 'WAITING_FOR_BOT';
@@ -411,7 +398,6 @@ class DiceGame {
         const results = {};
         const hasBot = 'F_BOT' in participants;
 
-        // 55% в пользу бота ТОЛЬКО если он вызван кнопкой и никто больше не зашёл
         if (hasBot && realPlayers.length === 1 && round.state === 'EXTENDED_BY_BOT') {
             const botWins = Math.random() < 0.55;
             const creatorId = realPlayers[0];
@@ -423,7 +409,6 @@ class DiceGame {
                 results['F_BOT'] = { dice1: 5, dice2: 6, totalPoints: 11 };
             }
         } else {
-            // Во всех остальных случаях (включая авто-присоединение бота) — равные шансы
             let hasDuplicates = true;
             while (hasDuplicates) {
                 hasDuplicates = false;
@@ -476,7 +461,6 @@ class DiceGame {
         }
         finalMessage += `\n💰 Банк: ${totalBank.toLocaleString('ru-RU')} PF\n`;
 
-        // НОВЫЙ ТЕКСТ: бот считается полноценным игроком и забирает банк
         if (winners.includes('F_BOT') && realWinners.length === 0) {
             finalMessage += `🏆 Победитель: 🤖 <b>F BOT</b>\n💰 F BOT забрал весь банк: ${totalBank.toLocaleString('ru-RU')} PF!\n`;
         } else if (realWinners.length === 1) {
@@ -555,13 +539,19 @@ class DiceGame {
 
 function parseBetAmount(input) {
     input = input.trim().toLowerCase();
-    const match = input.match(/^([\d.,]+)([к]*)$/);
+    // Поддержка русской к и английской k (и любых их комбинаций: к, k, К, K, кк, kk, кk...)
+    const match = input.match(/^([\d.,]+)([кk]*)$/);
     if (!match) throw new Error('❕ Некорректный формат суммы ставки.');
     const number = parseFloat(match[1].replace(',', '.'));
     if (isNaN(number) || number <= 0) throw new Error('❕ Некорректная сумма ставки.');
+    
     let amount = number;
-    if (match[2] === 'к') amount *= 1000;
-    else if (match[2] === 'kk') amount *= 1000000;
+    const suffixLen = match[2].length; // Количество букв k/к
+    
+    if (suffixLen === 1) amount *= 1000;           // 1к / 1k = 1 000
+    else if (suffixLen === 2) amount *= 1000000;   // 1кк / 1kk / 1кk = 1 000 000
+    else if (suffixLen >= 3) amount *= 1000000000; // 1ккк и более = 1 000 000 000
+    
     return Math.floor(amount);
 }
 

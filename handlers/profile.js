@@ -1,10 +1,10 @@
 //profile.js
 // Импортируем необходимые функции
 const { Markup } = require('telegraf');
-const { 
-  getUserById, 
-  getUserStatuses, 
-  getPrefixById, 
+const {
+  getUserById,
+  getUserStatuses,
+  getPrefixById,
   getReferralsByReferrerId,
   listUserPrefixes,
   getCardDetails, // Для получения данных карты
@@ -17,6 +17,15 @@ const {
 } = require('../db');
 const { generateCardImage } = require('../generateCard'); // Импортируем функцию генерации изображения карты
 const fs = require('fs');
+
+// Функция для склонения русских существительных в зависимости от числа
+function pluralizeRu(number, one, few, many) {
+  const mod10 = number % 10;
+  const mod100 = number % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
+}
 
 // Функция для создания гиперссылки на пользователя
 function createUserLink(userId, username) {
@@ -33,11 +42,20 @@ function calculateAccountAge(registrationDate) {
   const diffYears = Math.floor(diffMonths / 12); // Годы
 
   if (diffYears > 0) {
-    return `${diffYears} лет ${diffMonths % 12} месяцев ${diffDays % 30} дней`;
+    const yearsWord = pluralizeRu(diffYears, 'год', 'года', 'лет');
+    const remainingMonths = diffMonths % 12;
+    const remainingDays = diffDays % 30;
+    const monthsWord = pluralizeRu(remainingMonths, 'месяц', 'месяца', 'месяцев');
+    const daysWord = pluralizeRu(remainingDays, 'день', 'дня', 'дней');
+    return `${diffYears} ${yearsWord} ${remainingMonths} ${monthsWord} ${remainingDays} ${daysWord}`;
   } else if (diffMonths > 0) {
-    return `${diffMonths} месяцев ${diffDays % 30} дней`;
+    const monthsWord = pluralizeRu(diffMonths, 'месяц', 'месяца', 'месяцев');
+    const remainingDays = diffDays % 30;
+    const daysWord = pluralizeRu(remainingDays, 'день', 'дня', 'дней');
+    return `${diffMonths} ${monthsWord} ${remainingDays} ${daysWord}`;
   } else {
-    return `${diffDays} дней`;
+    const daysWord = pluralizeRu(diffDays, 'день', 'дня', 'дней');
+    return `${diffDays} ${daysWord}`;
   }
 }
 
@@ -115,33 +133,26 @@ async function profileHandler(ctx) {
     let profileText = `
 👤 <b>Ник:</b> ${user.username}
 🆔 <code>${numericId}</code>
-${activePrefix ? `${activePrefix}` : ''} 
-
+${activePrefix ? `${activePrefix}` : ''}
 ${statuses.length > 0 ? `🌟 <b>Статус:</b> ${statuses.join(' + ')}\n` : `🪪 Player\n`}
-
-💰 <b>Баланс:</b> ${balance.toLocaleString('ru-RU')} <b>PF</b>
-💳 <b>На карте:</b> ${cardBalance.toLocaleString('ru-RU')} <b>PF</b>
-🍩 <b>Баланс DF:</b> ${dfBalance.toLocaleString('ru-RU')} <b>DF</b>
-
-🎫 <b>Tickets:</b> ${ticketsCount} <b>шт</b>
-🍬 <b>Конфет:</b> ${candyCount} <b>шт</b>
-💼 <b>Акции NPF:</b> ${npfShares} <b>шт</b>
-
-📦<b>Контейнеры:</b>
-   🧱 <b>CLASSIC:</b> ${containerType1} <b>шт</b>
-   💎 <b>PREMIUM:</b> ${containerType2} <b>шт</b>
-   ⭐️ <b>GOLD:</b> ${containerType3} <b>шт</b>
-
+💰  <b >Баланс: </b > ${balance.toLocaleString('ru-RU')}  <b >PF </b >
+💳  <b >На карте: </b > ${cardBalance.toLocaleString('ru-RU')}  <b >PF </b >
+🍩  <b >Баланс DF: </b > ${dfBalance.toLocaleString('ru-RU')}  <b >DF </b >
+🎫  <b >Tickets: </b > ${ticketsCount}  <b >шт </b >
+🍬  <b >Конфет: </b > ${candyCount}  <b >шт </b >
+💼  <b >Акции NPF: </b > ${npfShares}  <b >шт </b >
+📦 <b >Контейнеры: </b >
+🧱  <b >CLASSIC: </b > ${containerType1}  <b >шт </b >
+💎  <b >PREMIUM: </b > ${containerType2}  <b >шт </b >
+⭐️  <b >GOLD: </b > ${containerType3}  <b >шт </b >
 👥 <b>Кол-во рефералов:</b> ${referralsCount}
-____________________________
-📊 <b>Статистика игры в DOUBLE PLUS:</b>
-   ✅ <b>Выиграно раундов:</b> ${roundWins} <b>раз</b>
-   ❌ <b>Проиграно раундов:</b> ${roundLosses} <b>раз</b>
-
+📊  <b >Статистика игры в DOUBLE PLUS: </b >
+✅  <b >Выиграно раундов: </b > ${roundWins}  <b >раз </b >
+❌  <b >Проиграно раундов: </b > ${roundLosses}  <b >раз </b >
 ⏳ <b>Дата регистрации:</b> ${registrationDateFormatted}
 🗓️ <b>Возраст аккаунта:</b> ${accountAge}
 ${banInfo}
-    `.trim();
+`.trim();
 
     // Удаляем лишние переносы строк, если статусов или префикса нет
     profileText = profileText.replace(/\n\s*\n/g, '\n\n').trim();
@@ -172,7 +183,6 @@ ${banInfo}
       // Получаем активный скин пользователя
       const skinId = await getSelectedSkin(userId); // Функция из db.js
       let skinFileName = 'default_card.png'; // Дефолтное изображение
-
       if (skinId) {
         const skinData = await getSkinById(skinId); // Получаем данные скина
         if (skinData && skinData.file_name) {
@@ -214,14 +224,12 @@ async function handleManageProfile(ctx) {
   try {
     const userId = ctx.from.id;
     const user = await getUserById(userId.toString());
-
     if (!user) {
       return ctx.reply('❌ Профиль не найден.');
     }
 
     const message = `
 🔧 <b>Управление профилем</b>
-
 Выберите действие:
 `;
 
