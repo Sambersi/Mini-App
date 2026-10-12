@@ -139,7 +139,7 @@ const { handleNpfTechInfo, handleForceUpdateCourse } = require('./bank/bankTechC
 const { candyShopMenu, buyPfWithCandy, buyFortuneTicket, buyGoldContainers } = require('./Events/Halloween/candyShop');
 const { showSecretGiftMenu, openSecretGift, closeSecretGiftMenu } = require('./Events/secretGift');
 const { handleTestCommand, handleTestButton, handleConfirmAction } = require('./handlers/testHandler');
-const { sendErrorNotification } = require('./utils/errorNotifier');
+const { sendErrorNotification, formatMoscowTime } = require('./utils/errorNotifier');
 const { sequentialMiddleware, startSequentialInput, handleCancel } = require('./handlers/sequentialInput');
 
 // Функция для отправки сообщения с кнопкой Mini App
@@ -5201,32 +5201,30 @@ bot.action(/^adminreqs_.*/, handleAdminRequestCallback);
 
 
 
-// Глобальный обработчик ошибок
+// Глобальный обработчик ошибок Telegraf
 setupGlobalErrorHandler(bot);
 
-const MAIN_ADMIN_ID = process.env.MAIN_ADMIN; // ID главного администратора
-
-async function sendShutdownNotification(bot, reason) {
-  try {
-    const message = `⚠️ <b>БОТ ВЫКЛЮЧЕН</b> ... <b>Причина:</b> ${reason} ...`;
-    await bot.telegram.sendMessage(MAIN_ADMIN_ID, message, { parse_mode: 'HTML' });
-    console.log('Уведомление о выключении отправлено администратору.');
-  } catch (error) {
-    console.error('Не удалось отправить уведомление о выключении (сетевая ошибка):', error.message);
-  }
-}
-
-
-// Функция для отправки уведомления о включении
+// ─────────────────────────────────────────────────────────────
+// Уведомление о запуске бота
+// ─────────────────────────────────────────────────────────────
 async function sendStartupNotification(bot) {
+  const MAIN_ADMIN_ID = process.env.MAIN_ADMIN;
+  if (!MAIN_ADMIN_ID || !bot?.telegram) return;
+
+  const isProduction = process.platform === 'linux';
+  const env = isProduction ? '🟢 PRODUCTION (Linux)' : '🟡 DEVELOPMENT (Windows)';
+
+  const text =
+    `✅ <b>БОТ УСПЕШНО ЗАПУЩЕН</b>\n\n` +
+    `📍 <b>Окружение:</b> ${env}\n` +
+    `⚙️ <b>Node.js:</b> ${process.version}\n` +
+    `🕐 <b>Время:</b> ${formatMoscowTime()}`;
+
   try {
-    const message = `✅ <b>БОТ ВКЛЮЧЕН</b> ✅ <b>Дата:</b> ${new Date().toLocaleString()}`.trim();
-    // Оборачиваем в try...catch, чтобы ошибка сети не крашила процесс
-    await bot.telegram.sendMessage(MAIN_ADMIN_ID, message, { parse_mode: 'HTML' });
-    console.log('Уведомление о включении отправлено администратору.');
-  } catch (error) {
-    // Просто логируем ошибку в консоль, но НЕ падаем
-    console.error('Не удалось отправить уведомление о включении (сетевая ошибка):', error.message);
+    await bot.telegram.sendMessage(MAIN_ADMIN_ID, text, { parse_mode: 'HTML' });
+    console.log('[NOTIFY] Уведомление о запуске отправлено.');
+  } catch (e) {
+    console.warn('[NOTIFY] Не удалось отправить уведомление о запуске:', e.message);
   }
 }
 
@@ -5234,12 +5232,12 @@ async function sendStartupNotification(bot) {
 // Обработчики критических сбоев процесса
 // ─────────────────────────────────────────────────────────────
 
-// Системное завершение контейнера (штатная остановка) — exit оправдан
+// Системное завершение контейнера — exit оправдан
 process.on('SIGTERM', async () => {
   console.log('[SYSTEM] Получен сигнал SIGTERM. Завершение...');
   await sendErrorNotification(bot, 'SIGTERM', {
-      critical: true,
-      context: 'Системное завершение контейнера хостингом',
+    critical: true,
+    context: 'Системное завершение контейнера хостингом',
   });
   process.exit(0);
 });
@@ -5247,8 +5245,8 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   console.log('[SYSTEM] Получен сигнал SIGINT (Ctrl+C). Завершение...');
   await sendErrorNotification(bot, 'SIGINT', {
-      critical: true,
-      context: 'Ручная остановка (Ctrl+C)',
+    critical: true,
+    context: 'Ручная остановка (Ctrl+C)',
   });
   process.exit(0);
 });
@@ -5257,8 +5255,8 @@ process.on('SIGINT', async () => {
 process.on('uncaughtException', async (error) => {
   console.error('[ERROR] Необработанное исключение:', error);
   await sendErrorNotification(bot, error, {
-      critical: false,
-      context: 'uncaughtException',
+    critical: false,
+    context: 'uncaughtException',
   });
 });
 
@@ -5266,30 +5264,22 @@ process.on('uncaughtException', async (error) => {
 process.on('unhandledRejection', async (reason) => {
   console.error('[ERROR] Необработанный промис:', reason);
   await sendErrorNotification(bot, reason, {
-      critical: false,
-      context: 'unhandledRejection',
+    critical: false,
+    context: 'unhandledRejection',
   });
 });
 
-
-// Загружаем состояние курса при запуске
-loadCourseState();
-// Запускаем таймер для обновления курса каждую минуту
-startCourseUpdater();
-
-// Инициализация автоматического снятия мута и бана
-startAutoUnmute(bot);
-startAutoUnban(bot);
-
+// ─────────────────────────────────────────────────────────────
+// Запуск бота + уведомление админу
+// ─────────────────────────────────────────────────────────────
 bot.launch()
   .then(async () => {
-    console.log('Бот успешно запущен и слушает обновления!');
+    console.log('[BOT] Успешно запущен и слушает обновления!');
     scheduleDailyBackup();
-    // Уведомляем владельца об успешном запуске
-    await sendStartupNotification(bot);
+    await sendStartupNotification(bot); // ← уведомление о старте
   })
   .catch((error) => {
-    console.error('❌ Ошибка при запуске ботика:', error);
-    console.error('❌ Stack:', error.stack); // Для дополнительной отладки
-    process.exit(1); // Завершаем процесс с кодом 1 в случае ошибки
+    console.error('❌ Ошибка при запуске бота:', error);
+    console.error('❌ Stack:', error.stack);
+    process.exit(1);
   });
