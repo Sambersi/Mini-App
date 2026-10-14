@@ -5307,17 +5307,30 @@ process.on('unhandledRejection', async (reason) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// Запуск бота + уведомление админу
+// Запуск бота + уведомление админу (с расширенной диагностикой)
 // ─────────────────────────────────────────────────────────────
+
 console.log('[BOT] Начинаю запуск bot.launch()...');
 
-bot.launch()
+// Таймаут 60 секунд на запуск
+const launchTimeout = setTimeout(() => {
+  console.error('[BOT] ❌❌❌ bot.launch() завис! Прошло 60 секунд, принудительное завершение.');
+  process.exit(1);
+}, 60000);
+
+const launchPromise = bot.launch();
+console.log('[BOT] bot.launch() вызван, промис создан:', typeof launchPromise);
+
+launchPromise
   .then(async () => {
+    clearTimeout(launchTimeout);
     console.log('[BOT] ✅ bot.launch() успешно завершён!');
     console.log('[BOT] Бот слушает обновления от Telegram.');
 
     // 1. СНАЧАЛА уведомление админу
+    console.log('[BOT] Вызываю sendStartupNotification...');
     await sendStartupNotification(bot);
+    console.log('[BOT] sendStartupNotification завершена');
 
     // 2. ПОТОМ плановые задачи
     try {
@@ -5344,7 +5357,10 @@ bot.launch()
     console.log('[BOT] 🎉 Все системы запущены!');
   })
   .catch((error) => {
+    clearTimeout(launchTimeout);
     console.error('❌ Ошибка при запуске бота:', error);
     console.error('❌ Stack:', error.stack);
     process.exit(1);
   });
+
+console.log('[BOT] Код после bot.launch() выполнен (промис асинхронный)');

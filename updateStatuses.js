@@ -1,5 +1,5 @@
 // updateStatuses.js
-const { createStatus, getAllStatuses, db } = require('./db');
+const { createStatus, getAllStatuses } = require('./db');
 
 // Список всех возможных статусов с приоритетами от 1 до 10
 const allStatuses = [
@@ -17,6 +17,14 @@ const allStatuses = [
 
 async function updateStatuses() {
   try {
+    // Импортируем db ВНУТРИ функции, чтобы он был уже инициализирован
+    const { db } = require('./db');
+    
+    if (!db) {
+      console.error('[STATUSES] ❌ База данных не инициализирована');
+      return;
+    }
+
     const existingStatuses = await getAllStatuses();
     const existingStatusMap = new Map();
     existingStatuses.forEach((status) => {
@@ -37,8 +45,6 @@ async function updateStatuses() {
         }
       } else if (existing.priority !== status.priority) {
         try {
-          // Импортируем db ВНУТРИ функции, чтобы он был уже инициализирован
-          const { db } = require('./db');
           db.prepare('UPDATE statuses SET priority = ? WHERE id = ?').run(status.priority, existing.id);
           prioritiesUpdated = true;
           console.log(`[STATUSES] Обновлён приоритет статуса "${status.name}": ${existing.priority} → ${status.priority}`);
