@@ -7,6 +7,40 @@ const path = require('path');
 const dbPath = path.join(__dirname, 'database.sqlite');
 const db = new sqlite3(dbPath);
 
+
+function migrateCardLevelToAccountLevel() {
+  try {
+    const columns = db.prepare('PRAGMA table_info(users)').all();
+
+    const hasCardLevel = columns.some((column) => column.name === 'card_level');
+    const hasAccountLevel = columns.some((column) => column.name === 'account_level');
+
+    if (hasCardLevel && !hasAccountLevel) {
+      db.exec('ALTER TABLE users RENAME COLUMN card_level TO account_level');
+      console.log('[DB] users.card_level переименован в users.account_level');
+    }
+  } catch (error) {
+    console.error('[DB] Не удалось переименовать card_level. Пробую запасной вариант:', error.message);
+
+    try {
+      const columns = db.prepare('PRAGMA table_info(users)').all();
+
+      const hasCardLevel = columns.some((column) => column.name === 'card_level');
+      const hasAccountLevel = columns.some((column) => column.name === 'account_level');
+
+      if (hasCardLevel && !hasAccountLevel) {
+        db.exec('ALTER TABLE users ADD COLUMN account_level INTEGER DEFAULT 1');
+        db.exec('UPDATE users SET account_level = card_level');
+        console.log('[DB] Добавлена колонка account_level, данные скопированы из card_level');
+      }
+    } catch (fallbackError) {
+      console.error('[DB] Запасная миграция тоже не удалась:', fallbackError);
+    }
+  }
+}
+
+migrateCardLevelToAccountLevel();
+
 db.prepare(`
   CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,                  -- Уникальный ID пользователя (Telegram ID)
@@ -60,7 +94,7 @@ const newColumns = [
   { name: 'last_energy_restore', type: 'INTEGER DEFAULT 0' },
   { name: 'active_weapon', type: 'TEXT DEFAULT \'fist\'' },
   { name: 'owned_weapons', type: 'TEXT DEFAULT "[]"' },
-  { name: 'card_level', type: 'INTEGER DEFAULT 1' },
+  { name: 'account_level', type: 'INTEGER DEFAULT 1' },
   { name: 'last_private_bonus_time', type: 'INTEGER DEFAULT 0' },
   { name: 'candy', type: 'INTEGER DEFAULT 0' },
   // --- НОВЫЕ КОЛОНКИ ДЛЯ ИМПЕРИИ ---
@@ -2192,7 +2226,7 @@ function hasCard(userId) {
 }
 
 // Функция для получения лимита карты по уровню
-function getCardLimitByLevel(level) {
+function getCardLimitByAccountLevel(level) {
   const rewards = {
     1: { limit: 10000000 },
     2: { limit: 12000000 },
@@ -2222,12 +2256,12 @@ function getCardLimitByLevel(level) {
 function updateCardBalance(userId, amountChange) {
   try {
     // 1. Получаем уровень карты пользователя
-    const levelStmt = db.prepare('SELECT card_level FROM users WHERE id = ?');
+    const levelStmt = db.prepare('SELECT account_level FROM users WHERE id = ?');
     const levelResult = levelStmt.get(userId.toString());
-    const userLevel = levelResult?.card_level || 1; // По умолчанию уровень 1
+    const userAccountLevel = levelResult?.card_level || 1; // По умолчанию уровень 1
 
     // 2. Получаем лимит для этого уровня
-    const cardLimit = getCardLimitByLevel(userLevel);
+    const cardLimit = getCardLimitByLevel(userAccountLevel);
 
     // 3. Получаем текущий баланс карты
     const balanceStmt = db.prepare('SELECT card_balance FROM users WHERE id = ?');
@@ -2257,15 +2291,15 @@ function updateCardBalance(userId, amountChange) {
 function updateMainBalance(userId, amountChange) {
   try {
     // 1. Получаем уровень карты пользователя (для определения лимита основного баланса)
-    const levelStmt = db.prepare('SELECT card_level FROM users WHERE id = ?');
+    const levelStmt = db.prepare('SELECT account_level FROM users WHERE id = ?');
     const levelResult = levelStmt.get(userId.toString());
-    const userLevel = levelResult?.card_level || 1; // По умолчанию уровень 1
+    const userAccountLevel = levelResult?.account_level || 1;
 
     // 2. Определяем лимит основного баланса на основе уровня
     let mainBalanceLimit = 140000000; // Базовый лимит
-    if (userLevel >= 10) mainBalanceLimit = 175000000; // Уровень 10
-    if (userLevel >= 15) mainBalanceLimit = 185000000; // Уровень 15
-    if (userLevel >= 20) mainBalanceLimit = 200000000; // Уровень 20
+    if (userAccountLevel >= 10) mainBalanceLimit = 175000000; // Уровень 10
+    if (userAccountLevel >= 15) mainBalanceLimit = 185000000; // Уровень 15
+    if (userAccountLevel >= 20) mainBalanceLimit = 200000000; // Уровень 20
 
     // 3. Получаем текущий основной баланс
     const balanceStmt = db.prepare('SELECT balance FROM users WHERE id = ?');
@@ -4313,27 +4347,26 @@ function updateSkinPrice(skinId, newPrice) {
 }
 
 // Функция для получения уровня карты пользователя
-function getCardLevel(userId) {
-  const stmt = db.prepare('SELECT card_level FROM users WHERE id = ?');
+function getAccountLevel(userId) {
+  const stmt = db.prepare('SELECT account_level FROM users WHERE id = ?');
   const result = stmt.get(userId.toString());
-  // Возвращаем уровень или 1 по умолчанию, если поле отсутствует или NULL
-  return result?.card_level !== undefined ? result.card_level : 1;
+  return result?.account_level ?? 1;
 }
 
 // Функция для обновления уровня карты пользователя
-async function updateCardLevel(userId, newLevel) {
+async function updateAccountLevel(userId, newLevel) {
   try {
-    const stmt = db.prepare('UPDATE users SET card_level = ? WHERE id = ?');
+    const stmt = db.prepare('UPDATE users SET account_level = ? WHERE id = ?');
     const info = stmt.run(newLevel, userId.toString());
-    return info.changes > 0; // Возвращаем true, если строка была обновлена
+    return info.changes > 0;
   } catch (error) {
-    console.error('[DB] Ошибка при обновлении уровня карты:', error);
-    return false; // Возвращаем false в случае ошибки
+    console.error('[DB] Ошибка при обновлении уровня аккаунта:', error);
+    return false;
   }
 }
 
-// Функция для установки уровня карты пользователя по numeric_id
-function setCardLevelByNumericId(numericId, newLevel) {
+// Функция для установки уровня пользователя по numeric_id
+function setAccountLevelByNumericId(numericId, newLevel) {
   try {
     // Проверяем, что newLevel - допустимое число (например, от 1 до 20)
     const level = parseInt(newLevel, 10);
@@ -4342,19 +4375,19 @@ function setCardLevelByNumericId(numericId, newLevel) {
       return { success: false, message: 'Некорректный уровень. Допустимые значения: 1-20.' };
     }
 
-    const stmt = db.prepare('UPDATE users SET card_level = ? WHERE numeric_id = ?');
-    const info = stmt.run(level, numericId);
+    const stmt = db.prepare('UPDATE users SET account_level = ? WHERE numeric_id = ?');
+        const info = stmt.run(level, numericId);
 
     if (info.changes > 0) {
-      console.log(`[DB] Уровень карты пользователя с numeric_id ${numericId} успешно установлен на ${level}.`);
-      return { success: true, message: `Уровень карты успешно установлен на ${level}.` };
+      console.log(`[DB] Уровень пользователя с numeric_id ${numericId} успешно установлен на ${level}.`);
+      return { success: true, message: `Уровень  успешно установлен на ${level}.` };
     } else {
       console.warn(`[DB] setCardLevelByNumericId: Пользователь с numeric_id ${numericId} не найден.`);
       return { success: false, message: 'Пользователь с указанным NUMERIC_ID не найден.' };
     }
   } catch (error) {
-    console.error('[DB] Ошибка при установке уровня карты:', error);
-    return { success: false, message: 'Произошла ошибка при обновлении уровня карты.' };
+    console.error('[DB] Ошибка при установке уровня:', error);
+    return { success: false, message: 'Произошла ошибка при обновлении уровня.' };
   }
 }
 
@@ -6782,10 +6815,10 @@ module.exports = {
   getTopPlayersByAttackPower,
   updateSkinPrice,
   saveAuctionState,
-  getCardLevel,   // <-- Добавляем новую
-  updateCardLevel,   // <-- Добавляем новую
-  getCardLimitByLevel,   // <-- Добавляем новую
-  setCardLevelByNumericId,   // <-- Добавляем новую
+  getAccountLevel,
+  updateAccountLevel,
+  getCardLimitByAccountLevel,
+  setAccountLevelByNumericId,
   recordAdminAction,
   cleanupExpiredAdminActions,
   getAdminActionsInRange,  

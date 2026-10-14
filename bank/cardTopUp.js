@@ -9,8 +9,8 @@ const {
   hasCard,
   getUserBalance,
   updateMainBalance,
-  getCardLevel, // Импортируем для получения уровня
-  getCardLimitByLevel, 
+  getAccountLevel,
+  getCardLimitByAccountLevel,
 } = require('../db');
 
 // Функция для создания гиперссылки на пользователя
@@ -67,8 +67,8 @@ async function performCardTopUp(ctx, userId, amountInput) {
       }
 
       // --- ИЗМЕНЕНИЕ: Получаем уровень и лимит карты пользователя ---
-      const userCardLevel = await getCardLevel(userId);
-      const MAX_CARD_BALANCE_LIMIT = getCardLimitByLevel(userCardLevel); // Динамический лимит
+      const userAccountLevel = await getAccountLevel(userId);
+      const MAX_CARD_BALANCE_LIMIT = getCardLimitByAccountLevel(userAccountLevel); // Динамический лимит
 
       // Проверяем лимит баланса карты
       const currentCardBalance = getCardBalance(userId);
@@ -256,12 +256,12 @@ async function performCardWithdrawal(ctx, userId, amountInput) {
       }
 
       // --- ИЗМЕНЕНИЕ: Получаем уровень карты пользователя для определения лимита основного баланса ---
-      const userCardLevel = await getCardLevel(userId);
+      const userAccountLevel = await getAccountLevel(userId);
       // Определяем лимит основного баланса на основе уровня карты
       let MAX_MAIN_BALANCE_LIMIT = 250000000; // Базовый лимит
-      if (userCardLevel >= 10) MAX_MAIN_BALANCE_LIMIT = 251000000; // Уровень 10
-      if (userCardLevel >= 15) MAX_MAIN_BALANCE_LIMIT = 252000000; // Уровень 15
-      if (userCardLevel >= 20) MAX_MAIN_BALANCE_LIMIT = 253000000; // Уровень 20
+      if (userAccountLevel >= 10) MAX_MAIN_BALANCE_LIMIT = 251000000; // Уровень 10
+      if (userAccountLevel >= 15) MAX_MAIN_BALANCE_LIMIT = 252000000; // Уровень 15
+      if (userAccountLevel >= 20) MAX_MAIN_BALANCE_LIMIT = 253000000; // Уровень 20
 
       // Получаем текущий основной баланс
       const mainBalance = getUserBalance(userId, 'PF');

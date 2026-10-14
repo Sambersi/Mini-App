@@ -10,8 +10,8 @@ const {
     transaction,
     getTotalBalance,
     areTransfersBlockedByNumericId,
-    getCardLevel, // Импортируем для получения уровня
-    getCardLimitByLevel, 
+    getAccountLevel,
+    getCardLimitByAccountLevel,
     logFinance,
   } = require('../db');
   const { createUserLink } = require('../utils/userLink'); // Импортируем функцию для создания ссылок
@@ -144,8 +144,8 @@ async function performTransfer(ctx, sender, recipient, amountInput) {
       }
 
       // --- ИЗМЕНЕНИЕ: Получаем уровень и лимит карты получателя ---
-      const recipientCardLevel = await getCardLevel(recipient.id);
-      const MAX_CARD_BALANCE_LIMIT = getCardLimitByLevel(recipientCardLevel); // Динамический лимит
+      const recipientCardLevel = await getAccountLevel(recipient.id);
+      const MAX_CARD_BALANCE_LIMIT = getCardLimitByAccountLevel(recipientCardLevel); // Динамический лимит
 
       // Проверка наличия места на карте получателя (пропускаем для администраторов)
       const recipientCardBalance = getCardBalance(recipient.id);

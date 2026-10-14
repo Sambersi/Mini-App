@@ -4110,27 +4110,20 @@ bot.action('back_to_card_menu', async (ctx) => {
 
 // Обработчик кнопки "Закрыть меню карты"
 bot.action('close_card_menu', async (ctx) => {
-  if (await checkUserStatus(ctx)) { // Предполагается, что checkUserStatus существует
-    await handleCallbackWithErrorHandling(ctx, async () => { // Предполагается, что handleCallbackWithErrorHandling существует
-      try {
-        // Пытаемся удалить сообщение с меню карты
-        // ctx.update.callback_query.message.message_id содержит ID сообщения, на которое нажали кнопку
-        if (ctx.update?.callback_query?.message?.message_id) {
-          await ctx.deleteMessage(ctx.update.callback_query.message.message_id);
-        } else {
-          // Если по какой-то причине ID сообщения недоступен, просто отправим сообщение
-          await ctx.reply('❌ Меню карты закрыто.');
-        }
-        // Подтверждаем нажатие кнопки
-        await ctx.answerCbQuery();
-      } catch (error) {
-        console.error('Ошибка при закрытии меню карты:', error);
-        // Отправляем сообщение пользователю, если удаление не удалось
-        await ctx.reply('❌ Не удалось закрыть меню. Сообщение может быть слишком старым.');
-        // Подтверждаем нажатие кнопки даже в случае ошибки
-        await ctx.answerCbQuery();
-      }
-    });
+  try {
+    const messageId = ctx.callbackQuery?.message?.message_id;
+
+    if (messageId) {
+      await ctx.deleteMessage(messageId);
+    }
+  } catch (error) {
+    console.error('[CARD] Не удалось закрыть меню карты:', error);
+  }
+
+  try {
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('[CARD] Не удалось подтвердить нажатие кнопки закрытия:', error);
   }
 });
 
@@ -4139,24 +4132,19 @@ bot.action('close_card_menu', async (ctx) => {
 bot.action('upgrade_card_level', async (ctx) => {
   if (await checkUserStatus(ctx)) {
     await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleUpgradeCardLevel(ctx); // Повторный вызов этой функции
-      await ctx.answerCbQuery();
+      await handleUpgradeAccountLevel(ctx);
     });
   }
 });
 
 // Обработчик кнопки подтверждения повышения уровня
 bot.action(/upgrade_level_confirm_(\d+)/, async (ctx) => {
-  if (await checkUserStatus(ctx)) { // Предполагается, что checkUserStatus существует
-    await handleCallbackWithErrorHandling(ctx, async () => { // Предполагается, что handleCallbackWithErrorHandling существует
-      const targetLevel = parseInt(ctx.match[1], 10);
-      if (isNaN(targetLevel) || targetLevel < 1 || targetLevel > 20) {
-         await ctx.reply('❌ Некорректный уровень для повышения.');
-         await ctx.answerCbQuery();
-         return;
-      }
-      // Вызываем функцию выполнения повышения уровня
-      await performLevelUpgrade(ctx, targetLevel);
+  if (await checkUserStatus(ctx)) {
+    await handleCallbackWithErrorHandling(ctx, async () => {
+      const match = ctx.callbackQuery.data.match(/upgrade_level_confirm_(\d+)/);
+      const targetLevel = Number(match[1]);
+
+      await performAccountLevelUpgrade(ctx, targetLevel);
     });
   }
 });
@@ -4165,7 +4153,7 @@ bot.action(/upgrade_level_confirm_(\d+)/, async (ctx) => {
 bot.action('show_upgrade_grid', async (ctx) => {
   if (await checkUserStatus(ctx)) {
     await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleShowUpgradeGrid(ctx);
+      await handleShowAccountLevelGrid(ctx);
     });
   }
 });
