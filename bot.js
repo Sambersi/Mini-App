@@ -139,7 +139,7 @@ const { handleNpfTechInfo, handleForceUpdateCourse } = require('./bank/bankTechC
 const { candyShopMenu, buyPfWithCandy, buyFortuneTicket, buyGoldContainers } = require('./Events/Halloween/candyShop');
 const { showSecretGiftMenu, openSecretGift, closeSecretGiftMenu } = require('./Events/secretGift');
 const { handleTestCommand, handleTestButton, handleConfirmAction } = require('./handlers/testHandler');
-const { sendErrorNotification, formatMoscowTime } = require('./utils/errorNotifier');
+const { sendErrorNotification, formatMoscowTime, broadcastToAdmins } = require('./utils/errorNotifier');
 const { sequentialMiddleware, startSequentialInput, handleCancel } = require('./handlers/sequentialInput');
 const { cleanupOrphanPromoImages } = require('./handlers/generatePromoImage');
 
@@ -5221,52 +5221,23 @@ setupGlobalErrorHandler(bot);
 // Уведомление о запуске бота (с ретраями и fallback ID)
 // ─────────────────────────────────────────────────────────────
 async function sendStartupNotification(bot) {
-  console.log('[NOTIFY] Начинаю sendStartupNotification...');
-
-  // Fallback на твой ID если MAIN_ADMIN не задан
-  const MAIN_ADMIN_ID = process.env.MAIN_ADMIN || '768451950';
-  console.log(`[NOTIFY] Целевой ID админа: ${MAIN_ADMIN_ID}`);
-
-  if (!MAIN_ADMIN_ID) {
-    console.error('[NOTIFY] ❌ MAIN_ADMIN не задан и fallback не сработал');
-    return;
-  }
-  if (!bot?.telegram) {
-    console.error('[NOTIFY] ❌ bot.telegram недоступен');
-    return;
-  }
+  const { broadcastToAdmins, formatMoscowTime } = require('./utils/errorNotifier');
 
   const isProduction = process.platform === 'linux';
   const env = isProduction ? '🟢 PRODUCTION (Linux)' : '🟡 DEVELOPMENT (Windows)';
 
   const text =
-    `✅ <b>БОТ УСПЕШНО ЗАПУЩЕН</b>\n\n` +
-    `📍 <b>Окружение:</b> ${env}\n` +
-    `⚙️ <b>Node.js:</b> ${process.version}\n` +
-    `🕐 <b>Время:</b> ${formatMoscowTime()}`;
+      `✅ <b>БОТ УСПЕШНО ЗАПУЩЕН</b>\n\n` +
+      `📍 <b>Окружение:</b> ${env}\n` +
+      `⚙️ <b>Node.js:</b> ${process.version}\n` +
+      `🕐 <b>Время:</b> ${formatMoscowTime()}`;
 
-  console.log('[NOTIFY] Пытаюсь отправить сообщение...');
-
-  // Ретраи: 4 попытки с паузами 0с, 3с, 6с, 12с
-  const delays = [0, 3000, 6000, 12000];
-  for (let attempt = 0; attempt < delays.length; attempt++) {
-    if (delays[attempt] > 0) {
-      console.log(`[NOTIFY] ⏸️ Пауза ${delays[attempt] / 1000}с перед попыткой ${attempt + 1}...`);
-      await new Promise(r => setTimeout(r, delays[attempt]));
-    }
-    try {
-      console.log(`[NOTIFY] Попытка ${attempt + 1}/${delays.length}: отправляю сообщение...`);
-      await bot.telegram.sendMessage(MAIN_ADMIN_ID, text, { parse_mode: 'HTML' });
-      console.log(`[NOTIFY] ✅ Успех! Уведомление отправлено (попытка ${attempt + 1}).`);
-      return;
-    } catch (e) {
-      console.error(`[NOTIFY] ❌ Попытка ${attempt + 1} не удалась:`);
-      console.error(`[NOTIFY]    Сообщение: ${e.message || 'нет сообщения'}`);
-      console.error(`[NOTIFY]    Код: ${e.code || 'нет кода'}`);
-      console.error(`[NOTIFY]    Описание: ${e.description || 'нет описания'}`);
-    }
+  const ok = await broadcastToAdmins(bot, text);
+  if (ok === 0) {
+      console.warn('[BOT] Уведомление о запуске никому не ушло — проверь ADMIN_IDS в .env');
+  } else {
+      console.log(`[BOT] Уведомление о запуске отправлено ${ok} админам.`);
   }
-  console.error('[NOTIFY] ❌❌❌ Все 4 попытки провалились. Уведомление НЕ отправлено.');
 }
 
 // ─────────────────────────────────────────────────────────────
