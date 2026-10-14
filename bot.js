@@ -96,7 +96,7 @@ const { getTopDonators, getDonationStatistics } = require('./handlers/donationSt
 const { listStatusesHandler, awardStatusHandler, removeStatusHandler } = require('./statusCommands'); // Новые обработчики команд
 const { updateStatuses } = require('./updateStatuses'); // Импортируем функцию обновления статусов
 const { handleDbSizeCommand, handleBackupCommand,scheduleDailyBackup, } = require('./adminUtils.js');
-const { bankHandler, handleFinance, handleP2P, handleExchangeRate } = require('./bank/bankHandler');
+const { financeHandler, handleFinanceCardAction, handleFinanceBankAction, handleFinanceCryptoAction, handleFinanceSkinMarketAction, } = require('./bank/financeHandler');
 const { skinShopHandler, handlePageChange, handleSelectSkinToBuy, handleSkinNavigation, handleBuySkin, handleCloseShop, handleToShop } = require('./skins/shopHandler');
 const { handleMySkins, handleMySkinsNavigation, handleApplySkin } = require('./skins/mySkinsHandlers');
 const { statisticsHandler, showStatisticsMenu } = require('./handlers/statistics');
@@ -134,7 +134,6 @@ const { fortyTwoHandler } = require('./handlers/fortyTwo.js')
 const { empireHandler, empireStatisticsHandler } = require('./empire/handlers/empireHandler');
 const { handleBuildMenu, handleBuildPage, handleViewBusinessInfo, handleShowUpgradeDetails, handleConfirmBuyBusiness, handleConfirmUpgradeBusiness } = require('./empire/handlers/buildHandlers');
 const { giveBusinessHandler } = require('./empire/handlers/adminCommandsHandler');
-const { handleNpfBuyCommand, handleNpfSellCommand, handleShowChart, handleNpfInfo } = require('./bank/npfShares');
 const { handleNpfTechInfo, handleForceUpdateCourse } = require('./bank/bankTechCommands');
 const { candyShopMenu, buyPfWithCandy, buyFortuneTicket, buyGoldContainers } = require('./Events/Halloween/candyShop');
 const { showSecretGiftMenu, openSecretGift, closeSecretGiftMenu } = require('./Events/secretGift');
@@ -1122,11 +1121,23 @@ const multiWordCommands = {
 'бэкап': async (ctx) => {
   await handleBackupCommand(ctx);
 },
-'банк': async (ctx) => {
-  await bankHandler(ctx);
+'финансы': async (ctx) => {
+  await financeHandler(ctx);
 },
-'🏦 банк': async (ctx) => {
-  await bankHandler(ctx);
+'экономика': async (ctx) => {
+  await financeHandler(ctx);
+},
+'эко': async (ctx) => {
+  await financeHandler(ctx);
+},
+'бизнес': async (ctx) => {
+  await financeHandler(ctx);
+},
+'🏦 финансы': async (ctx) => {
+  await financeHandler(ctx);
+},
+'банк': async (ctx) => {
+  await ctx.reply('Раздел переименован в «Финансы». Введите: финансы/экономика/эко');
 },
 'скины': async (ctx) => {
   await skinShopHandler(ctx);
@@ -1923,42 +1934,7 @@ if (!reportText) {
 // 'give_business': async (ctx) => {
 //   await giveBusinessHandler(ctx); 
 // },
-//   // Команда для полной информации об акциях (техническая)
-//   'npf': async (ctx) => {
-//     await handleNpfInfo(ctx);
-//   },
-//   'акции': async (ctx) => { // Алиас для /npf
-//     await handleNpfInfo(ctx);
-//   },
 
-//   // Команда для покупки акций
-//   'купить_акции': async (ctx) => {
-//     await handleNpfBuyCommand(ctx); // Теперь вызывает функцию из npfShares.js
-//   },
-
-//   // Команда для продажи акций
-//   'продать_акции': async (ctx) => {
-//     await handleNpfSellCommand(ctx); // Теперь вызывает функцию из npfShares.js
-//   },
-
-//   // Команда для просмотра графика (всё время)
-//   'npf_график': async (ctx) => {
-//     await handleShowChart(ctx);
-//   },
-//   'график': async (ctx) => { // Алиас для /npf_график
-//     await handleShowChart(ctx);
-//   },
-
-//   // --- Технические команды для "Тех администратора ---
-//   // Команда для получения детальной информации (только для тех админа)
-//   'npf_tech_info': async (ctx) => {
-//     await handleNpfTechInfo(ctx);
-//   },
-
-//   // Команда для принудительного обновления курса (только для тех админа)
-//   'force_update_course': async (ctx) => {
-//     await handleForceUpdateCourse(ctx);
-//   },
 'конфеты': async (ctx) => {
   const { candyHandler } = require('./Events/Halloween/candy');
   await candyHandler(ctx);
@@ -4213,29 +4189,34 @@ bot.action('card', async (ctx) => {
   }
 });
 
-// Обработчик кнопок курса обмена
-bot.action('exchange_rate', async (ctx) => {
+bot.action('finance_open_card', async (ctx) => {
   if (await checkUserStatus(ctx)) {
     await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleExchangeRate(ctx);
+      await handleFinanceCardAction(ctx);
     });
   }
 });
 
-// Обработчик кнопок финансов
-bot.action('finance', async (ctx) => {
+bot.action('finance_open_bank', async (ctx) => {
   if (await checkUserStatus(ctx)) {
     await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleFinance(ctx);
+      await handleFinanceBankAction(ctx);
     });
   }
 });
 
-// Обработчик кнопок P2P
-bot.action('p2p', async (ctx) => {
+bot.action('finance_open_crypto', async (ctx) => {
   if (await checkUserStatus(ctx)) {
     await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleP2P(ctx);
+      await handleFinanceCryptoAction(ctx);
+    });
+  }
+});
+
+bot.action('finance_open_skin_market', async (ctx) => {
+  if (await checkUserStatus(ctx)) {
+    await handleCallbackWithErrorHandling(ctx, async () => {
+      await handleFinanceSkinMarketAction(ctx);
     });
   }
 });
@@ -4936,69 +4917,69 @@ bot.action('close_energy_info', async (ctx) => {
 });
 
 
-// Кнопка "Построить бизнес" из меню империи
-bot.action('build_menu', async (ctx) => {
-  if (await checkUserStatus(ctx)) {
-    await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleBuildMenu(ctx);
-    });
-  }
-});
+// // Кнопка "Построить бизнес" из меню империи
+// bot.action('build_menu', async (ctx) => {
+//   if (await checkUserStatus(ctx)) {
+//     await handleCallbackWithErrorHandling(ctx, async () => {
+//       await handleBuildMenu(ctx);
+//     });
+//   }
+// });
 
-// Навигация по страницам меню постройки
-bot.action(/build_page_(\d+)/, async (ctx) => {
-  if (await checkUserStatus(ctx)) {
-    await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleBuildPage(ctx);
-    });
-  }
-});
+// // Навигация по страницам меню постройки
+// bot.action(/build_page_(\d+)/, async (ctx) => {
+//   if (await checkUserStatus(ctx)) {
+//     await handleCallbackWithErrorHandling(ctx, async () => {
+//       await handleBuildPage(ctx);
+//     });
+//   }
+// });
 
-// Просмотр информации о бизнесе (и кнопка покупки/улучшения)
-bot.action(/view_business_info_(\d+)/, async (ctx) => {
-  if (await checkUserStatus(ctx)) {
-    await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleViewBusinessInfo(ctx);
-    });
-  }
-});
+// // Просмотр информации о бизнесе (и кнопка покупки/улучшения)
+// bot.action(/view_business_info_(\d+)/, async (ctx) => {
+//   if (await checkUserStatus(ctx)) {
+//     await handleCallbackWithErrorHandling(ctx, async () => {
+//       await handleViewBusinessInfo(ctx);
+//     });
+//   }
+// });
 
-// Показ деталей улучшения
-bot.action(/show_upgrade_details_(\d+)_(\d+)/, async (ctx) => { // (\d+) для businessId, (\d+) для typeId
-  if (await checkUserStatus(ctx)) {
-    await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleShowUpgradeDetails(ctx);
-    });
-  }
-});
+// // Показ деталей улучшения
+// bot.action(/show_upgrade_details_(\d+)_(\d+)/, async (ctx) => { // (\d+) для businessId, (\d+) для typeId
+//   if (await checkUserStatus(ctx)) {
+//     await handleCallbackWithErrorHandling(ctx, async () => {
+//       await handleShowUpgradeDetails(ctx);
+//     });
+//   }
+// });
 
-// Подтверждение покупки бизнеса
-bot.action(/confirm_buy_business_(\d+)/, async (ctx) => {
-  if (await checkUserStatus(ctx)) {
-    await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleConfirmBuyBusiness(ctx);
-    });
-  }
-});
+// // Подтверждение покупки бизнеса
+// bot.action(/confirm_buy_business_(\d+)/, async (ctx) => {
+//   if (await checkUserStatus(ctx)) {
+//     await handleCallbackWithErrorHandling(ctx, async () => {
+//       await handleConfirmBuyBusiness(ctx);
+//     });
+//   }
+// });
 
-// Подтверждение улучшения бизнеса
-bot.action(/confirm_upgrade_business_(\d+)_(\d+)/, async (ctx) => { // (\d+) для businessId, (\d+) для typeId
-  if (await checkUserStatus(ctx)) {
-    await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleConfirmUpgradeBusiness(ctx);
-    });
-  }
-});
+// // Подтверждение улучшения бизнеса
+// bot.action(/confirm_upgrade_business_(\d+)_(\d+)/, async (ctx) => { // (\d+) для businessId, (\d+) для typeId
+//   if (await checkUserStatus(ctx)) {
+//     await handleCallbackWithErrorHandling(ctx, async () => {
+//       await handleConfirmUpgradeBusiness(ctx);
+//     });
+//   }
+// });
 
-// Кнопка "Назад" в меню империи (из меню постройки)
-bot.action('back_to_empire', async (ctx) => {
-  if (await checkUserStatus(ctx)) {
-    await handleCallbackWithErrorHandling(ctx, async () => {
-      // Вызываем напрямую empireHandler
-      await empireHandler(ctx);
-    });
-  }
-});
+// // Кнопка "Назад" в меню империи (из меню постройки)
+// bot.action('back_to_empire', async (ctx) => {
+//   if (await checkUserStatus(ctx)) {
+//     await handleCallbackWithErrorHandling(ctx, async () => {
+//       // Вызываем напрямую empireHandler
+//       await empireHandler(ctx);
+//     });
+//   }
+// });
 
 bot.action('empire_stats', async (ctx) => {
   if (await checkUserStatus(ctx)) {
