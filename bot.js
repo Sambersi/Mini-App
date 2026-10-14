@@ -68,7 +68,8 @@ const { gameModes, handleDoublePlusButton, handleBackToModesButton, handleDiceBu
 const { doubleHandler, handleMultiplierCommand, lastBetTimes } = require('./handlers/double');
 const { addBalanceHandler, removeBalanceHandler, parseAmountWithSuffix, isAdmin, handleNotificationButton, enableNotificationsHandler, disableNotificationsHandler, handleEnableNotificationsButton } = require('./admin/addBalance'); // Из папки admin
 const { helpHandler, handleHelpNavigation } = require('./handlers/help');
-const { registerCardHandler, handleRegisterCardAction, handleCardInfoButton, handleShowAccountLevelGrid, handleUpgradeAccountLevel, cardInfoHandler, handleManageCardButton, performAccountLevelUpgrade, handleBackToCardMenu, handleCloseCardMenu } = require('./handlers/cardInfo');
+const { cardInfoHandler, registerCardHandler, handleRegisterCardAction, handleManageCardButton, handleCardInfoButton, handleBackToCardMenu, handleCloseCardMenu,} = require('./handlers/cardInfo');
+const { showAccountLevelMenu, handleUpgradeAccountLevel, handleShowAccountLevelGrid, performAccountLevelUpgrade,} = require('./handlers/accountLevel');
 const { changeNicknameHandler } = require('./handlers/changeNickname');
 const { forbesHandler } = require('./handlers/top'); // Обработчик "форбс"
 const { referralLinkHandler, topReferralsHandler, referralsListHandler, handleMyReferrals, handleRefInfo, changeReferralBonus, setReferralBonusForAllUsers, handleBackToRefMenu, topSeasonalReferralsHandler, handleContestInfo, handlePartnerInfo } = require('./handlers/referralSystem'); // Реферальная ссылка
@@ -1219,7 +1220,7 @@ const multiWordCommands = {
   await giveHandler(ctx);
 },
 'уровень': async (ctx) => {
-  await handleUpgradeAccountLevel(ctx);
+  await showAccountLevelMenu(ctx);
 },
 // 'конкурс': async (ctx) => {
 //   await handleContestInfo(ctx);
@@ -4140,28 +4141,74 @@ bot.action('close_card_menu', async (ctx) => {
 
 
 // Обработчик кнопки подтверждения повышения уровня
-bot.action(/upgrade_level_confirm_(\d+)/, async (ctx) => {
-  if (await checkUserStatus(ctx)) {
-    await handleCallbackWithErrorHandling(ctx, async () => {
-      const targetLevel = parseInt(ctx.match[1], 10);
+bot.action(/^(?:upgrade_level_confirm|account_level_confirm)_(\d+)$/, async (ctx) => {
+  if (!(await checkUserStatus(ctx))) return;
 
-      if (isNaN(targetLevel) || targetLevel < 1 || targetLevel > 20) {
-        await ctx.reply('❌ Некорректный уровень для повышения.');
-        await ctx.answerCbQuery();
-        return;
-      }
+  const targetLevel = Number(ctx.match[1]);
 
-      await performAccountLevelUpgrade(ctx, targetLevel);
-    });
+  if (!Number.isInteger(targetLevel) || targetLevel < 1 || targetLevel > 20) {
+    try {
+      await ctx.answerCbQuery('❌ Некорректный уровень для повышения.');
+    } catch (error) {
+      console.warn('[LEVEL] Не удалось ответить на callback:', error.message);
+    }
+
+    return;
+  }
+
+  try {
+    await performAccountLevelUpgrade(ctx, targetLevel);
+  } catch (error) {
+    console.error('[LEVEL] Ошибка подтверждения повышения уровня:', error);
+
+    try {
+      await ctx.reply('❌ Произошла ошибка при повышении уровня. Попробуйте позже.');
+    } catch (replyError) {
+      console.error('[LEVEL] Не удалось отправить сообщение об ошибке:', replyError);
+    }
   }
 });
 
 // Обработчик кнопки "Сетка прокачки"
-bot.action('show_upgrade_grid', async (ctx) => {
-  if (await checkUserStatus(ctx)) {
-    await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleShowAccountLevelGrid(ctx);
-    });
+bot.action(/^(?:show_upgrade_grid|account_level_grid)$/, async (ctx) => {
+  if (!(await checkUserStatus(ctx))) return;
+
+  try {
+    await handleShowAccountLevelGrid(ctx);
+  } catch (error) {
+    console.error('[LEVEL] Ошибка открытия сетки прокачки:', error);
+
+    try {
+      await ctx.reply('❌ Не удалось открыть сетку прокачки. Попробуйте позже.');
+    } catch (replyError) {
+      console.error('[LEVEL] Не удалось отправить сообщение об ошибке:', replyError);
+    }
+  }
+});
+
+// Обработчик кнопки "Назад к уровню"
+bot.action('account_level_menu', async (ctx) => {
+  if (!(await checkUserStatus(ctx))) return;
+
+  try {
+    await handleUpgradeAccountLevel(ctx);
+  } catch (error) {
+    console.error('[LEVEL] Ошибка открытия меню уровня:', error);
+
+    try {
+      await ctx.reply('❌ Не удалось открыть меню уровня. Попробуйте позже.');
+    } catch (replyError) {
+      console.error('[LEVEL] Не удалось отправить сообщение об ошибке:', replyError);
+    }
+  }
+});
+
+// Обработчик кнопки "Недостаточно средств"
+bot.action('account_level_noop', async (ctx) => {
+  try {
+    await ctx.answerCbQuery('❌ Недостаточно средств для повышения уровня.');
+  } catch (error) {
+    console.warn('[LEVEL] Не удалось ответить на noop callback:', error.message);
   }
 });
 
