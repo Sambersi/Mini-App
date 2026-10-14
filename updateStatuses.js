@@ -15,10 +15,8 @@ const allStatuses = [
   { name: 'Beto-tester', priority: 1 },
 ];
 
-// Функция для обновления статусов в базе данных
 async function updateStatuses() {
   try {
-    // Получаем список всех существующих статусов
     const existingStatuses = await getAllStatuses();
     const existingStatusMap = new Map();
     existingStatuses.forEach((status) => {
@@ -32,15 +30,15 @@ async function updateStatuses() {
       const existing = existingStatusMap.get(status.name.toLowerCase());
 
       if (!existing) {
-        // Статус отсутствует — создаём
         const result = await createStatus(status.name, status.priority);
         if (result.success) {
           statusesUpdated = true;
           console.log(`[STATUSES] Добавлен новый статус: ${status.name} (приоритет: ${status.priority})`);
         }
       } else if (existing.priority !== status.priority) {
-        // Статус существует, но приоритет отличается — обновляем
         try {
+          // Импортируем db ВНУТРИ функции, чтобы он был уже инициализирован
+          const { db } = require('./db');
           db.prepare('UPDATE statuses SET priority = ? WHERE id = ?').run(status.priority, existing.id);
           prioritiesUpdated = true;
           console.log(`[STATUSES] Обновлён приоритет статуса "${status.name}": ${existing.priority} → ${status.priority}`);
@@ -56,7 +54,7 @@ async function updateStatuses() {
       console.log('[STATUSES] Все статусы уже актуальны. Обновление не требуется.');
     }
   } catch (error) {
-    console.error('Ошибка при обновлении статусов:', error);
+    console.error('[STATUSES] Ошибка при обновлении статусов:', error.message);
   }
 }
 
