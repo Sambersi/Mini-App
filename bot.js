@@ -201,7 +201,7 @@ if (useProxy) {
 const botOptions = {
   telegram: {
     apiRoot: 'https://api.telegram.org',
-    timeout: 30,        // ← было 10 по умолчанию, ставим 30 секунд
+    timeout: 30,        // увеличенный таймаут
     agent: agent || undefined,
   },
   handlerTimeout: 30000, // 30 секунд на обработку одного апдейта
@@ -5214,12 +5214,21 @@ bot.action(/^adminreqs_.*/, handleAdminRequestCallback);
 setupGlobalErrorHandler(bot);
 
 // ─────────────────────────────────────────────────────────────
-// Уведомление о запуске бота
+// Уведомление о запуске бота (с ретраями и fallback ID)
 // ─────────────────────────────────────────────────────────────
 async function sendStartupNotification(bot) {
-  const MAIN_ADMIN_ID = process.env.MAIN_ADMIN;
-  if (!MAIN_ADMIN_ID || !bot?.telegram) {
-    console.error('[NOTIFY] MAIN_ADMIN или bot.telegram недоступны — уведомление пропущено.');
+  console.log('[NOTIFY] Начинаю sendStartupNotification...');
+
+  // Fallback на твой ID если MAIN_ADMIN не задан
+  const MAIN_ADMIN_ID = process.env.MAIN_ADMIN || '768451950';
+  console.log(`[NOTIFY] Целевой ID админа: ${MAIN_ADMIN_ID}`);
+
+  if (!MAIN_ADMIN_ID) {
+    console.error('[NOTIFY] ❌ MAIN_ADMIN не задан и fallback не сработал');
+    return;
+  }
+  if (!bot?.telegram) {
+    console.error('[NOTIFY] ❌ bot.telegram недоступен');
     return;
   }
 
@@ -5232,22 +5241,28 @@ async function sendStartupNotification(bot) {
     `⚙️ <b>Node.js:</b> ${process.version}\n` +
     `🕐 <b>Время:</b> ${formatMoscowTime()}`;
 
-  // Ретраи: 3 попытки с паузами 3с, 6с, 12с
+  console.log('[NOTIFY] Пытаюсь отправить сообщение...');
+
+  // Ретраи: 4 попытки с паузами 0с, 3с, 6с, 12с
   const delays = [0, 3000, 6000, 12000];
   for (let attempt = 0; attempt < delays.length; attempt++) {
     if (delays[attempt] > 0) {
-      console.log(`[NOTIFY] Пауза ${delays[attempt] / 1000}с перед попыткой ${attempt + 1}...`);
+      console.log(`[NOTIFY] ⏸️ Пауза ${delays[attempt] / 1000}с перед попыткой ${attempt + 1}...`);
       await new Promise(r => setTimeout(r, delays[attempt]));
     }
     try {
+      console.log(`[NOTIFY] Попытка ${attempt + 1}/${delays.length}: отправляю сообщение...`);
       await bot.telegram.sendMessage(MAIN_ADMIN_ID, text, { parse_mode: 'HTML' });
-      console.log(`[NOTIFY] ✅ Уведомление о запуске отправлено (попытка ${attempt + 1}).`);
-      return; // Успех — выходим
+      console.log(`[NOTIFY] ✅ Успех! Уведомление отправлено (попытка ${attempt + 1}).`);
+      return;
     } catch (e) {
-      console.error(`[NOTIFY] ❌ Попытка ${attempt + 1} не удалась: ${e.message || e.code || e}`);
+      console.error(`[NOTIFY] ❌ Попытка ${attempt + 1} не удалась:`);
+      console.error(`[NOTIFY]    Сообщение: ${e.message || 'нет сообщения'}`);
+      console.error(`[NOTIFY]    Код: ${e.code || 'нет кода'}`);
+      console.error(`[NOTIFY]    Описание: ${e.description || 'нет описания'}`);
     }
   }
-  console.error('[NOTIFY] Все попытки отправки уведомления о запуске провалились.');
+  console.error('[NOTIFY] ❌❌❌ Все 4 попытки провалились. Уведомление НЕ отправлено.');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -5301,12 +5316,10 @@ bot.launch()
     console.log('[BOT] ✅ bot.launch() успешно завершён!');
     console.log('[BOT] Бот слушает обновления от Telegram.');
 
-    // СНАЧАЛА уведомление админу
-    console.log('[BOT] Пытаюсь отправить уведомление о запуске...');
+    // 1. СНАЧАЛА уведомление админу
     await sendStartupNotification(bot);
 
-    // ПОТОМ все фоновые задачи (раньше они были ДО bot.launch и могли мешать)
-    console.log('[BOT] Запускаю фоновые задачи...');
+    // 2. ПОТОМ плановые задачи
     try {
       scheduleDailyBackup();
       console.log('[BOT] ✅ scheduleDailyBackup запущен');
