@@ -68,26 +68,14 @@ const { gameModes, handleDoublePlusButton, handleBackToModesButton, handleDiceBu
 const { doubleHandler, handleMultiplierCommand, lastBetTimes } = require('./handlers/double');
 const { addBalanceHandler, removeBalanceHandler, parseAmountWithSuffix, isAdmin, handleNotificationButton, enableNotificationsHandler, disableNotificationsHandler, handleEnableNotificationsButton } = require('./admin/addBalance'); // Из папки admin
 const { helpHandler, handleHelpNavigation } = require('./handlers/help');
-const { registerCardHandler, handleRegisterCardAction, handleCardInfoButton, handleShowUpgradeGrid, handleUpgradeCardLevel, cardInfoHandler, handleManageCardButton, performLevelUpgrade } = require('./handlers/cardInfo');
+const { registerCardHandler, handleRegisterCardAction, handleCardInfoButton, handleShowAccountLevelGrid, handleUpgradeAccountLevel, cardInfoHandler, handleManageCardButton, performAccountLevelUpgrade, handleBackToCardMenu, handleCloseCardMenu } = require('./handlers/cardInfo');
 const { changeNicknameHandler } = require('./handlers/changeNickname');
 const { forbesHandler } = require('./handlers/top'); // Обработчик "форбс"
 const { referralLinkHandler, topReferralsHandler, referralsListHandler, handleMyReferrals, handleRefInfo, changeReferralBonus, setReferralBonusForAllUsers, handleBackToRefMenu, topSeasonalReferralsHandler, handleContestInfo, handlePartnerInfo } = require('./handlers/referralSystem'); // Реферальная ссылка
-const { showAdminPanel, handleListAdmins, handleAdminCommands, handleClosePanel, isTechAdmin,  handleTechAdminPanelButton,
-  handleBackToAdminPanel } = require('./admin/adminPanel');
-const {handleTechAdminCallback, handleTechAdminMessage } = require('./admin/techAdminPanel');
-  
-const { 
-  startPromoCreationSession, 
-  handlePromoPostMessage,
-  handlePromoPostCallback,
-  listPromosHandler, 
-  deletePromoHandler, 
-  usePromoHandler 
-} = require('./handlers/promoHandler');
-const { 
-  showPartnerMenu, handlePartnerMessage, handlePartnerCallback, 
-  handleAdminRequestCallback, showAdminRequestsMenu, openAdminRequestById 
-} = require('./partnerSystem');
+const { showAdminPanel, handleListAdmins, handleAdminCommands, handleClosePanel, isTechAdmin,  handleTechAdminPanelButton, handleBackToAdminPanel } = require('./admin/adminPanel');
+const { handleTechAdminCallback, handleTechAdminMessage } = require('./admin/techAdminPanel');
+const { startPromoCreationSession,  handlePromoPostMessage, handlePromoPostCallback, listPromosHandler,  deletePromoHandler,  usePromoHandler } = require('./handlers/promoHandler');
+const { showPartnerMenu, handlePartnerMessage, handlePartnerCallback, handleAdminRequestCallback, showAdminRequestsMenu, openAdminRequestById } = require('./partnerSystem');
 const { listBannedPlayersHandler, startAutoUnban, isAdmin_ban } = require('./admin/blacklistManagement');
 const { buyContainerHandler, containersHandler, setupContainerHandlers, sendContainerInfoMessage } = require('./handlers/buyContainer');
 const { openContainerHandler } = require('./handlers/openContainer');
@@ -1231,7 +1219,7 @@ const multiWordCommands = {
   await giveHandler(ctx);
 },
 'уровень': async (ctx) => {
-  await handleUpgradeCardLevel(ctx);
+  await handleUpgradeAccountLevel(ctx);
 },
 // 'конкурс': async (ctx) => {
 //   await handleContestInfo(ctx);
@@ -4107,6 +4095,29 @@ bot.action('back_to_card_menu', async (ctx) => {
   }
 });
 
+bot.action('finance_menu', async (ctx) => {
+  if (await checkUserStatus(ctx)) {
+    await handleCallbackWithErrorHandling(ctx, async () => {
+      try {
+        await ctx.answerCbQuery();
+      } catch (error) {
+        console.error('[FINANCE] Не удалось подтвердить нажатие кнопки:', error);
+      }
+
+      const messageId = ctx.callbackQuery?.message?.message_id;
+
+      if (messageId) {
+        try {
+          await ctx.deleteMessage(messageId);
+        } catch (error) {
+          console.error('[FINANCE] Не удалось удалить сообщение с картой:', error);
+        }
+      }
+
+      await financeHandler(ctx);
+    });
+  }
+});
 
 // Обработчик кнопки "Закрыть меню карты"
 bot.action('close_card_menu', async (ctx) => {
@@ -4128,21 +4139,17 @@ bot.action('close_card_menu', async (ctx) => {
 });
 
 
-//Обработчик кнопки "Назад" из сетки прокачки (возврат к меню прокачки)
-bot.action('upgrade_card_level', async (ctx) => {
-  if (await checkUserStatus(ctx)) {
-    await handleCallbackWithErrorHandling(ctx, async () => {
-      await handleUpgradeAccountLevel(ctx);
-    });
-  }
-});
-
 // Обработчик кнопки подтверждения повышения уровня
 bot.action(/upgrade_level_confirm_(\d+)/, async (ctx) => {
   if (await checkUserStatus(ctx)) {
     await handleCallbackWithErrorHandling(ctx, async () => {
-      const match = ctx.callbackQuery.data.match(/upgrade_level_confirm_(\d+)/);
-      const targetLevel = Number(match[1]);
+      const targetLevel = parseInt(ctx.match[1], 10);
+
+      if (isNaN(targetLevel) || targetLevel < 1 || targetLevel > 20) {
+        await ctx.reply('❌ Некорректный уровень для повышения.');
+        await ctx.answerCbQuery();
+        return;
+      }
 
       await performAccountLevelUpgrade(ctx, targetLevel);
     });

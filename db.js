@@ -2258,7 +2258,7 @@ function updateCardBalance(userId, amountChange) {
     // 1. Получаем уровень карты пользователя
     const levelStmt = db.prepare('SELECT account_level FROM users WHERE id = ?');
     const levelResult = levelStmt.get(userId.toString());
-    const userAccountLevel = levelResult?.card_level || 1; // По умолчанию уровень 1
+    const userAccountLevel = levelResult?.account_level || 1; // По умолчанию уровень 1
 
     // 2. Получаем лимит для этого уровня
     const cardLimit = getCardLimitByLevel(userAccountLevel);
