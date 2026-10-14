@@ -7,40 +7,6 @@ const path = require('path');
 const dbPath = path.join(__dirname, 'database.sqlite');
 const db = new sqlite3(dbPath);
 
-
-function migrateCardLevelToAccountLevel() {
-  try {
-    const columns = db.prepare('PRAGMA table_info(users)').all();
-
-    const hasCardLevel = columns.some((column) => column.name === 'card_level');
-    const hasAccountLevel = columns.some((column) => column.name === 'account_level');
-
-    if (hasCardLevel && !hasAccountLevel) {
-      db.exec('ALTER TABLE users RENAME COLUMN card_level TO account_level');
-      console.log('[DB] users.card_level переименован в users.account_level');
-    }
-  } catch (error) {
-    console.error('[DB] Не удалось переименовать card_level. Пробую запасной вариант:', error.message);
-
-    try {
-      const columns = db.prepare('PRAGMA table_info(users)').all();
-
-      const hasCardLevel = columns.some((column) => column.name === 'card_level');
-      const hasAccountLevel = columns.some((column) => column.name === 'account_level');
-
-      if (hasCardLevel && !hasAccountLevel) {
-        db.exec('ALTER TABLE users ADD COLUMN account_level INTEGER DEFAULT 1');
-        db.exec('UPDATE users SET account_level = card_level');
-        console.log('[DB] Добавлена колонка account_level, данные скопированы из card_level');
-      }
-    } catch (fallbackError) {
-      console.error('[DB] Запасная миграция тоже не удалась:', fallbackError);
-    }
-  }
-}
-
-migrateCardLevelToAccountLevel();
-
 db.prepare(`
   CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,                  -- Уникальный ID пользователя (Telegram ID)
@@ -1059,14 +1025,13 @@ function updateUserBalance(userId, balanceChange) {
 
     if (user) {
       // 2. Получаем уровень карты пользователя для определения лимита основного баланса
-      // Предполагается, что функция getCardLevel доступна
-      const userCardLevel = getCardLevel(userId); 
+      const userAccountLevel = getAccountLevel(userId); 
 
       // 3. Определяем лимит основного баланса на основе уровня карты
       let mainBalanceLimit = 140000000; // Базовый лимит
-      if (userCardLevel >= 10) mainBalanceLimit = 175000000; // Уровень 10
-      if (userCardLevel >= 15) mainBalanceLimit = 185000000; // Уровень 15
-      if (userCardLevel >= 20) mainBalanceLimit = 200000000; // Уровень 20
+      if (userAccountLevel >= 10) mainBalanceLimit = 175000000; // Уровень 10
+      if (userAccountLevel >= 15) mainBalanceLimit = 185000000; // Уровень 15
+      if (userAccountLevel >= 20) mainBalanceLimit = 200000000; // Уровень 20
 
       // 4. Рассчитываем новый баланс
       const newBalanceRaw = user.balance + balanceChange;
@@ -2261,7 +2226,7 @@ function updateCardBalance(userId, amountChange) {
     const userAccountLevel = levelResult?.account_level || 1; // По умолчанию уровень 1
 
     // 2. Получаем лимит для этого уровня
-    const cardLimit = getCardLimitByLevel(userAccountLevel);
+    const cardLimit = getCardLimitByAccountLevel(userAccountLevel);
 
     // 3. Получаем текущий баланс карты
     const balanceStmt = db.prepare('SELECT card_balance FROM users WHERE id = ?');
@@ -4371,7 +4336,7 @@ function setAccountLevelByNumericId(numericId, newLevel) {
     // Проверяем, что newLevel - допустимое число (например, от 1 до 20)
     const level = parseInt(newLevel, 10);
     if (isNaN(level) || level < 1 || level > 20) {
-      console.error(`[DB] setCardLevelByNumericId: Некорректный уровень ${newLevel} для numeric_id ${numericId}`);
+      console.error(`[DB] setAccountLevelByNumericId: Некорректный уровень ${newLevel} для numeric_id ${numericId}`);
       return { success: false, message: 'Некорректный уровень. Допустимые значения: 1-20.' };
     }
 
@@ -4382,7 +4347,7 @@ function setAccountLevelByNumericId(numericId, newLevel) {
       console.log(`[DB] Уровень пользователя с numeric_id ${numericId} успешно установлен на ${level}.`);
       return { success: true, message: `Уровень  успешно установлен на ${level}.` };
     } else {
-      console.warn(`[DB] setCardLevelByNumericId: Пользователь с numeric_id ${numericId} не найден.`);
+      console.warn(`[DB] setAccountLevelByNumericId: Пользователь с numeric_id ${numericId} не найден.`);
       return { success: false, message: 'Пользователь с указанным NUMERIC_ID не найден.' };
     }
   } catch (error) {
