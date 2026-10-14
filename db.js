@@ -176,14 +176,14 @@ try {
   if (!e.message.includes('duplicate column')) console.error('[DB] Migration request_type:', e.message);
 }
 
-// Сброс индивидуальных referral_bonus_amount — всем одинаковый из конфига
-try {
-  const { REFERRAL_BONUS_REFERRER_PF } = require('./config');
-  db.prepare('UPDATE users SET referral_bonus_amount = ?').run(REFERRAL_BONUS_REFERRER_PF);
-  console.log(`[DB] Migration: reset all referral_bonus_amount to ${REFERRAL_BONUS_REFERRER_PF}`);
-} catch (e) {
-  console.error('[DB] Migration reset referral_bonus_amount:', e.message);
-}
+// // Сброс индивидуальных referral_bonus_amount — всем одинаковый из конфига
+// try {
+//   const { REFERRAL_BONUS_REFERRER_PF } = require('./config');
+//   db.prepare('UPDATE users SET referral_bonus_amount = ?').run(REFERRAL_BONUS_REFERRER_PF);
+//   console.log(`[DB] Migration: reset all referral_bonus_amount to ${REFERRAL_BONUS_REFERRER_PF}`);
+// } catch (e) {
+//   console.error('[DB] Migration reset referral_bonus_amount:', e.message);
+// }
 // ========== КОНЕЦ МИГРАЦИЙ ==========
 
 // Функция для обновления ника пользователя
@@ -946,7 +946,8 @@ function createUserOrUpdate(user) {
       user.referrer_id || null, // Реферальный ID
       Date.now() / 1000, // Дата регистрации (текущее время в Unix-формате)
       user.referral_join_date || Math.floor(Date.now() / 1000), // Дата перехода по реферальной ссылке
-      user.referral_bonus_amount || 30000, // Сумма бонуса за реферала
+// Стало:
+user.referral_bonus_amount || REFERRAL_BONUS_REFERRER_PF, // Сумма бонуса за реферала из конфига
       1 // ID кулака (по умолчанию активное оружие)
     );
   }
