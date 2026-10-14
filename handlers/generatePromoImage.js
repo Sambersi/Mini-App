@@ -299,9 +299,34 @@ async function generatePromoTestImage(templateKey = 'default', sample = {}) {
   return outputPath;
 }
 
+// Удаление изображений промокодов, которых больше нет в БД
+function cleanupOrphanPromoImages() {
+  try {
+    const { getAllPromos } = require('../db');
+    if (!fs.existsSync(promoImagesDir)) return 0;
+    const aliveNames = new Set(getAllPromos().map(p => p.name));
+    let deleted = 0;
+    for (const file of fs.readdirSync(promoImagesDir)) {
+      if (!file.endsWith('_promo.png')) continue; // трогаем только файлы нашего формата
+      const name = file.slice(0, -'_promo.png'.length);
+      if (!aliveNames.has(name)) {
+        fs.unlinkSync(path.join(promoImagesDir, file));
+        deleted++;
+      }
+    }
+    if (deleted > 0) console.log(`[IMG] Очищено старых изображений промо: ${deleted}`);
+    return deleted;
+  } catch (e) {
+    console.error('[IMG CLEANUP ERROR]', e.message);
+    return 0;
+  }
+}
+
+
 module.exports = { 
   generatePromoImage, 
   generatePromoTestImage, 
+  cleanupOrphanPromoImages,
   TEXT_COORDS_DEFAULT,
   TEXT_COORDS_FAT,
   TEXT_COORDS_DEFAULT_TIME,

@@ -134,13 +134,15 @@ const { fortyTwoHandler } = require('./handlers/fortyTwo.js')
 const { empireHandler, empireStatisticsHandler } = require('./empire/handlers/empireHandler');
 const { handleBuildMenu, handleBuildPage, handleViewBusinessInfo, handleShowUpgradeDetails, handleConfirmBuyBusiness, handleConfirmUpgradeBusiness } = require('./empire/handlers/buildHandlers');
 const { giveBusinessHandler } = require('./empire/handlers/adminCommandsHandler');
-const { handleNpfBuyCommand, handleNpfSellCommand, handleShowChart, handleNpfInfo, loadCourseState, startCourseUpdater } = require('./bank/npfShares');
+const { handleNpfBuyCommand, handleNpfSellCommand, handleShowChart, handleNpfInfo } = require('./bank/npfShares');
 const { handleNpfTechInfo, handleForceUpdateCourse } = require('./bank/bankTechCommands');
 const { candyShopMenu, buyPfWithCandy, buyFortuneTicket, buyGoldContainers } = require('./Events/Halloween/candyShop');
 const { showSecretGiftMenu, openSecretGift, closeSecretGiftMenu } = require('./Events/secretGift');
 const { handleTestCommand, handleTestButton, handleConfirmAction } = require('./handlers/testHandler');
 const { sendErrorNotification, formatMoscowTime } = require('./utils/errorNotifier');
 const { sequentialMiddleware, startSequentialInput, handleCancel } = require('./handlers/sequentialInput');
+const { cleanupOrphanPromoImages } = require('./handlers/generatePromoImage');
+
 
 // Функция для отправки сообщения с кнопкой Mini App
 async function sendMiniAppMessage(ctx) {
@@ -197,9 +199,12 @@ if (useProxy) {
 
 // Создаем бота
 const botOptions = {
-    telegram: {
-        apiRoot: 'https://api.telegram.org',
-    }
+  telegram: {
+    apiRoot: 'https://api.telegram.org',
+    timeout: 30,        // ← было 10 по умолчанию, ставим 30 секунд
+    agent: agent || undefined,
+  },
+  handlerTimeout: 30000, // 30 секунд на обработку одного апдейта
 };
 
 if (agent) {
@@ -225,6 +230,10 @@ diceGame.init(bot);
 const { runLogsCleanup } = require('./db');
 runLogsCleanup();                            // один раз при старте
 setInterval(runLogsCleanup, 60 * 60 * 1000); // далее каждый час
+
+cleanupOrphanPromoImages();                            // один раз при старте
+setInterval(cleanupOrphanPromoImages, 60 * 60 * 1000); // далее каждый час
+
 
 // Фоновая задача для мониторинга нагрузки
 setInterval(() => {
@@ -5209,7 +5218,10 @@ setupGlobalErrorHandler(bot);
 // ─────────────────────────────────────────────────────────────
 async function sendStartupNotification(bot) {
   const MAIN_ADMIN_ID = process.env.MAIN_ADMIN;
-  if (!MAIN_ADMIN_ID || !bot?.telegram) return;
+  if (!MAIN_ADMIN_ID || !bot?.telegram) {
+    console.error('[NOTIFY] MAIN_ADMIN или bot.telegram недоступны — уведомление пропущено.');
+    return;
+  }
 
   const isProduction = process.platform === 'linux';
   const env = isProduction ? '🟢 PRODUCTION (Linux)' : '🟡 DEVELOPMENT (Windows)';
@@ -5220,12 +5232,22 @@ async function sendStartupNotification(bot) {
     `⚙️ <b>Node.js:</b> ${process.version}\n` +
     `🕐 <b>Время:</b> ${formatMoscowTime()}`;
 
-  try {
-    await bot.telegram.sendMessage(MAIN_ADMIN_ID, text, { parse_mode: 'HTML' });
-    console.log('[NOTIFY] Уведомление о запуске отправлено.');
-  } catch (e) {
-    console.warn('[NOTIFY] Не удалось отправить уведомление о запуске:', e.message);
+  // Ретраи: 3 попытки с паузами 3с, 6с, 12с
+  const delays = [0, 3000, 6000, 12000];
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) {
+      console.log(`[NOTIFY] Пауза ${delays[attempt] / 1000}с перед попыткой ${attempt + 1}...`);
+      await new Promise(r => setTimeout(r, delays[attempt]));
+    }
+    try {
+      await bot.telegram.sendMessage(MAIN_ADMIN_ID, text, { parse_mode: 'HTML' });
+      console.log(`[NOTIFY] ✅ Уведомление о запуске отправлено (попытка ${attempt + 1}).`);
+      return; // Успех — выходим
+    } catch (e) {
+      console.error(`[NOTIFY] ❌ Попытка ${attempt + 1} не удалась: ${e.message || e.code || e}`);
+    }
   }
+  console.error('[NOTIFY] Все попытки отправки уведомления о запуске провалились.');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -5275,8 +5297,14 @@ process.on('unhandledRejection', async (reason) => {
 bot.launch()
   .then(async () => {
     console.log('[BOT] Успешно запущен и слушает обновления!');
-    await sendStartupNotification(bot); // ← ПЕРВЫМ делом
+
+    // СНАЧАЛА уведомление админу — оно самое важное
+    await sendStartupNotification(bot);
+
+    // ПОТОМ всё остальное
     scheduleDailyBackup();
+    startAutoUnmute(bot);    // ← перенесено сюда
+    startAutoUnban(bot);     // ← перенесено сюда
   })
   .catch((error) => {
     console.error('❌ Ошибка при запуске бота:', error);
