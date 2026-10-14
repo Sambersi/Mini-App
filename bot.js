@@ -5294,17 +5294,41 @@ process.on('unhandledRejection', async (reason) => {
 // ─────────────────────────────────────────────────────────────
 // Запуск бота + уведомление админу
 // ─────────────────────────────────────────────────────────────
+console.log('[BOT] Начинаю запуск bot.launch()...');
+
 bot.launch()
   .then(async () => {
-    console.log('[BOT] Успешно запущен и слушает обновления!');
+    console.log('[BOT] ✅ bot.launch() успешно завершён!');
+    console.log('[BOT] Бот слушает обновления от Telegram.');
 
-    // СНАЧАЛА уведомление админу — оно самое важное
+    // СНАЧАЛА уведомление админу
+    console.log('[BOT] Пытаюсь отправить уведомление о запуске...');
     await sendStartupNotification(bot);
 
-    // ПОТОМ всё остальное
-    scheduleDailyBackup();
-    startAutoUnmute(bot);    // ← перенесено сюда
-    startAutoUnban(bot);     // ← перенесено сюда
+    // ПОТОМ все фоновые задачи (раньше они были ДО bot.launch и могли мешать)
+    console.log('[BOT] Запускаю фоновые задачи...');
+    try {
+      scheduleDailyBackup();
+      console.log('[BOT] ✅ scheduleDailyBackup запущен');
+    } catch (e) {
+      console.error('[BOT] ❌ Ошибка scheduleDailyBackup:', e.message);
+    }
+
+    try {
+      startAutoUnmute(bot);
+      console.log('[BOT] ✅ startAutoUnmute запущен');
+    } catch (e) {
+      console.error('[BOT] ❌ Ошибка startAutoUnmute:', e.message);
+    }
+
+    try {
+      startAutoUnban(bot);
+      console.log('[BOT] ✅ startAutoUnban запущен');
+    } catch (e) {
+      console.error('[BOT] ❌ Ошибка startAutoUnban:', e.message);
+    }
+
+    console.log('[BOT] 🎉 Все системы запущены!');
   })
   .catch((error) => {
     console.error('❌ Ошибка при запуске бота:', error);
