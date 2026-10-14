@@ -6572,6 +6572,15 @@ function cleanupDiceLogs(maxAgeDays = 90) {
   }
 }
 
+function updateStatusPriority(name, priority) {
+  try {
+      const result = db.prepare('UPDATE statuses SET priority = ? WHERE name = ?').run(priority, name);
+      return { success: true, changes: result.changes };
+  } catch (err) {
+      return { success: false, error: err.message };
+  }
+}
+
 
 // Экспортируем функции
 module.exports = {
@@ -6860,5 +6869,6 @@ module.exports = {
   getPendingPartnerRequests, getFinishedPartnerRequests,
   logDiceRound, logDiceBet, finishDiceRoundLog, updateDiceBetResult, getLastDiceBetsInChat, cleanupDiceLogs,
   runLogsCleanup,
+  updateStatusPriority,
   
 };

@@ -1,70 +1,62 @@
 // updateStatuses.js
-const { createStatus, getAllStatuses } = require('./db');
+const { createStatus, getAllStatuses, updateStatusPriority } = require('./db');
 
 // Список всех возможных статусов с приоритетами от 1 до 10
 const allStatuses = [
-  { name: 'Тех администратор', priority: 10 },
-  { name: 'Главный админ', priority: 9 },
-  { name: 'Руководитель партнёрки', priority: 8 },
-  { name: 'Администратор', priority: 7 },
-  { name: 'Модератор', priority: 6 },
-  { name: 'DIAMOND', priority: 5 },
-  { name: 'PLATINUM', priority: 4 },
-  { name: 'GOLD', priority: 3 },
-  { name: 'Партнёр', priority: 2 },
-  { name: 'Beto-tester', priority: 1 },
+    { name: 'Тех администратор', priority: 10 },
+    { name: 'Главный админ', priority: 9 },
+    { name: 'Руководитель партнёрки', priority: 8 },
+    { name: 'Администратор', priority: 7 },
+    { name: 'Модератор', priority: 6 },
+    { name: 'DIAMOND', priority: 5 },
+    { name: 'PLATINUM', priority: 4 },
+    { name: 'GOLD', priority: 3 },
+    { name: 'Партнёр', priority: 2 },
+    { name: 'Beto-tester', priority: 1 },
 ];
 
 async function updateStatuses() {
-  try {
-    // Импортируем db ВНУТРИ функции, чтобы он был уже инициализирован
-    const { db } = require('./db');
-    
-    if (!db) {
-      console.error('[STATUSES] ❌ База данных не инициализирована');
-      return;
-    }
+    try {
+        const existingStatuses = await getAllStatuses();
+        const existingStatusMap = new Map();
+        existingStatuses.forEach((status) => {
+            existingStatusMap.set(status.name.toLowerCase(), status);
+        });
 
-    const existingStatuses = await getAllStatuses();
-    const existingStatusMap = new Map();
-    existingStatuses.forEach((status) => {
-      existingStatusMap.set(status.name.toLowerCase(), status);
-    });
+        let statusesUpdated = false;
+        let prioritiesUpdated = false;
 
-    let statusesUpdated = false;
-    let prioritiesUpdated = false;
+        for (const status of allStatuses) {
+            const existing = existingStatusMap.get(status.name.toLowerCase());
 
-    for (const status of allStatuses) {
-      const existing = existingStatusMap.get(status.name.toLowerCase());
-
-      if (!existing) {
-        const result = await createStatus(status.name, status.priority);
-        if (result.success) {
-          statusesUpdated = true;
-          console.log(`[STATUSES] Добавлен новый статус: ${status.name} (приоритет: ${status.priority})`);
+            if (!existing) {
+                const result = await createStatus(status.name, status.priority);
+                if (result.success) {
+                    statusesUpdated = true;
+                    console.log(`[STATUSES] Добавлен новый статус: ${status.name} (приоритет: ${status.priority})`);
+                }
+            } else if (existing.priority !== status.priority) {
+                const result = updateStatusPriority(status.name, status.priority);
+                if (result.success) {
+                    prioritiesUpdated = true;
+                    console.log(`[STATUSES] Обновлён приоритет статуса "${status.name}": ${existing.priority} → ${status.priority}`);
+                } else {
+                    console.error(`[STATUSES] Ошибка обновления приоритета "${status.name}":`, result.error);
+                }
+            }
         }
-      } else if (existing.priority !== status.priority) {
-        try {
-          db.prepare('UPDATE statuses SET priority = ? WHERE id = ?').run(status.priority, existing.id);
-          prioritiesUpdated = true;
-          console.log(`[STATUSES] Обновлён приоритет статуса "${status.name}": ${existing.priority} → ${status.priority}`);
-        } catch (err) {
-          console.error(`[STATUSES] Ошибка обновления приоритета "${status.name}":`, err.message);
-        }
-      }
-    }
 
-    if (statusesUpdated || prioritiesUpdated) {
-      console.log('[STATUSES] Статусы успешно обновлены.');
-    } else {
-      console.log('[STATUSES] Все статусы уже актуальны. Обновление не требуется.');
+        if (statusesUpdated || prioritiesUpdated) {
+            console.log('[STATUSES] Статусы успешно обновлены.');
+        } else {
+            console.log('[STATUSES] Все статусы уже актуальны. Обновление не требуется.');
+        }
+    } catch (error) {
+        console.error('[STATUSES] Ошибка при обновлении статусов:', error.message);
     }
-  } catch (error) {
-    console.error('[STATUSES] Ошибка при обновлении статусов:', error.message);
-  }
 }
 
 module.exports = {
-  updateStatuses,
-  allStatuses,
+    updateStatuses,
+    allStatuses,
 };

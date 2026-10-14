@@ -181,30 +181,34 @@ async function sendMiniAppMessage(ctx) {
 // === НАСТРОЙКА ПРОКСИ ===
 let agent = null;
 
-// Прокси используется ТОЛЬКО если переменная окружения USE_PROXY строго равна 'true'
-const useProxy = process.env.USE_PROXY === 'true';
+// Прокси только на Windows И только если явно указано true
+const useProxy = process.env.USE_PROXY === 'true' && process.platform === 'win32';
 
 if (useProxy) {
     try {
-        const { SocksProxyAgent } = require('socks-proxy-agent');
-        const proxyUrl = process.env.PROXY_URL || 'socks5://127.0.0.1:10808';
-        agent = new SocksProxyAgent(proxyUrl);
-        console.log(`[BOT] Используется прокси: ${proxyUrl}`);
+        const proxyUrl = process.env.PROXY_URL;
+        // Валидация: URL должен быть непустым и содержать протокол
+        if (!proxyUrl || !proxyUrl.includes('://')) {
+            console.log('[BOT] PROXY_URL невалидный или пустой, работаем без прокси.');
+        } else {
+            const { SocksProxyAgent } = require('socks-proxy-agent');
+            agent = new SocksProxyAgent(proxyUrl);
+            console.log(`[BOT] Используется прокси: ${proxyUrl}`);
+        }
     } catch (e) {
-        console.error('[BOT] Ошибка инициализации прокси:', e.message);
+        console.error('[BOT] Ошибка инициализации прокси, работаем без него:', e.message);
+        agent = null;
     }
 } else {
     console.log('[BOT] Прокси отключен (прямое подключение).');
 }
 
-// Создаем бота
 const botOptions = {
-  telegram: {
-    apiRoot: 'https://api.telegram.org',
-    timeout: 30,        // увеличенный таймаут
-    agent: agent || undefined,
-  },
-  handlerTimeout: 30000, // 30 секунд на обработку одного апдейта
+    telegram: {
+        apiRoot: 'https://api.telegram.org',
+        timeout: 15,
+    },
+    handlerTimeout: 30000,
 };
 
 if (agent) {
@@ -5307,60 +5311,46 @@ process.on('unhandledRejection', async (reason) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// Запуск бота + уведомление админу (с расширенной диагностикой)
+// Запуск бота (без таймаута, без process.exit)
 // ─────────────────────────────────────────────────────────────
 
 console.log('[BOT] Начинаю запуск bot.launch()...');
 
-// Таймаут 60 секунд на запуск
-const launchTimeout = setTimeout(() => {
-  console.error('[BOT] ❌❌❌ bot.launch() завис! Прошло 60 секунд, принудительное завершение.');
-  process.exit(1);
-}, 60000);
+// bot.launch() запускает polling СРАЗУ.
+// Возвращаемый промис резолвится только при остановке бота — его НЕ ЖДЁМ.
+// Через .catch() ловим только ошибки запуска (неверный токен, сеть и т.п.)
+bot.launch().catch((error) => {
+    console.error('[BOT] ❌ Критическая ошибка запуска:', error.message);
+});
 
-const launchPromise = bot.launch();
-console.log('[BOT] bot.launch() вызван, промис создан:', typeof launchPromise);
+console.log('[BOT] bot.launch() вызван — polling запущен.');
 
-launchPromise
-  .then(async () => {
-    clearTimeout(launchTimeout);
-    console.log('[BOT] ✅ bot.launch() успешно завершён!');
-    console.log('[BOT] Бот слушает обновления от Telegram.');
-
-    // 1. СНАЧАЛА уведомление админу
-    console.log('[BOT] Вызываю sendStartupNotification...');
+// Через 3 секунды отправляем уведомление и запускаем фоновые задачи
+// (даём боту время установить соединение с Telegram)
+setTimeout(async () => {
+    console.log('[BOT] Отправляю уведомление о запуске...');
     await sendStartupNotification(bot);
-    console.log('[BOT] sendStartupNotification завершена');
 
-    // 2. ПОТОМ плановые задачи
     try {
-      scheduleDailyBackup();
-      console.log('[BOT] ✅ scheduleDailyBackup запущен');
+        scheduleDailyBackup();
+        console.log('[BOT] ✅ scheduleDailyBackup запущен');
     } catch (e) {
-      console.error('[BOT] ❌ Ошибка scheduleDailyBackup:', e.message);
+        console.error('[BOT] ❌ Ошибка scheduleDailyBackup:', e.message);
     }
 
     try {
-      startAutoUnmute(bot);
-      console.log('[BOT] ✅ startAutoUnmute запущен');
+        startAutoUnmute(bot);
+        console.log('[BOT] ✅ startAutoUnmute запущен');
     } catch (e) {
-      console.error('[BOT] ❌ Ошибка startAutoUnmute:', e.message);
+        console.error('[BOT] ❌ Ошибка startAutoUnmute:', e.message);
     }
 
     try {
-      startAutoUnban(bot);
-      console.log('[BOT] ✅ startAutoUnban запущен');
+        startAutoUnban(bot);
+        console.log('[BOT] ✅ startAutoUnban запущен');
     } catch (e) {
-      console.error('[BOT] ❌ Ошибка startAutoUnban:', e.message);
+        console.error('[BOT] ❌ Ошибка startAutoUnban:', e.message);
     }
 
     console.log('[BOT] 🎉 Все системы запущены!');
-  })
-  .catch((error) => {
-    clearTimeout(launchTimeout);
-    console.error('❌ Ошибка при запуске бота:', error);
-    console.error('❌ Stack:', error.stack);
-    process.exit(1);
-  });
-
-console.log('[BOT] Код после bot.launch() выполнен (промис асинхронный)');
+}, 3000);
