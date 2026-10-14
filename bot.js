@@ -134,7 +134,6 @@ const { fortyTwoHandler } = require('./handlers/fortyTwo.js')
 const { empireHandler, empireStatisticsHandler } = require('./empire/handlers/empireHandler');
 const { handleBuildMenu, handleBuildPage, handleViewBusinessInfo, handleShowUpgradeDetails, handleConfirmBuyBusiness, handleConfirmUpgradeBusiness } = require('./empire/handlers/buildHandlers');
 const { giveBusinessHandler } = require('./empire/handlers/adminCommandsHandler');
-const { handleNpfTechInfo, handleForceUpdateCourse } = require('./bank/bankTechCommands');
 const { candyShopMenu, buyPfWithCandy, buyFortuneTicket, buyGoldContainers } = require('./Events/Halloween/candyShop');
 const { showSecretGiftMenu, openSecretGift, closeSecretGiftMenu } = require('./Events/secretGift');
 const { handleTestCommand, handleTestButton, handleConfirmAction } = require('./handlers/testHandler');
