@@ -6675,6 +6675,57 @@ function getReferralCountPm(userId) {
   } catch (e) { return 0; }
 }
 
+// ============================================================
+// === PM: получение мутов конкретного пользователя ===
+// ============================================================
+function getUserMutesPm(userId) {
+  try {
+    const stmt = db.prepare('SELECT * FROM mutes WHERE user_id = ?');
+    return stmt.all(userId.toString());
+  } catch (e) {
+    console.error('[DB][PM] Ошибка получения мутов пользователя:', e);
+    return [];
+  }
+}
+
+// ============================================================
+// === PM: получение всех скинов с владением ===
+// ============================================================
+function getAllSkinsWithOwnershipPm(userId) {
+  try {
+    const owned = new Set(getUserAvailableSkins(userId));
+    const all = getAllSkins(false);
+    return all.map(s => ({ ...s, owned: owned.has(s.id) }));
+  } catch (e) {
+    console.error('[DB][PM] Ошибка получения скинов:', e);
+    return [];
+  }
+}
+
+// ============================================================
+// === PM: получение префиксов пользователя с деталями ===
+// ============================================================
+function getUserPrefixesDetailedPm(userId) {
+  try {
+    const user = db.prepare('SELECT prefix_ids, special_prefix_ids, active_prefix_id FROM users WHERE id = ?').get(userId.toString());
+    if (!user) return { regular: [], special: [], activeId: null };
+    let regularIds = [];
+    let specialIds = [];
+    try { regularIds = JSON.parse(user.prefix_ids || '[]'); } catch (e) {}
+    try { specialIds = JSON.parse(user.special_prefix_ids || '[]'); } catch (e) {}
+    const regular = regularIds.map(id => {
+      const p = db.prepare('SELECT id, prefix FROM prefixes WHERE id = ?').get(id);
+      return p ? { id: p.id, name: p.prefix } : { id, name: `[ID:${id}]` };
+    });
+    const special = specialIds.map(id => {
+      const p = db.prepare('SELECT id, prefix FROM special_prefixes WHERE id = ?').get(id);
+      return p ? { id: p.id, name: p.prefix } : { id, name: `[ID:${id}]` };
+    });
+    return { regular, special, activeId: user.active_prefix_id };
+  } catch (e) {
+    return { regular: [], special: [], activeId: null };
+  }
+}
 
 // Экспортируем функции
 module.exports = {
@@ -6967,7 +7018,9 @@ module.exports = {
   getPlayerByAnyIdPm,
   setUserFieldPm,
   getUserPrefixNamesPm,
-  getReferralCountPm,
+  getReferralCountPm, getUserMutesPm,
+  getAllSkinsWithOwnershipPm,
+  getUserPrefixesDetailedPm, 
   PM_EDITABLE_FIELDS,
-  
+
 };
