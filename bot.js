@@ -2830,55 +2830,14 @@ bot.on('text', async (ctx) => {
     // Проверяем, существует ли пользователь в базе данных
     const user = await getUserById(userId);
 
-    // ИСПРАВЛЕННАЯ ЛОГИКА ПРОВЕРОК РЕГИСТРАЦИИ
-    if (!user) {
-      // Пользователь не существует в БД
-      if (!registrationSession || !registrationSession.registrationInProgress) {
-        await logAction(ctx, null, chatType, null, text, false);
-        return ctx.reply(
-          '🕹 Вы ещё не зарегистрированы. Для игры в нашего бота, необходимо зарегистрироваться через команду "/start"!',
-          { parse_mode: 'HTML' }
-        );
-      }
-      // Пользователь в процессе регистрации, но ещё не создан в БД
-      // Проверяем капчу
-      if (registrationSession?.captchaPending) {
-        await logAction(ctx, null, chatType, null, text, false);
-        return ctx.reply(
-          '📚 Для завершения регистрации необходимо пройти капчу!',
-          { parse_mode: 'HTML' }
-        );
-      }
-      // Проверяем политику
-      if (!registrationSession?.policyAccepted) {
-        await logAction(ctx, null, chatType, null, text, false);
-        return ctx.reply(
-          '📚 Для завершения регистрации необходимо принять пользовательское соглашение(обязательно к прочтению)!',
-          { parse_mode: 'HTML' }
-        );
-      }
-    } else if (!user.is_registered) {
-      // Пользователь существует, но не завершил регистрацию
-      // Проверяем капчу
-      if (registrationSession?.captchaPending) {
-        await logAction(ctx, user, chatType, null, text, false);
-        return ctx.reply(
-          '📚 Для завершения регистрации необходимо пройти капчу!',
-          { parse_mode: 'HTML' }
-        );
-      }
-      // Проверяем политику
-      if (!registrationSession?.policyAccepted) {
-        await logAction(ctx, user, chatType, null, text, false);
-        return ctx.reply(
-          '📚 Для завершения регистрации необходимо принять пользовательское соглашение(обязательно к прочтению)!',
-          { parse_mode: 'HTML' }
-        );
-      }
+    // === ЕДИНАЯ ПРОВЕРКА РЕГИСТРАЦИИ: любой текст возобновляет шаг ===
+    const isRegistered = !!user?.is_registered;
+    if (!isRegistered) {
+      await logAction(ctx, user, chatType, ctx.chat?.title || null, text, false);
+      const { resumeRegistration } = require('./handlers/registration');
+      await resumeRegistration(ctx, registrationSession);
+      return;
     }
-    // ИСПРАВЛЕНИЕ: Если user.is_registered === true, пропускаем все проверки капчи и политики
-    // Это позволяет зарегистрированным пользователям нормально использовать бота
-    // даже после удаления сессии регистрации
 
     const parts = lowerText.split(/\s+/);
     const command = parts[0];
