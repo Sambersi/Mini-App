@@ -992,5 +992,6 @@ module.exports = {
   handleContestInfo,
   handleBackToRefMenu,
   handleWithdrawReferrerBank,
-  handlePartnerInfo
+  handlePartnerInfo,
+  REFERRAL_BONUS_REFERRER_PF
 };

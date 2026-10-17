@@ -947,7 +947,7 @@ function createUserOrUpdate(user) {
       Date.now() / 1000, // Дата регистрации (текущее время в Unix-формате)
       user.referral_join_date || Math.floor(Date.now() / 1000), // Дата перехода по реферальной ссылке
 // Стало:
-user.referral_bonus_amount || REFERRAL_BONUS_REFERRER_PF, // Сумма бонуса за реферала из конфига
+user.referral_bonus_amount || CONFIG.REFERRAL_BONUS_REFERRER_PF, // Сумма бонуса за реферала из конфига
       1 // ID кулака (по умолчанию активное оружие)
     );
   }
