@@ -2,7 +2,7 @@
 const sqlite3 = require('better-sqlite3');
 const path = require('path');
 const CONFIG = require('./config');
-
+const { REFERRAL_BONUS_REFERRER_PF } = require('./config');
 // Путь к базе данных
 const dbPath = path.join(__dirname, 'database.sqlite');
 const db = new sqlite3(dbPath);
