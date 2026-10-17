@@ -5157,8 +5157,14 @@ bot.action('back_to_admin_panel', async (ctx) => {
 });
 
 
-bot.action(/^tech_ref_/, async (ctx) => {
+// Колбэки техадминки и управления игроком
+bot.action(/^tech_/, async (ctx) => {
+  const { handleTechAdminCallback } = require('./admin/techAdminPanel');
   await handleTechAdminCallback(ctx);
+});
+bot.action(/^pm_/, async (ctx) => {
+  const { handlePlayerManagementCallback } = require('./admin/playerManagement');
+  await handlePlayerManagementCallback(ctx);
 });
 
 bot.action(/^tech_post_/, async (ctx) => {

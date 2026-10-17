@@ -6580,6 +6580,101 @@ function updateStatusPriority(name, priority) {
   }
 }
 
+// ============================================================
+// === PLAYER MANAGEMENT HELPERS (для техадмин-панели) ===
+// ============================================================
+
+// Белый список полей, которые можно менять через техадминку
+const PM_EDITABLE_FIELDS = [
+  'balance', 'card_balance', 'df_balance', 'npf_shares',
+  'tickets', 'fortune_tickets', 'candy', 'secret_gifts',
+  'container_type_1', 'container_type_2', 'container_type_3',
+  'energy', 'attack_power', 'account_level',
+  'double_wins', 'double_losses', 'round_wins', 'round_losses',
+  'game_wins', 'max_win_amount', 'max_bet_amount',
+  'current_win_streak', 'best_win_streak',
+  'double_total_bets', 'double_total_winnings', 'double_total_losses',
+  'disable_hyperlink', 'transfers_blocked', 'is_hidden_in_top',
+  'notifications_enabled', 'report_blocked', 'is_registered',
+  'referral_bonus_amount', 'referrer_bank',
+  'username', 'total_donated_stars', 'likes_received', 'dislikes_received',
+  'selected_skin_id', 'active_prefix_id',
+];
+
+/**
+ * Получить игрока по любому ID (numeric или telegram).
+ * @param {string|number} identifier
+ * @returns {object|null}
+ */
+function getPlayerByAnyIdPm(identifier) {
+  const str = String(identifier).trim();
+  const num = parseInt(str, 10);
+  if (!isNaN(num)) {
+    const byNumeric = db.prepare('SELECT * FROM users WHERE numeric_id = ?').get(num);
+    if (byNumeric) return byNumeric;
+  }
+  const byTg = db.prepare('SELECT * FROM users WHERE id = ?').get(str);
+  if (byTg) return byTg;
+  return null;
+}
+
+/**
+ * Установить значение одного поля по telegram ID.
+ * @param {string} userId - telegram id
+ * @param {string} field - имя колонки
+ * @param {*} value - новое значение
+ * @returns {{ success: boolean, message?: string }}
+ */
+function setUserFieldPm(userId, field, value) {
+  try {
+    if (!PM_EDITABLE_FIELDS.includes(field)) {
+      return { success: false, message: `Поле "${field}" не входит в белый список.` };
+    }
+    const stmt = db.prepare(`UPDATE users SET ${field} = ? WHERE id = ?`);
+    const info = stmt.run(value, userId.toString());
+    if (info.changes > 0) return { success: true };
+    return { success: false, message: 'Пользователь не найден или значение не изменилось.' };
+  } catch (error) {
+    console.error(`[DB][PM] Ошибка установки поля ${field}:`, error);
+    return { success: false, message: error.message };
+  }
+}
+
+/**
+ * Получить список названий префиксов пользователя (обычные + специальные).
+ */
+function getUserPrefixNamesPm(userId) {
+  try {
+    const user = db.prepare('SELECT prefix_ids, special_prefix_ids, active_prefix_id FROM users WHERE id = ?').get(userId.toString());
+    if (!user) return { regular: [], special: [], activeId: null };
+    let regularIds = [];
+    let specialIds = [];
+    try { regularIds = JSON.parse(user.prefix_ids || '[]'); } catch (e) {}
+    try { specialIds = JSON.parse(user.special_prefix_ids || '[]'); } catch (e) {}
+    const regular = regularIds.map(id => {
+      const p = db.prepare('SELECT prefix FROM prefixes WHERE id = ?').get(id);
+      return p ? p.prefix : `[ID:${id}]`;
+    });
+    const special = specialIds.map(id => {
+      const p = db.prepare('SELECT prefix FROM special_prefixes WHERE id = ?').get(id);
+      return p ? p.prefix : `[ID:${id}]`;
+    });
+    return { regular, special, activeId: user.active_prefix_id };
+  } catch (e) {
+    return { regular: [], special: [], activeId: null };
+  }
+}
+
+/**
+ * Получить количество рефералов игрока.
+ */
+function getReferralCountPm(userId) {
+  try {
+    const row = db.prepare('SELECT COUNT(*) AS cnt FROM users WHERE referrer_id = ?').get(userId.toString());
+    return row?.cnt || 0;
+  } catch (e) { return 0; }
+}
+
 
 // Экспортируем функции
 module.exports = {
@@ -6869,5 +6964,10 @@ module.exports = {
   logDiceRound, logDiceBet, finishDiceRoundLog, updateDiceBetResult, getLastDiceBetsInChat, cleanupDiceLogs,
   runLogsCleanup,
   updateStatusPriority,
+  getPlayerByAnyIdPm,
+  setUserFieldPm,
+  getUserPrefixNamesPm,
+  getReferralCountPm,
+  PM_EDITABLE_FIELDS,
   
 };
