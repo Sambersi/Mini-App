@@ -993,5 +993,4 @@ module.exports = {
   handleBackToRefMenu,
   handleWithdrawReferrerBank,
   handlePartnerInfo,
-  REFERRAL_BONUS_REFERRER_PF
 };
