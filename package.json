@@ -4,7 +4,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test tests/*.test.cjs",
+    "db:check": "node scripts/check-mysql.cjs"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +18,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "4.18.2",
+    "mysql2": "3.24.6",
     "node-cron": "^3.0.3",
     "socks-proxy-agent": "^10.1.0",
     "telegraf": "^4.16.3",

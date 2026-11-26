@@ -1,6 +1,8 @@
 // index.js (корневой лаунчер)
 const { spawn } = require('child_process');
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+const { runStartupChecks } = require('./src/startupChecks');
 
 console.log('[MAIN] Запуск проекта...');
 
@@ -28,28 +30,38 @@ function startProcess(name, command, args, cwd = __dirname) {
     return proc;
 }
 
-if (isWin) {
-    // === WINDOWS (РАЗРАБОТКА) ===
-    const ignoreFlags = [
-        '--ignore', 'database.sqlite*',
-        '--ignore', '*.log',
-        '--ignore', 'node_modules/',
-        '--ignore', 'app/frontend/',
-        '--ignore', 'data/',
-        '--ignore', 'logs/'
-    ];
+async function main() {
+    await runStartupChecks({ rootDir: __dirname });
 
-    startProcess('BOT', 'cmd', ['/c', 'npx', 'nodemon', ...ignoreFlags, 'bot.js']);
-    startProcess('SERVER', 'cmd', ['/c', 'npx', 'nodemon', ...ignoreFlags, path.join('app', 'backend', 'index.js')]);
-    startProcess('REACT', 'cmd', ['/c', 'npm', 'run', 'dev'], path.join(__dirname, 'app', 'frontend', 'react'));
-    
-    console.log('[MAIN] Режим: Windows (DEV). React на http://localhost:5173');
-} else {
-    // === LINUX (ХОСТИНГ / PRODUCTION) ===
-    startProcess('BOT', 'node', ['bot.js']);
-    startProcess('SERVER', 'node', [path.join('app', 'backend', 'index.js')]);
-    
-    console.log('[MAIN] Режим: Linux (PRODUCTION). React dev-сервер не запускается.');
+    if (isWin) {
+        // === WINDOWS (РАЗРАБОТКА) ===
+        const ignoreFlags = [
+            '--ignore', 'database.sqlite*',
+            '--ignore', '*.log',
+            '--ignore', 'node_modules/',
+            '--ignore', 'app/frontend/',
+            '--ignore', 'data/',
+            '--ignore', 'logs/'
+        ];
+
+        startProcess('BOT', 'cmd', ['/c', 'npx', 'nodemon', ...ignoreFlags, 'bot.js']);
+        startProcess('SERVER', 'cmd', ['/c', 'npx', 'nodemon', ...ignoreFlags, path.join('app', 'backend', 'index.js')]);
+        startProcess('REACT', 'cmd', ['/c', 'npm', 'run', 'dev'], path.join(__dirname, 'app', 'frontend', 'react'));
+
+        console.log('[MAIN] Режим: Windows (DEV). React на http://localhost:5173');
+    } else {
+        // === LINUX (ХОСТИНГ / PRODUCTION) ===
+        startProcess('BOT', 'node', ['bot.js']);
+        startProcess('SERVER', 'node', [path.join('app', 'backend', 'index.js')]);
+
+        console.log('[MAIN] Режим: Linux (PRODUCTION). React dev-сервер не запускается.');
+    }
+
+    console.log('[MAIN] Все процессы инициированы.');
 }
 
-console.log('[MAIN] Все процессы инициированы.');
+main().catch((error) => {
+    // Startup checks already emitted a sanitized diagnostic. Do not print credentials.
+    console.error('[MAIN] Запуск остановлен: ' + error.message);
+    process.exitCode = 1;
+});

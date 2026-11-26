@@ -5,6 +5,8 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const sqlite3 = require('better-sqlite3');
+const { getRuntimeInfo } = require('../../src/runtimeInfo');
+const runtimeInfo = getRuntimeInfo(path.join(__dirname, '../..'));
 
 // === 1. Импорт функций из базы данных ===
 const {
@@ -64,7 +66,7 @@ app.get('/api/user/:id', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.json({ status: 'OK', timestamp: new Date().toISOString(), release: runtimeInfo });
 });
 
 app.get('/api/online', (req, res) => {
