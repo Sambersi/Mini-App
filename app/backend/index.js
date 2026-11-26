@@ -6,6 +6,7 @@ const fs = require('fs');
 const http = require('http');
 const sqlite3 = require('better-sqlite3');
 const { getRuntimeInfo } = require('../../src/runtimeInfo');
+const { createPlainFrontendRouter } = require('../../src/http/plainFrontend');
 const runtimeInfo = getRuntimeInfo(path.join(__dirname, '../..'));
 
 // === 1. Импорт функций из базы данных ===
@@ -327,7 +328,7 @@ app.use('/api/v2', require('./plainApi'));
 // === 4.10 Статика нового фронтенда на /v2, параллельно старому ===
 const plainFrontendPath = path.join(__dirname, '../frontend/plain');
 if (fs.existsSync(plainFrontendPath)) {
-  app.use('/v2', express.static(plainFrontendPath));
+  app.use('/v2', createPlainFrontendRouter(plainFrontendPath));
 } else {
   console.warn('[BACKEND] Новый фронтенд не найден: ' + plainFrontendPath);
 }
