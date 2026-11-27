@@ -8,6 +8,7 @@ const {legacyCeilings,projectFinance}=require('./projectFinance');
 const {projectPlayerState}=require('./projectPlayerState');
 const {projectDomains}=require('./projectDomains');
 const {projectPlayerCollections}=require('./projectPlayerCollections');
+const {verifyLegacyProfiles}=require('./verifyLegacyProfiles');
 async function runFinanceImport({rootDir,env=process.env,log=console.log}) {
   const runId=validateRunId(env.MYSQL_IMPORT_RUN_ID);
   const snapshot=await createImportSnapshot(rootDir,runId);
@@ -28,6 +29,14 @@ async function runFinanceImport({rootDir,env=process.env,log=console.log}) {
     result.playerState=await projectPlayerState(connection,source.db,runId);
     result.domains=await projectDomains(connection,source.db,runId,event=>log('[DOMAIN IMPORT] '+JSON.stringify(event)));
     result.collections=await projectPlayerCollections(connection,source.db,runId);
+    const {createDatabaseRuntime}=require('../db/runtime');
+    const {createLegacyReads}=require('../repositories/legacyReads');
+    // The importer already holds the sole pool connection. Readback borrows it
+    // serially, with real transactions but without releasing the import lease.
+    const borrowed={release(){},destroy:()=>connection.destroy()};
+    for(const method of ['execute','query','beginTransaction','commit','rollback'])borrowed[method]=connection[method].bind(connection);
+    const readbackPool={getConnection:async()=>borrowed,execute:borrowed.execute,query:borrowed.query};
+    result.profileReadback=await verifyLegacyProfiles(source.db,createLegacyReads(createDatabaseRuntime(readbackPool)));
     fs.writeFileSync(path.join(snapshot.folder,'finance-report.json'),JSON.stringify(result,null,2));
     log('[FINANCE IMPORT] VERIFIED '+JSON.stringify({...result,domains:{tables:result.domains.tables,rows:result.domains.rows}}));
     return result;
