@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { readMysqlConfig } = require('../src/db/mysql');
 const { applyFoundation } = require('../src/db/migrate');
 const { moveWalletFunds } = require('../src/services/walletMovement');
+const { createCardFinance } = require('../src/services/cardFinance');
 
 function testConfig(env) {
   if (!env.MYSQL_TEST_DATABASE || env.MYSQL_TEST_DATABASE === env.MYSQL_DATABASE || !/^[a-zA-Z0-9_]+_checks$/.test(env.MYSQL_TEST_DATABASE)) {
@@ -19,7 +20,7 @@ async function runWalletChecks(env = process.env) {
   const a = { playerId: 'fixture_a', asset: 'PF', bucket: 'main' };
   const b = { playerId: 'fixture_b', asset: 'PF', bucket: 'card' };
   const request = (operationKey, amount, extra = {}) => ({ operationKey, from: a, to: b, amount, ...extra });
-  const balance = async id => { const [[r]] = await pool.execute('SELECT balance FROM wallets WHERE player_id=?', [id]); return String(r.balance); };
+  const balance = async id => { const [[r]] = await pool.execute('SELECT balance FROM wallets WHERE player_id=? AND bucket=?', [id,id===a.playerId?'main':'card']); return String(r.balance); };
   const count = async table => { const [[r]] = await pool.query('SELECT COUNT(*) AS n FROM ' + table); return Number(r.n); };
   const reset = async (x = '100', y = '0') => {
     await pool.query('DELETE FROM wallet_entries');
@@ -71,12 +72,38 @@ async function runWalletChecks(env = process.env) {
     await reset('10', '9223372036854775806');
     const overflow = await moveWalletFunds(pool, request('overflow', '10'));
     assert.equal(overflow.amount, '1'); assert.equal(await balance(b.playerId), '9223372036854775807'); checks++;
+    await reset('10000','0');
+    await pool.execute('INSERT INTO wallets(player_id,asset,bucket,balance) VALUES (?,?,?,0)',[a.playerId,'PF','card']);
+    for(const id of [a.playerId,b.playerId]) await pool.execute('INSERT INTO player_cards(player_id,card_number,account_level) VALUES (?,?,1)',[id,'test-'+id]);
+    const finance=createCardFinance(pool,{now:()=>100000});
+    const topup={kind:'topup',playerId:a.playerId,amountText:'2к',operationKey:'finance-topup'};
+    const topped=await finance(topup);assert.equal(topped.amount,'2000');assert.equal(await balance(a.playerId),'8000');checks++;
+    assert.deepEqual(await finance(topup),topped);assert.equal(await balance(a.playerId),'8000');checks++;
+    await pool.execute('UPDATE wallets SET balance=? WHERE player_id=? AND bucket=?',['139999999',a.playerId,'main']);
+    const withdrawn=await finance({kind:'withdraw',playerId:a.playerId,amountText:'100',operationKey:'finance-withdraw'});
+    assert.equal(withdrawn.amount,'1');assert.equal(await balance(a.playerId),'140000000');checks++;
+    const transfer={kind:'transfer',playerId:a.playerId,recipientId:b.playerId,amountText:'10',operationKey:'finance-transfer'};
+    await assert.rejects(finance(transfer),{code:'TRANSFER_CEILING'});checks++;
+    const adminFinance=createCardFinance(pool,{mainAdmin:a.playerId,now:()=>100000});
+    assert.equal((await adminFinance(transfer)).amount,'10');checks++;
+    await pool.execute('UPDATE player_cards SET transfers_blocked=1 WHERE player_id=?',[a.playerId]);
+    await assert.rejects(adminFinance({...transfer,operationKey:'blocked-admin'}),{code:'SENDER_TRANSFERS_BLOCKED'});checks++;
+    await pool.execute('UPDATE player_cards SET transfers_blocked=0 WHERE player_id=?',[a.playerId]);
+    await pool.execute('INSERT INTO player_bans(player_id,reason,banned_until) VALUES (?,?,NULL)',[b.playerId,'test']);
+    await assert.rejects(adminFinance({...transfer,operationKey:'banned-recipient'}),{code:'RECIPIENT_BANNED'});checks++;
+    await pool.execute('UPDATE player_bans SET banned_until=99 WHERE player_id=?',[b.playerId]);
+    assert.equal((await adminFinance({...transfer,operationKey:'expired-ban'})).amount,'10');checks++;
+    await pool.execute('UPDATE player_cards SET card_number=NULL WHERE player_id=?',[b.playerId]);
+    await assert.rejects(adminFinance({...transfer,operationKey:'missing-card'}),{code:'RECIPIENT_CARD_REQUIRED'});checks++;
     return { checks, concurrentRequests: 20, activeStorage: 'sqlite', isolatedDatabase: true };
   } finally {
     try {
       if (seeded) {
         await pool.query('DELETE FROM wallet_entries');
         await pool.query('DELETE FROM wallet_operations');
+        await pool.query('DELETE FROM player_roles');
+        await pool.query('DELETE FROM player_bans');
+        await pool.query('DELETE FROM player_cards');
         await pool.query('DELETE FROM wallets');
         await pool.query('DELETE FROM players');
         await pool.execute('DELETE FROM migration_runs WHERE run_id=?', ['wallet_fixture']);

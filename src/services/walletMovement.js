@@ -29,7 +29,7 @@ function normalize(input) {
 
 // Accounting primitive only. Command adapters must enforce registration, bans,
 // card ownership, account limits and permissions before invoking it in runtime.
-async function moveOnce(pool, input) {
+async function moveOnce(pool, input, authorize) {
   const request = normalize(input);
   const key = input.operationKey;
   const hash = createHash('sha256').update(JSON.stringify(request)).digest('hex');
@@ -40,6 +40,7 @@ async function moveOnce(pool, input) {
     const [[previous]] = await connection.execute('SELECT request_hash,result_json FROM wallet_operations WHERE operation_key=? FOR UPDATE', [key]);
     if (!previous || previous.request_hash !== hash) fail('OPERATION_KEY_CONFLICT');
     if (previous.result_json) return JSON.parse(previous.result_json);
+    const authorizedLimit = authorize ? await authorize(connection, request) : null;
     const ordered = [request.from, request.to].sort((a, b) => {
       const x = JSON.stringify(a), y = JSON.stringify(b);
       return x < y ? -1 : x > y ? 1 : 0;
@@ -50,7 +51,7 @@ async function moveOnce(pool, input) {
     const to = balances.get(JSON.stringify(request.to));
     const requested = request.amount === 'all' ? from : BigInt(request.amount);
     if (requested <= 0n || from < requested) fail('INSUFFICIENT_FUNDS');
-    const room = BigInt(request.destinationLimit) - to;
+    const room = (authorizedLimit === null ? BigInt(request.destinationLimit) : integer(authorizedLimit)) - to;
     if (room <= 0n) fail('DESTINATION_LIMIT');
     const amount = requested < room ? requested : room;
     await saveWallet(connection, request.from, from - amount, -amount, 'move:' + key + ':debit');
@@ -61,9 +62,9 @@ async function moveOnce(pool, input) {
   });
 }
 
-async function moveWalletFunds(pool, input) {
+async function moveWalletFunds(pool, input, authorize) {
   for (let attempt = 0; ; attempt++) {
-    try { return await moveOnce(pool, input); }
+    try { return await moveOnce(pool, input, authorize); }
     catch (error) {
       // InnoDB explicitly rolled back this transaction. Never retry a timeout,
       // connection failure or an ambiguous commit automatically.

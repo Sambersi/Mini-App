@@ -39,6 +39,9 @@ async function runStartupChecks({ rootDir, env = process.env, log = console.log,
     throw new Error('MYSQL_IMPORT_FAILED');
   }
   try {
+    if (readBoolean(env.MYSQL_FINANCE_IMPORT, 'MYSQL_FINANCE_IMPORT')) {
+      await require('./migration/financeImport').runFinanceImport({ rootDir, env, log });
+    }
     if (readBoolean(env.MYSQL_WALLET_CHECKS, 'MYSQL_WALLET_CHECKS')) {
       const result = await require('../scripts/check-wallets.cjs').runWalletChecks(env);
       log('[WALLET CHECKS] VERIFIED ' + JSON.stringify(result));
