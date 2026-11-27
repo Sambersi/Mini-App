@@ -46,6 +46,7 @@ function readMysqlConfig(env = process.env) {
     supportBigNumbers: true,
     bigNumberStrings: true,
     decimalNumbers: false,
+    jsonStrings: true,
     multipleStatements: false,
   };
   if (readBoolean(env.MYSQL_SSL, 'MYSQL_SSL')) config.ssl = { rejectUnauthorized: true };

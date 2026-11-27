@@ -14,6 +14,9 @@ async function verifyTable(connection, runId, name, expected) {
     );
     if (!rows.length) break;
     for (const row of rows) {
+      if (typeof row.payload !== 'string') {
+        throw Object.assign(new Error('Archive verification requires raw JSON text from the driver'), { code: 'MIGRATION_JSON_NOT_TEXT' });
+      }
       if (Number(row.row_number) !== count + 1 || sha(row.payload) !== row.row_hash) {
         throw new Error('Archived row verification failed');
       }

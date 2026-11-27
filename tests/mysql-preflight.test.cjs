@@ -23,6 +23,7 @@ test('configuration preserves exact credentials and uses safe numeric and SQL de
   assert.equal(config.charset, 'utf8mb4');
   assert.equal(config.bigNumberStrings, true);
   assert.equal(config.decimalNumbers, false);
+  assert.equal(config.jsonStrings, true);
   assert.equal(config.multipleStatements, false);
   assert.deepEqual(readMysqlConfig({ ...env, MYSQL_SSL: 'true' }).ssl, { rejectUnauthorized: true });
 });

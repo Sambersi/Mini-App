@@ -123,6 +123,11 @@ test('write failure rolls back an archive table instead of leaving partial rows'
   } finally { source.close(); }
 });
 
+test('archive verification refuses an implicitly parsed JSON value instead of reserializing it', async () => {
+  await assert.rejects(verifyTable({ query: async () => [[{ row_number: 1, payload: [], row_hash: sha('[]') }]] },
+    'run', 'example', { count: 1, hash: sha('[]\n') }), { code: 'MIGRATION_JSON_NOT_TEXT' });
+});
+
 test('projection preserves counters separately and quarantines invalid values without invented money', () => {
   const db = new Database(':memory:');
   try {
