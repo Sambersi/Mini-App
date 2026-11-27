@@ -6,7 +6,7 @@ test('native domain mapping covers all reviewed nonplayer tables and keeps user 
   assert.equal(specs.length,43);assert.equal(new Set(specs.map(s=>s.name)).size,43);
   for(const name of ['users','statuses','blacklist','wallets'])assert.ok(!specs.some(s=>s.name===name));
   for(const name of ['double_bets','dice_bets','registration_sessions','skin_shop_sessions','promos','finance_log','user_skins','empire_businesses'])assert.ok(specs.some(s=>s.name===name));
-  const sql=fs.readFileSync(path.join(__dirname,'../src/db/migrations/006-domain-tables.sql'),'utf8');
+  const sql=fs.readFileSync(path.join(__dirname,'../src/db/migrations/006-domain-tables.sql'),'utf8')+fs.readFileSync(path.join(__dirname,'../src/db/migrations/007-historical-money-precision.sql'),'utf8');
   for(const spec of specs){assert.equal(spec.primary.length,1);assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS '+spec.name));for(const c of spec.columns)assert.ok(sql.includes('`'+c.name+'` '+c.type));}
 });
 test('native checksums preserve strings and INT64, normalize decimals and reject fractional integers',()=>{

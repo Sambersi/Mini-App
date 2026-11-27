@@ -69,21 +69,21 @@
       },
       {
         "name": "minBet",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": true,
         "default": null,
         "autoIncrement": false
       },
       {
         "name": "minStep",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": true,
         "default": null,
         "autoIncrement": false
       },
       {
         "name": "highestBid",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": null,
         "autoIncrement": false
@@ -155,7 +155,7 @@
       },
       {
         "name": "amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": true,
         "default": null,
         "autoIncrement": false
@@ -169,7 +169,7 @@
       },
       {
         "name": "win_amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": "0",
         "autoIncrement": false
@@ -491,7 +491,7 @@
       },
       {
         "name": "amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": true,
         "default": null,
         "autoIncrement": false
@@ -563,7 +563,7 @@
       },
       {
         "name": "amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": true,
         "default": null,
         "autoIncrement": false
@@ -598,7 +598,7 @@
       },
       {
         "name": "win_amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": "0",
         "autoIncrement": false
@@ -642,7 +642,7 @@
       },
       {
         "name": "amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": null,
         "autoIncrement": false
@@ -670,7 +670,7 @@
       },
       {
         "name": "win_amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": null,
         "autoIncrement": false
@@ -721,7 +721,7 @@
       },
       {
         "name": "total_bank",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": "0",
         "autoIncrement": false
@@ -776,14 +776,14 @@
       },
       {
         "name": "round_amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": true,
         "default": null,
         "autoIncrement": false
       },
       {
         "name": "total_bank",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": "0",
         "autoIncrement": false
@@ -862,7 +862,7 @@
       },
       {
         "name": "amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": true,
         "default": null,
         "autoIncrement": false
@@ -876,7 +876,7 @@
       },
       {
         "name": "win_amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": "0",
         "autoIncrement": false
@@ -955,7 +955,7 @@
       },
       {
         "name": "amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": true,
         "default": null,
         "autoIncrement": false
@@ -990,7 +990,7 @@
       },
       {
         "name": "win_amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": "NULL",
         "autoIncrement": false
@@ -1055,7 +1055,7 @@
       },
       {
         "name": "amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": null,
         "autoIncrement": false
@@ -1069,7 +1069,7 @@
       },
       {
         "name": "win_amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": null,
         "autoIncrement": false
@@ -1264,7 +1264,7 @@
       },
       {
         "name": "total_bank",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": "0",
         "autoIncrement": false
@@ -1401,7 +1401,7 @@
       },
       {
         "name": "max_daily_imp",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": "0",
         "autoIncrement": false
@@ -1551,7 +1551,7 @@
       },
       {
         "name": "daily_limit_increase",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": "0",
         "autoIncrement": false
@@ -1609,7 +1609,7 @@
       },
       {
         "name": "amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": false,
         "default": "NULL",
         "autoIncrement": false
@@ -1874,7 +1874,7 @@
       },
       {
         "name": "prize_amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": true,
         "default": null,
         "autoIncrement": false
@@ -2050,7 +2050,7 @@
       },
       {
         "name": "prize_amount",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": true,
         "default": null,
         "autoIncrement": false
@@ -2293,7 +2293,7 @@
       },
       {
         "name": "price",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": true,
         "default": null,
         "autoIncrement": false
@@ -2554,7 +2554,7 @@
       },
       {
         "name": "price",
-        "type": "BIGINT",
+        "type": "DECIMAL(65,30)",
         "notNull": true,
         "default": null,
         "autoIncrement": false
