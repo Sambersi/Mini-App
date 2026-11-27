@@ -32,6 +32,7 @@ function createPlayerStateWrites(runtime){
       const plan=planStateUpdate(updates);
       if(!plan.size)return {changes:0};
       return runtime.transaction(async()=>{
+        if(Object.hasOwn(updates,'numeric_id'))await runtime.one('SELECT id FROM player_id_allocator WHERE id=1 FOR UPDATE');
         const player=await runtime.one('SELECT telegram_id FROM players WHERE telegram_id=? FOR UPDATE',[String(id)]);
         if(!player)return {changes:0};
         for(const [table,fields]of plan){

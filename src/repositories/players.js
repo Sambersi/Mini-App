@@ -7,8 +7,8 @@ function numericIdentifier(value){
   const id=BigInt(value);return id< -9223372036854775808n||id>9223372036854775807n?null:String(id);
 }
 function createPlayersRepository(pool,{readTransaction=work=>withTransaction(pool,work)}={}){
-  const fields=['p.telegram_id AS id','p.numeric_id','p.display_name AS username','p.registered AS is_registered','p.registration_ts AS registration_date','c.card_number','c.account_level','c.transfers_blocked','c.account_blocked AS is_blocked','r.referrer_id','mi.details_json AS _invalid_referrer'];
-  const joins=['LEFT JOIN player_cards c ON c.player_id=p.telegram_id','LEFT JOIN player_referrals r ON r.player_id=p.telegram_id',"LEFT JOIN migration_issues mi ON mi.run_id=p.source_run_id AND mi.issue_code='INVALID_REFERRER' AND mi.record_key=CONCAT(p.telegram_id,':referrer_id')"];
+  const fields=['p.telegram_id AS id','p.numeric_id','p.display_name AS username','p.registered AS is_registered','p.registration_ts AS registration_date','c.card_number','c.account_level','c.transfers_blocked','c.account_blocked AS is_blocked','COALESCE(r.referrer_id,ri.referral_code) AS referrer_id','mi.details_json AS _invalid_referrer'];
+  const joins=['LEFT JOIN player_cards c ON c.player_id=p.telegram_id','LEFT JOIN player_referrals r ON r.player_id=p.telegram_id','LEFT JOIN player_referral_intents ri ON ri.player_id=p.telegram_id',"LEFT JOIN migration_issues mi ON mi.run_id=p.source_run_id AND mi.issue_code='INVALID_REFERRER' AND mi.record_key=CONCAT(p.telegram_id,':referrer_id')"];
   let index=0;
   for(const [table,columns]of Object.entries(groups)){
     const alias='s'+index++;fields.push(...Object.keys(columns).map(field=>alias+'.'+field));joins.push('LEFT JOIN '+table+' '+alias+' ON '+alias+'.player_id=p.telegram_id');

@@ -6,11 +6,7 @@ const { Markup } = require('telegraf');
 const {
   getUserById,
   createUserOrUpdate,
-  updateUserBalance,
-  updateUserData,
-  giveFortuneTicket,
-  giveCandy,
-  getUserStatusesSync,
+  completePlayerRegistration,
 } = require('../db');
 const {
   getRegistrationSession,
@@ -20,7 +16,7 @@ const {
 const { createCanvas } = require('canvas');
 
 // Централизованные критические переменные
-const CONFIG = require('../config');
+const {notifyCompletedRegistration}=require('../src/telegram/registrationCompletion');
 const {createCaptchaChallenge,captchaDecision,hasCaptchaProof}=require('../src/services/registrationProof');
 
 // === КОНСТАНТЫ ЗАЩИТЫ РЕГИСТРАЦИИ ===
@@ -268,109 +264,7 @@ async function handlePrivacyPolicyAcceptance(ctx) {
 
 // Завершение регистрации + начисление реферальных бонусов
 async function completeRegistration(ctx) {
-  try {
-    const { id: userId, first_name, username } = ctx.from;
-    const session = (await getRegistrationSession(userId)) || {};
-
-    let user = await getUserById(userId.toString());
-    if (!user) {
-      console.error(`[REGISTRATION] Пользователь ${userId} не найден в базе данных.`);
-      return ctx.reply('<b>Произошла ошибка.</b> Попробуйте позже.', { parse_mode: 'HTML' });
-    }
-
-    if (user.is_registered) {
-      console.log(`[REGISTRATION] Пользователь ${userId} уже зарегистрирован. Пропускаем.`);
-      (await destroyRegistrationSession(userId));
-      return ctx.reply('Вы уже завершили регистрацию.');
-    }
-
-    await updateUserData(userId.toString(), { is_registered: true });
-
-    let registrationMessage = '';
-    if (ctx.chat.type === 'private') {
-      registrationMessage = `☑️ <b>Регистрация прошла успешно!</b>\n❔ Ознакомьтесь с функционалом бота, используя команду "/help"!`;
-    } else {
-      const userLink = createUserLink(userId, user.username);
-      registrationMessage = `☑️ <b>${userLink}, регистрация прошла успешно!</b>\n❔ Ознакомьтесь с функционалом бота, используя команду "/help"!`;
-    }
-
-    await ctx.reply(registrationMessage, { parse_mode: 'HTML' });
-    console.log(`[REGISTRATION] Регистрация пользователя ${userId} завершена успешно.`);
-
-    // ============ ОБРАБОТКА РЕФЕРАЛЬНОГО БОНУСА (с билетами фортуны) ============
-    const referralCode = session.referralCode;
-    if (referralCode && referralCode !== userId.toString()) {
-      try {
-        const referrer = await getUserById(referralCode);
-        if (!referrer) {
-          console.warn(`[REGISTRATION] Реферальный код ${referralCode} недействителен.`);
-        } else {
-          const newUserBonus = CONFIG.REFERRAL_BONUS_NEW_USER_PF;
-          const newUserTickets = CONFIG.REFERRAL_BONUS_NEW_USER_TICKETS;
-          let referrerBonus = CONFIG.REFERRAL_BONUS_REFERRER_PF;
-          let referrerTickets = CONFIG.REFERRAL_BONUS_REFERRER_TICKETS;
-          const candyAmount = CONFIG.REGISTRATION_CANDY_AMOUNT;
-
-          // ПРОВЕРКА НА ПАРТНЕРА (синхронная через db.js)
-          const referrerStatuses = (await getUserStatusesSync(referralCode));
-          const isReferrerPartner = referrerStatuses.some(
-            (s) => s.toLowerCase() === 'партнёр' || s.toLowerCase() === 'partner'
-          );
-          if (isReferrerPartner) {
-            referrerBonus = CONFIG.REFERRAL_BONUS_REFERRER_PF * 2; // Повышенный бонус
-            referrerTickets = CONFIG.REFERRAL_BONUS_REFERRER_TICKETS * 2;
-          }
-
-          // Начисление бонусов НОВОМУ пользователю (рефералу)
-          await updateUserBalance(userId.toString(), newUserBonus);
-          if (newUserTickets > 0) {
-            (await giveFortuneTicket(userId.toString(), newUserTickets));
-          }
-
-          // Начисление бонусов РЕФЕРОВОДУ (пригласившему)
-          await updateUserBalance(referralCode, referrerBonus);
-          if (referrerTickets > 0) {
-            (await giveFortuneTicket(referralCode, referrerTickets));
-          }
-
-          (await giveCandy(referralCode, candyAmount));
-
-          const referrerLink = createUserLink(userId, username || first_name);
-          const ticketsTextReferrer = referrerTickets > 0 ? `\n🎟 +${referrerTickets} билет(ов) на фортуну!` : '';
-          const partnerNote = isReferrerPartner ? ' (Партнёрский бонус x2)' : '';
-          const message =
-            `☑️ Вы получили +${referrerBonus} PF за привлечение нового пользователя!${partnerNote}\n` +
-            `👥 Реферал: ${referrerLink}${ticketsTextReferrer}\n` +
-            `🍬 +${candyAmount} конфет!`;
-          await ctx.telegram.sendMessage(referrer.id, message, { parse_mode: 'HTML' });
-          console.log(`[REGISTRATION] Реферальный бонус, билеты и конфеты начислены пользователю ${userId} и рефереру ${referrer.id}.`);
-
-          const referralButton = Markup.inlineKeyboard([
-            Markup.button.callback('🔗 Реферальная ссылка', 'referral_link'),
-          ]);
-
-          const ticketsTextNew = newUserTickets > 0 ? `\n🎟 +${newUserTickets} билет(ов) на фортуну!` : '';
-          const newUserMessage =
-            `🎁 <b>Бонус за регистрацию по реф. ссылке:</b>\n` +
-            `💰 +${newUserBonus} PF${ticketsTextNew}\n` +
-            `🔗 Теперь и вы можете приглашать друзей и получать бонусы!`;
-          await ctx.replyWithHTML(newUserMessage, referralButton);
-
-          await updateUserData(userId.toString(), { referrer_id: referralCode });
-        }
-      } catch (error) {
-        console.error('[REGISTRATION] Ошибка при обработке реферального бонуса:', error);
-      }
-    }
-    // ============ КОНЕЦ ОБРАБОТКИ РЕФЕРАЛЬНОГО БОНУСА ============
-
-    // Корректная очистка состояний регистрации ПОСЛЕ всех операций
-    (await destroyRegistrationSession(userId));
-    console.log(`[REGISTRATION] Все шаги регистрации завершены. Сессия пользователя ${userId} удалена.`);
-  } catch (error) {
-    console.error('[REGISTRATION] Ошибка при завершении регистрации:', error);
-    await ctx.reply('<b>Произошла ошибка.</b> Попробуйте позже.', { parse_mode: 'HTML' });
-  }
+  return notifyCompletedRegistration(ctx,{complete:completePlayerRegistration,getUser:getUserById});
 }
 
 // Обработчик команды /start (и "рег")

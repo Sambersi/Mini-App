@@ -3,7 +3,7 @@
 const { encodeRow } = require('./sqliteSource');
 
 const walletFields = { balance: ['PF', 'main'], card_balance: ['PF', 'card'], df_balance: ['DF', 'main'] };
-const itemFields = ['npf_shares', 'tickets', 'fortune_tickets', 'candy', 'secret_gifts', 'container_type_1', 'container_type_2', 'container_type_3'];
+const {itemFields}=require('../db/playerFields');
 
 function buildProjection(db) {
   const rows = db.prepare('SELECT * FROM users ORDER BY id').safeIntegers().all();
@@ -75,7 +75,7 @@ async function verifyRows(connection, sql, expected, decimalColumns = []) {
 
 async function projectPlayers(connection, db, runId) {
   const projection = buildProjection(db);
-  const [[other]] = await connection.query('SELECT COUNT(*) AS n FROM players WHERE source_run_id <> ?', [runId]);
+  const [[other]] = await connection.query('SELECT COUNT(*) AS n FROM players WHERE source_run_id IS NULL OR source_run_id <> ?', [runId]);
   if (Number(other.n)) throw new Error('Canonical tables belong to another import');
   await connection.beginTransaction();
   try {

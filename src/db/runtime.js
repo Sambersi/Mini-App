@@ -35,6 +35,7 @@ function createDatabaseRuntime(pool){
       return withTransaction(pool,c=>context.run({connection:c},work));
     },
     currentExecutor(){return connection();},
+    inTransaction(){return Boolean(context.getStore());},
     async close(){await pool.end();},
   };
 }

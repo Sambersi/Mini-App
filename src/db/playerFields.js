@@ -35,4 +35,5 @@ function assertPlayerFieldCoverage(columns) {
   const unknown=columns.filter(column=>!known.has(column));
   if(unknown.length)throw Object.assign(new Error('Unmapped player columns'),{code:'PLAYER_FIELDS_UNMAPPED',details:{columns:unknown}});
 }
-module.exports={groups,dedicated,assertPlayerFieldCoverage};
+const itemFields=Object.freeze(['npf_shares','tickets','fortune_tickets','candy','secret_gifts','container_type_1','container_type_2','container_type_3']);
+module.exports={groups,dedicated,itemFields,assertPlayerFieldCoverage};
