@@ -27,7 +27,7 @@ async function runFinanceImport({rootDir,env=process.env,log=console.log}) {
     result.playerState=await projectPlayerState(connection,source.db,runId);
     result.domains=await projectDomains(connection,source.db,runId,event=>log('[DOMAIN IMPORT] '+JSON.stringify(event)));
     fs.writeFileSync(path.join(snapshot.folder,'finance-report.json'),JSON.stringify(result,null,2));
-    log('[FINANCE IMPORT] VERIFIED '+JSON.stringify(result));
+    log('[FINANCE IMPORT] VERIFIED '+JSON.stringify({...result,domains:{tables:result.domains.tables,rows:result.domains.rows}}));
     return result;
   } catch(error) {
     fs.writeFileSync(path.join(snapshot.folder,'finance-failure.json'),JSON.stringify({code:error.code||'FINANCE_IMPORT_FAILED',message:error.message,details:error.details},null,2));

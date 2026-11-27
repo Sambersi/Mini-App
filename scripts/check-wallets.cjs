@@ -5,6 +5,7 @@ const { readMysqlConfig } = require('../src/db/mysql');
 const { applyFoundation } = require('../src/db/migrate');
 const { moveWalletFunds } = require('../src/services/walletMovement');
 const { createCardFinance } = require('../src/services/cardFinance');
+const { createSessionsRepository } = require('../src/repositories/sessions');
 
 function testConfig(env) {
   if (!env.MYSQL_TEST_DATABASE || env.MYSQL_TEST_DATABASE === env.MYSQL_DATABASE || !/^[a-zA-Z0-9_]+_checks$/.test(env.MYSQL_TEST_DATABASE)) {
@@ -95,10 +96,32 @@ async function runWalletChecks(env = process.env) {
     assert.equal((await adminFinance({...transfer,operationKey:'expired-ban'})).amount,'10');checks++;
     await pool.execute('UPDATE player_cards SET card_number=NULL WHERE player_id=?',[b.playerId]);
     await assert.rejects(adminFinance({...transfer,operationKey:'missing-card'}),{code:'RECIPIENT_CARD_REQUIRED'});checks++;
+    let clock=1000000000;
+    const sessions=createSessionsRepository(pool,{now:()=>clock});
+    const sessionId='900000001';
+    assert.deepEqual(await sessions.getRegistrationSession(sessionId),{});checks++;
+    await sessions.saveRegistrationSession(sessionId,{step:'agreement',attempts:2});
+    clock+=1000;
+    await sessions.saveRegistrationSession(sessionId,{step:'captcha',attempts:3});
+    assert.deepEqual(await sessions.getRegistrationSession(sessionId),{step:'captcha',attempts:3});
+    const [[started]]=await pool.execute('SELECT started_at FROM registration_sessions WHERE user_id=?',[sessionId]);
+    assert.equal(String(started.started_at),'1000000');checks++;
+    clock+=24*60*60*1000+1;
+    assert.deepEqual(await sessions.getRegistrationSession(sessionId),{});checks++;
+    await sessions.saveRegistrationSession(sessionId,{step:'new'});
+    const {resetRegistrationSession}=sessions;
+    await resetRegistrationSession(sessionId);assert.deepEqual(await sessions.getRegistrationSession(sessionId),{});checks++;
+    await sessions.saveSkinShopSession(sessionId,{page:3,selected:[1,2]});
+    assert.deepEqual(await sessions.getSkinShopSession(sessionId),{page:3,selected:[1,2]});checks++;
+    await Promise.all(Array.from({length:10},(_,i)=>sessions.saveSkinShopSession(sessionId,{page:i})));
+    assert.equal(typeof (await sessions.getSkinShopSession(sessionId)).page,'number');checks++;
+    await sessions.destroySkinShopSession(sessionId);assert.deepEqual(await sessions.getSkinShopSession(sessionId),{});checks++;
     return { checks, concurrentRequests: 20, activeStorage: 'sqlite', isolatedDatabase: true };
   } finally {
     try {
       if (seeded) {
+        await pool.execute('DELETE FROM registration_sessions WHERE user_id=?',['900000001']);
+        await pool.execute('DELETE FROM skin_shop_sessions WHERE user_id=?',['900000001']);
         await pool.query('DELETE FROM wallet_entries');
         await pool.query('DELETE FROM wallet_operations');
         await pool.query('DELETE FROM player_roles');
