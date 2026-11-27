@@ -21,6 +21,7 @@ const { createCanvas } = require('canvas');
 
 // Централизованные критические переменные
 const CONFIG = require('../config');
+const {createCaptchaChallenge,captchaDecision,hasCaptchaProof}=require('../src/services/registrationProof');
 
 // === КОНСТАНТЫ ЗАЩИТЫ РЕГИСТРАЦИИ ===
 const REGISTRATION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // сессия живёт 24 часа
@@ -232,6 +233,10 @@ async function handlePrivacyPolicyAcceptance(ctx) {
     }
 
     // ЗАЩИТА: проверяем, что пользователь ещё не зарегистрирован в БД
+    if(!hasCaptchaProof(session)){
+      await ctx.answerCbQuery('Сначала пройдите текущую капчу.');
+      return;
+    }
     const existingUser = await getUserById(userId);
     if (existingUser && existingUser.is_registered) {
       console.log(`[POLICY] Пользователь ${userId} уже зарегистрирован в БД. Пропускаем.`);
@@ -524,10 +529,11 @@ async function generateCaptcha(ctx, session) {
   }
 
   const correctNumberIndex = Math.floor(Math.random() * selectedNumbers.length);
-  const correctAnswer = `captcha_${selectedNumbers[correctNumberIndex]}`;
-
-  const answers = [...selectedNumbers.map((number) => `wrong_${number}`)];
-  answers[correctNumberIndex] = correctAnswer;
+  const challenge=createCaptchaChallenge(selectedNumbers,correctNumberIndex);
+  const correctAnswer=challenge.correctAnswer;
+  const answers=[...challenge.answers];
+  session.captchaAnswers=challenge.answers;
+  delete session.captchaVerifiedAt;
   answers.sort(() => Math.random() - 0.5);
 
   const buttons = answers.map((answer) => {
@@ -593,6 +599,12 @@ async function handleCaptchaCorrect(ctx) {
     }
 
     // ЗАЩИТА: проверяем, что пользователь ещё не зарегистрирован
+    const decision=captchaDecision(session,ctx.callbackQuery?.data);
+    if(decision==='wrong')return handleCaptchaWrong(ctx);
+    if(decision!=='correct'){
+      await ctx.answerCbQuery(decision==='locked'?'Капча временно заблокирована.':'Это меню уже неактивно.');
+      return;
+    }
     const existingUser = await getUserById(userId);
     if (existingUser && existingUser.is_registered) {
       console.log(`[CAPTCHA] Пользователь ${userId} уже зарегистрирован. Пропускаем.`);
@@ -604,6 +616,7 @@ async function handleCaptchaCorrect(ctx) {
     // Успех: сбрасываем счётчик попыток и блокировку
     session.captchaAttempts = 0;
     session.captchaLockedUntil = 0;
+    session.captchaVerifiedAt=Date.now();
 
     // Удаляем состояние капчи
     delete session.captchaPending;
@@ -641,6 +654,7 @@ async function handleCaptchaWrong(ctx) {
     if (!session?.captchaPending) {
       return ctx.answerCbQuery('Это меню уже неактивно.');
     }
+    if(captchaDecision(session,ctx.callbackQuery?.data)!=='wrong')return ctx.answerCbQuery('Это меню уже неактивно.');
 
     // Считаем неверные попытки
     session.captchaAttempts = (session.captchaAttempts || 0) + 1;

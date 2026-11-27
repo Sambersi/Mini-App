@@ -19,6 +19,8 @@ function createLegacyReads(runtime){
   const api={
     async getUserById(id){return playerAdapter(await players.getById(String(id)));},
     async getUserByNumericId(id){return playerAdapter(await players.findByNumericId(String(id)));},
+    async getAllUsers(){return (await players.getAll()).map(playerAdapter);},
+    async getUserByUsername(name){return playerAdapter(await players.findByUsername(name));},
     async getUserByCardNumber(number){return playerAdapter(await players.findByCardNumber(String(number)));},
     async getUserByAnyId(id){return await api.getUserByNumericId(id)||await api.getUserById(id);},
     async getUserStatuses(id){return (await runtime.many('SELECT c.name FROM role_catalog c JOIN player_roles r ON r.role_id=c.id WHERE r.player_id=? ORDER BY r.role_order',[String(id)])).map(r=>r.name);},
