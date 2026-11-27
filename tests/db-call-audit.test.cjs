@@ -13,3 +13,10 @@ test('database audit does not confuse a shadowing parameter with the imported fu
   const sources={'handlers/fixture.js':"const {getUserById}=require('../db'); function unrelated(getUserById){getUserById();} function actual(){getUserById('1');}"};
   const report=audit(Object.keys(sources),{readSource:file=>sources[file]});assert.equal(report.calls.length,1);assert.equal(report.calls[0].owner,'actual');
 });
+
+test('repeated requires in nested scopes do not hide the global import',()=>{
+  const sources={'handlers/fixture.js':"const {getUserById}=require('../db'); const store=require('../db'); async function outer(){getUserById('1');store.getUserById('2');} async function inner(){const {getUserById}=require('../db');const store=require('../db');await getUserById('3');await store.getUserById('4');} async function direct(){return require('../db').getUserById('5');}"};
+  const report=audit(Object.keys(sources),{readSource:file=>sources[file]});
+  assert.equal(report.calls.length,5);assert.equal(report.summary.unawaited,3);
+  assert.equal(report.calls.filter(call=>call.owner==='outer').length,2);
+});

@@ -13,7 +13,7 @@ function propagate(sources){
       CallExpression(p){calls.push(p);},
       VariableDeclarator(p){const n=p.node;if(n.init?.type!=='CallExpression'||n.init.callee.name!=='require'||n.init.arguments[0]?.type!=='StringLiteral')return;
         const module=resolveModule(file,n.init.arguments[0].value);
-        if(n.id.type==='ObjectPattern')for(const prop of n.id.properties)if(prop.type==='ObjectProperty')imports.set(prop.value.name,{module,name:prop.key.name||prop.key.value,identifier:prop.value});
+        if(n.id.type==='ObjectPattern')for(const prop of n.id.properties)if(prop.type==='ObjectProperty'&&prop.value.type==='Identifier')imports.set(prop.value,{module,name:prop.key.name||prop.key.value,identifier:prop.value});
       },
       AssignmentExpression(p){const n=p.node;if(n.left.type==='MemberExpression'&&n.left.object.name==='module'&&n.left.property.name==='exports'&&n.right.type==='ObjectExpression')for(const prop of n.right.properties)if(prop.type==='ObjectProperty'&&prop.value.type==='Identifier')exports.set(prop.key.name||prop.key.value,p.scope.getBinding(prop.value.name));},
     });
@@ -40,8 +40,8 @@ function propagate(sources){
     if(['FunctionExpression','ArrowFunctionExpression'].includes(p.node.type))return p.node;
     if(p.isIdentifier()){
       const local=functionOfBinding(p.scope.getBinding(p.node.name));if(local)return local;
-      const imported=modules.get(file).imports.get(p.node.name);
-      if(imported&&p.scope.getBinding(p.node.name)?.identifier===imported.identifier)return functionOfBinding(modules.get(imported.module)?.exports.get(imported.name));
+      const imported=modules.get(file).imports.get(p.scope.getBinding(p.node.name)?.identifier);
+      if(imported)return functionOfBinding(modules.get(imported.module)?.exports.get(imported.name));
     }
     return null;
   }

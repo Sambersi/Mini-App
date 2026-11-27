@@ -323,14 +323,14 @@ bot.on('callback_query', async (ctx, next) => {
   try {
     const userId = ctx.from?.id;
     if (userId) {
-      logMessage(
+      (await logMessage(
         userId,
         ctx.chat?.type || 'private',
         ctx.chat?.id || userId,
         ctx.chat?.title || null,
         `[btn] ${ctx.callbackQuery?.data || ''}`,
         false
-      );
+      ));
     }
   } catch (e) {
     // ошибка логирования не должна ломать обработку кнопок
@@ -376,7 +376,7 @@ bot.use(async (ctx, next) => {
     }
 
     // Проверяем, находится ли пользователь в черном списке
-    if (isUserBanned(userId)) {
+    if ((await isUserBanned(userId))) {
       const bannedInfo = await getBlacklistEntry(userId); // Получаем информацию о бане
       const reason = bannedInfo?.reason || 'Не указана';
       const banExpiresAt = bannedInfo?.banned_until
@@ -510,7 +510,7 @@ async function checkUserStatus(ctx) {
   }
 
   // Проверяем, находится ли пользователь в черном списке
-  if (isUserBanned(userId)) {
+  if ((await isUserBanned(userId))) {
     const bannedInfo = await getBlacklistEntry(userId); // Получаем информацию о бане
     const reason = bannedInfo?.reason || 'Не указана';
     const banExpiresAt = bannedInfo?.banned_until
@@ -3018,7 +3018,7 @@ bot.action(/^report_feedback_(\d+)_(like|dislike)$/, async (ctx) => {
       
       // Получаем данные администратора
       const adminId = report.admin_id;
-      const adminUser = getUserById(adminId);
+      const adminUser = (await getUserById(adminId));
       if (adminUser) {
         // Обновляем статистику администратора
         if (feedbackType === 'like') {
@@ -4769,7 +4769,7 @@ bot.action(/buy_weapon_(\d+)/, async (ctx) => {
     }
 
     // Проверяем, доступно ли оружие для покупки
-    const user = getUserById(ctx.from.id.toString());
+    const user = (await getUserById(ctx.from.id.toString()));
     if (!user) {
       return await ctx.reply('❌ Ошибка: Пользователь не найден.');
     }
@@ -4845,7 +4845,7 @@ bot.action(/view_weapon_(\d+)/, async (ctx) => {
     }
 
     // Получаем баланс пользователя
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
     const currentBalance = user.balance || 0;
 
     // Формируем сообщение с информацией об оружии

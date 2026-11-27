@@ -20,19 +20,25 @@ function audit(files,{readSource=file=>fs.readFileSync(path.join(root,file),'utf
       VariableDeclarator(p){const n=p.node;if(n.init?.type!=='CallExpression'||n.init.callee.name!=='require'||n.init.arguments[0]?.type!=='StringLiteral')return;
         const module=resolveModule(file,n.init.arguments[0].value);
         if(n.id.type==='ObjectPattern'){
-          for(const prop of n.id.properties)if(prop.type==='ObjectProperty')imports.set(prop.value.name,{module,name:prop.key.name||prop.key.value,identifier:prop.value});
-        } else if(n.id.type==='Identifier')imports.set(n.id.name,{module,name:'*',identifier:n.id});
+          for(const prop of n.id.properties)if(prop.type==='ObjectProperty'&&prop.value.type==='Identifier')imports.set(prop.value,{module,name:prop.key.name||prop.key.value,identifier:prop.value});
+        } else if(n.id.type==='Identifier')imports.set(n.id,{module,name:'*',identifier:n.id});
       },
       FunctionDeclaration(p){if(p.node.id)definitions.set(p.node.id.name,{line:p.node.loc.start.line,async:p.node.async});},
       AssignmentExpression(p){const n=p.node;if(n.left.type==='MemberExpression'&&n.left.object.name==='module'&&n.left.property.name==='exports'&&n.right.type==='ObjectExpression')for(const prop of n.right.properties)if(prop.type==='ObjectProperty')exports.add(prop.key.name||prop.key.value);},
     });
     traverse(ast,{CallExpression(p){const n=p.node;let imported;
       if(n.callee.type==='Identifier'){
-        const binding=imports.get(n.callee.name);
-        if(binding&&p.scope.getBinding(n.callee.name)?.identifier===binding.identifier)imported=binding;
+        imported=imports.get(p.scope.getBinding(n.callee.name)?.identifier);
       }
       if(n.callee.type==='MemberExpression'&&n.callee.object.type==='Identifier'){
-        const mod=imports.get(n.callee.object.name);if(mod?.name==='*'&&p.scope.getBinding(n.callee.object.name)?.identifier===mod.identifier)imported={module:mod.module,name:n.callee.property.name};
+        const mod=imports.get(p.scope.getBinding(n.callee.object.name)?.identifier);
+        const name=n.callee.computed?n.callee.property.value:n.callee.property.name;
+        if(mod?.name==='*'&&typeof name==='string')imported={module:mod.module,name};
+      }
+      if(n.callee.type==='MemberExpression'&&n.callee.object.type==='CallExpression'){
+        const requireCall=n.callee.object;
+        const name=n.callee.computed?n.callee.property.value:n.callee.property.name;
+        if(requireCall.callee.name==='require'&&requireCall.arguments[0]?.type==='StringLiteral'&&typeof name==='string')imported={module:resolveModule(file,requireCall.arguments[0].value),name};
       }
       if(!imported||!dbFiles.has(imported.module))return;
       const owner=p.getFunctionParent();
