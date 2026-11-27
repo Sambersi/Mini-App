@@ -12,7 +12,8 @@ const {assertInactiveProjection}=require('../src/migration/importGuard');
 async function runRegistrationChecks(env=process.env){
   const pool=require('mysql2/promise').createPool(testConfig(env));
   const timestamp=1000000000000,referrer='900000031';let checks=0,seeded=false;
-  const service=createMysqlApi(createDatabaseRuntime(pool),{now:()=>timestamp});
+  const runtime=createDatabaseRuntime(pool);
+  const service=createMysqlApi(runtime,{now:()=>timestamp});
   const sessions=createSessionsRepository(pool,{now:()=>timestamp});
   const reads=createLegacyReads(createDatabaseRuntime(pool));
   const one=async(sql,params=[])=>{const [[row]]=await pool.execute(sql,params);return row;};
@@ -88,10 +89,30 @@ async function runRegistrationChecks(env=process.env){
     await assert.rejects(service.completePlayerRegistration('900000032'),{code:'REGISTRATION_PROOF_REQUIRED'});checks++;
     await sessions.saveRegistrationSession('900000032',proof(referrer));
     assert.equal((await service.completePlayerRegistration('900000032')).alreadyRegistered,true);assert.equal((await profile('900000032')).balance,5000);checks++;
+    const invoice={playerId:'900000032',currency:'XTR',chargeId:'fixture_inbox',stars:10,invoicePayload:'10_stars'};
+    const paid=await service.processTelegramPayment(invoice);assert.equal(paid.reward,'100');assert.equal(paid.replayed,false);checks++;
+    const duplicates=await Promise.all(Array.from({length:20},()=>service.processTelegramPayment(invoice)));
+    assert.ok(duplicates.every(result=>result.replayed));assert.equal((await profile('900000032')).df_balance,100);checks++;
+    await assert.rejects(service.processTelegramPayment({...invoice,stars:11,invoicePayload:'11_stars'}),{code:'PAYMENT_CHARGE_CONFLICT'});checks++;
+    const failed={...invoice,chargeId:'fixture_inbox_sql'};
+    const hash=require('node:crypto').createHash('sha256').update(failed.chargeId).digest('hex');
+    await pool.execute('INSERT INTO wallet_entries(operation_key,player_id,asset,bucket,amount,entry_type,source_run_id) VALUES (?,?,?,?,0,?,NULL)',['payment:'+hash+':payer',invoice.playerId,'DF','main','fixture']);
+    await assert.rejects(service.processTelegramPayment(failed),{code:'ER_DUP_ENTRY'});
+    assert.equal((await profile(invoice.playerId)).df_balance,100);
+    assert.equal((await one('SELECT state FROM payment_inbox WHERE charge_hash=?',[hash])).state,'pending');checks++;
+    await pool.execute('DELETE FROM wallet_entries WHERE operation_key=?',['payment:'+hash+':payer']);
+    assert.deepEqual(await service.recoverTelegramPayments(),{processed:1,failed:0});
+    const recoveredProfile=await profile(invoice.playerId);
+    assert.equal(recoveredProfile.df_balance,200);assert.equal(recoveredProfile.total_donated_stars,20);assert.equal(JSON.parse(recoveredProfile.donations_history).length,2);assert.equal((await profile(referrer)).df_balance,30);
+    assert.deepEqual(await service.recoverTelegramPayments(),{processed:0,failed:0});checks++;
+    // A payment whose profile disappeared remains durable until restoration.
+    await assert.rejects(service.processTelegramPayment({...invoice,playerId:'900000040',chargeId:'fixture_missing_player'}));
+    await create('900000040');assert.deepEqual(await service.recoverTelegramPayments(),{processed:1,failed:0});assert.equal((await profile('900000040')).df_balance,100);checks++;
+    await assert.rejects(runtime.transaction(()=>service.processTelegramPayment({...invoice,chargeId:'fixture_outer_transaction'})),{code:'PAYMENT_RECEIVE_REQUIRES_OUTER_COMMIT'});checks++;
     return {checks,concurrentRequests:20,isolatedDatabase:true};
   }finally{
     try{if(seeded){
-      for(const table of ['registration_completions','inventory_entries','wallet_entries','player_referral_intents','player_referrals','player_roles',...Object.keys(groups),'inventory_balances','wallets','player_cards'])await pool.query('DELETE FROM '+table);
+      for(const table of ['payment_inbox','telegram_payments','player_donation_events','finance_log','registration_completions','inventory_entries','wallet_entries','player_referral_intents','player_referrals','player_roles',...Object.keys(groups),'inventory_balances','wallets','player_cards'])await pool.query('DELETE FROM '+table);
       await pool.execute('DELETE FROM role_catalog WHERE id=999992');
       await pool.query('DELETE FROM registration_sessions');await pool.query('DELETE FROM players');
       await pool.query('UPDATE runtime_control SET projection_run_id=NULL WHERE id=1');

@@ -203,6 +203,10 @@ if (agent) {
 }
 
 const bot = new Telegraf(process.env.BOT_TOKEN, botOptions);
+const {installStarsHandlers}=require('./src/telegram/starsHandlers');
+const {processTelegramPayment,recoverTelegramPayments}=require('./db');
+installStarsHandlers(bot,{processPayment:processTelegramPayment,findPlayer:getUserById,notifyDonation:sendDonationNotification});
+
 
 
 diceGame.init(bot);
@@ -220,6 +224,13 @@ diceGame.init(bot);
 
 const { runLogsCleanup } = require('./db');
 const {startupTasks,runBackground}=require('./src/runtime/startupTasks');
+async function recoverPaymentsJob(){
+  const result=await recoverTelegramPayments();
+  if(result.processed||result.failed)console.log('[PAYMENT RECOVERY] '+JSON.stringify(result));
+}
+startupTasks.add('payment-inbox',recoverPaymentsJob);
+setInterval(()=>runBackground('payment-inbox',recoverPaymentsJob),60*1000);
+
 startupTasks.add('logs-cleanup',async()=>await runLogsCleanup());
 setInterval(()=>runBackground('logs-cleanup',runLogsCleanup),60*60*1000);
 
@@ -3214,21 +3225,8 @@ bot.action(/^donate_(\d+)$/, async (ctx) => {
   }
 });
 
-// Обработка предварительного запроса (pre_checkout_query)
-bot.on('pre_checkout_query', async (ctx) => {
-  try {
-      console.log(`Предварительный запрос на оплату:`, ctx.preCheckoutQuery);
-
-      // Подтверждаем предварительный запрос
-      await ctx.answerPreCheckoutQuery(true);
-  } catch (error) {
-      console.error(`Ошибка при обработке pre_checkout_query:`, error);
-      await ctx.answerPreCheckoutQuery(false, 'Произошла ошибка при подтверждении платежа.');
-  }
-});
-
 // ==========================================
-// 1. ПЕРЕХВАТЧИК СООБЩЕНИЙ ДЛЯ СОЗДАНИЯ ПОСТОВ
+// ПЕРЕХВАТЧИК СООБЩЕНИЙ ДЛЯ СОЗДАНИЯ ПОСТОВ
 // Ловит ЛЮБЫЕ сообщения (текст, фото, стикеры, видео), 
 // если пользователь находится в режиме создания поста.
 // ==========================================
@@ -3240,69 +3238,8 @@ bot.on('message', async (ctx, next) => {
         return; 
     }
     
-    // Если это не пост, передаем управление следующему обработчику (платежному)
+    // Платежи обрабатываются раньше; прочие сообщения передаём дальше.
     return next(); 
-});
-
-// ==========================================
-// 2. ОБРАБОТКА УСПЕШНОГО ПЛАТЕЖА (Твой существующий код)
-// ==========================================
-bot.on('message', async (ctx) => {
-  try {
-      if (ctx.message.successful_payment) {
-          const { total_amount } = ctx.message.successful_payment;
-          const userId = ctx.from.id.toString();
-          console.log(`[DEBUG] Обработчик платежей: Получен успешный платеж от пользователя ${userId}`);
-          console.log(`[DEBUG] Обработчик платежей: Сумма доната: ${total_amount} звезд`);
-
-          const rewardAmount = total_amount * 10; // 1 звезда = 10 DF
-          (await updateUserDFBalance(userId, rewardAmount));
-          (await updateTotalDonatedStars(userId, total_amount, db));
-          (await addDonationToHistory(userId, total_amount, db));
-
-          const referrerId = await getReferrerId(userId);
-          if (referrerId) {
-              const CONFIG = require('./config');
-              let percent = CONFIG.REFERRAL_DONATION_PERCENT_DF / 100;
-              
-              // ПРОВЕРКА НА ПАРТНЕРА
-              const { getUserStatusesSync } = require('./db');
-              const referrerStatuses = (await getUserStatusesSync(referrerId));
-              const isReferrerPartner = referrerStatuses.some(s => s.toLowerCase() === 'партнёр' || s.toLowerCase() === 'partner');
-              
-              if (isReferrerPartner) {
-                  percent = 0.15; // 15% для партнеров (вместо стандартных 10%)
-              }
-
-              const referrerBonus = Math.floor(rewardAmount * percent);
-              (await updateUserDFBalance(referrerId, referrerBonus));
-
-              const partnerNote = isReferrerPartner ? ' (Партнёрский бонус 15%)' : '';
-              await ctx.telegram.sendMessage(
-                  referrerId,
-                  `☑️ Вы получили +${referrerBonus} DF за донат вашего реферала!${partnerNote}`,
-                  { parse_mode: 'HTML' }
-              );
-          }
-
-          await sendDonationNotification(ctx, userId, total_amount);
-
-          const keyboard = {
-              inline_keyboard: [
-                  [{ text: '📊 Статистика донатов', callback_data: 'donation_stats' }]
-              ]
-          };
-
-          await ctx.replyWithHTML(
-              `<b>😇 Спасибо!</b>\n🍩 Ваш донат на сумму ${total_amount} звезд успешно принят.`,
-              { reply_markup: keyboard }
-          );
-          await ctx.replyWithHTML(`🍩 Вам зачислено: <b>${rewardAmount} DF</b>`, { parse_mode: 'HTML' });
-      }
-  } catch (error) {
-      console.error(`Ошибка при обработке успешного платежа для пользователя ${ctx.from.id}:`, error);
-      await ctx.reply('Произошла ошибка при обработке платежа.');
-  }
 });
 
 // Обработка callback-запроса для кнопки "Статистика донатов"

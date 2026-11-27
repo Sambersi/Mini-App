@@ -20,15 +20,15 @@ function normalizePayment(event){
   const stars=integer(event.stars);if(stars<=0n||stars*10n>9223372036854775807n)fail('PAYMENT_AMOUNT_INVALID');
   return {playerId:event.playerId,stars:String(stars),currency:'XTR',invoicePayload:event.invoicePayload};
 }
-function createTelegramPayments(pool,{referralPercent=10,now=()=>Date.now()}={}){
+function createTelegramPayments(pool,{referralPercent=10,now=()=>Date.now(),runTransaction=work=>withDeadlockRetry(()=>withTransaction(pool,work))}={}){
   const defaultRate=percentage(referralPercent);
   return async event=>{
     const request=normalizePayment(event),key=hash(event.chargeId),requestHash=hash(JSON.stringify(request));
-    return withDeadlockRetry(()=>withTransaction(pool,async connection=>{
+    return runTransaction(async connection=>{
       await connection.execute('INSERT INTO telegram_payments(charge_hash,request_hash,player_id,stars,currency,created_ms) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE charge_hash=VALUES(charge_hash)',[key,requestHash,request.playerId,request.stars,'XTR',now()]);
       const [[previous]]=await connection.execute('SELECT request_hash,result_json FROM telegram_payments WHERE charge_hash=? FOR UPDATE',[key]);
       if(previous.request_hash!==requestHash)fail('PAYMENT_CHARGE_CONFLICT');
-      if(previous.result_json)return JSON.parse(previous.result_json);
+      if(previous.result_json)return {...JSON.parse(previous.result_json),replayed:true};
       const [[referral]]=await connection.execute('SELECT referrer_id FROM player_referrals WHERE player_id=? FOR UPDATE',[request.playerId]);
       const referrer=referral?.referrer_id;
       const ids=[...new Set([request.playerId,...(referrer?[referrer]:[])])].sort();
@@ -59,10 +59,10 @@ function createTelegramPayments(pool,{referralPercent=10,now=()=>Date.now()}={})
       const history='{"amount":'+request.stars+',"timestamp":'+Math.floor(now()/1000)+'}';
       await connection.execute('INSERT INTO player_donation_events(player_id,ordinal,value_json) VALUES (?,?,?)',[request.playerId,String(ordinal),history]);
       await connection.execute('INSERT INTO finance_log(ts,type,actor_user_id,amount,currency,payload,success) VALUES (?,?,?,?,?,?,1)',[now(),'donation',request.playerId,String(reward),'DF',JSON.stringify({chargeHash:key,stars:request.stars})]);
-      const result={reward:String(reward),stars:request.stars,referrerId:referrer||null,referrerBonus:String(bonus),partner};
+      const result={reward:String(reward),stars:request.stars,referrerId:referrer||null,referrerBonus:String(bonus),partner,replayed:false};
       await connection.execute('UPDATE telegram_payments SET result_json=? WHERE charge_hash=?',[JSON.stringify(result),key]);
       return result;
-    }));
+    });
   };
 }
 module.exports={percentage,normalizePayment,createTelegramPayments};
