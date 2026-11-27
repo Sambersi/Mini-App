@@ -1,21 +1,27 @@
 const BASE = '';
+function authenticatedFetch(url,options={}){
+  const headers=new Headers(options.headers);
+  const initData=window.Telegram?.WebApp?.initData;
+  if(initData)headers.set('Authorization','tma '+initData);
+  return fetch(url,{...options,headers});
+}
 export async function fetchUser(userId) {
-  const r = await fetch(`${BASE}/api/user/${userId}`);
+  const r = await authenticatedFetch(`${BASE}/api/user/${userId}`);
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
 }
 export async function fetchAdminCheck(userId) {
-  const r = await fetch(`${BASE}/api/admin/check/${userId}`);
+  const r = await authenticatedFetch(`${BASE}/api/admin/check/${userId}`);
   if (!r.ok) return { isAdmin: false };
   return r.json();
 }
 export async function fetchTickets(userId) {
-  const r = await fetch(`${BASE}/api/fortune/tickets/${userId}`);
+  const r = await authenticatedFetch(`${BASE}/api/fortune/tickets/${userId}`);
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
 }
 export async function spinFortune(userId) {
-  const r = await fetch(`${BASE}/api/fortune/spin`, {
+  const r = await authenticatedFetch(`${BASE}/api/fortune/spin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId }),
@@ -34,14 +40,14 @@ export async function fetchAdminLogs(mode, opts = {}) {
   if (types && types.length) qs.set('types', Array.isArray(types) ? types.join(',') : String(types));
   if (search) qs.set('search', search);
   if (view) qs.set('view', view);
-  const res = await fetch(`/api/admin/logs/${mode}?${qs.toString()}`);
+  const res = await authenticatedFetch(`/api/admin/logs/${mode}?${qs.toString()}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 export async function fetchRoundDetails(roundId, callerId) {
   const qs = new URLSearchParams();
   qs.set('callerId', String(callerId ?? ''));
-  const res = await fetch(`/api/admin/logs/double/round/${encodeURIComponent(roundId)}?${qs.toString()}`);
+  const res = await authenticatedFetch(`/api/admin/logs/double/round/${encodeURIComponent(roundId)}?${qs.toString()}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

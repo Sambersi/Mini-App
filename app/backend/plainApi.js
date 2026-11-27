@@ -48,7 +48,7 @@ function getTopStatusName(userId) {
 }
 
 // Роут профиля
-router.get('/user/:id', async (req, res) => {
+router.get('/user/:id', require('../../src/api/telegramAuth').ownPlayer('id'), async (req, res) => {
   const userId = req.params.id.toString();
   try {
     const user = (await getUserById(userId));
@@ -91,7 +91,7 @@ router.get('/user/:id', async (req, res) => {
 
 // --- Остальные роуты бонуса остаются без изменений ---
 
-router.get('/bonus/status/:userId', async (req, res) => {
+router.get('/bonus/status/:userId', require('../../src/api/telegramAuth').ownPlayer(), async (req, res) => {
   const user = (await getUserById(req.params.userId.toString()));
   if (!user) return res.status(404).json({ error: 'User not found' });
   const now = Math.floor(Date.now() / 1000);
@@ -104,7 +104,8 @@ router.get('/bonus/status/:userId', async (req, res) => {
 });
 
 router.post('/bonus/spin', async (req, res) => {
-  const userId = req.body?.userId?.toString();
+  const userId = req.auth.userId;
+  if(req.body?.userId!==undefined&&String(req.body.userId)!==userId)return res.status(403).json({error:'FORBIDDEN'});
   if (!userId) return res.status(400).json({ error: 'userId required' });
   const user = (await getUserById(userId));
   if (!user) return res.status(404).json({ error: 'User not found' });

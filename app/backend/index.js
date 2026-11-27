@@ -19,8 +19,10 @@ const {
   resolveLogSearchIds,
   getAdminDoubleRoundsView,
   getAdminDoubleBetsView,
-  getDoubleRoundDetails
+  getDoubleRoundDetails,
+  getUserStatuses
 } = require('../../db');
+const {telegramAuth,ownPlayer,adminOnly}=require('../../src/api/telegramAuth');
 
 // === 2. Настройка путей и инициализация БД ===
 const dbPath = path.join(__dirname, '../../database.sqlite');
@@ -49,9 +51,15 @@ const PORT = process.env.PORT || 25067;
 
 app.use(cors());
 app.use(express.json());
+const authenticate=telegramAuth({botToken:process.env.BOT_TOKEN});
+app.use('/api',(req,res,next)=>req.path==='/health'?next():authenticate(req,res,next));
+app.use('/api/admin/logs',adminOnly(async id=>{
+  if(id===process.env.MAIN_ADMIN||(process.env.ADMIN_IDS||'').split(',').map(s=>s.trim()).includes(id))return true;
+  return (await getUserStatuses(id)).some(name=>['Тех администратор','Администратор'].includes(name));
+}));
 
 // === 4. API маршруты ===
-app.get('/api/user/:id', (req, res) => {
+app.get('/api/user/:id', ownPlayer('id'), (req, res) => {
   const userId = req.params.id.toString();
   try {
     const user = db.prepare('SELECT id, numeric_id, username, balance, df_balance, npf_shares FROM users WHERE id = ?').get(userId);
@@ -98,11 +106,16 @@ app.get('/api/tunnel-status', (req, res) => {
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
 
-app.get('/api/admin/check/:userId', (req, res) => {
-  res.json({ isAdmin: true });
+app.get('/api/admin/check/:userId', ownPlayer(), async (req, res) => {
+  try{
+    const id=req.auth.userId;
+    const direct=id===process.env.MAIN_ADMIN||ADMIN_IDS.includes(id);
+    const roles=direct?[]:await getUserStatuses(id);
+    res.json({isAdmin:direct||roles.some(name=>['Тех администратор','Администратор'].includes(name))});
+  }catch{res.status(503).json({error:'Authorization unavailable'});}
 });
 
-app.get('/api/fortune/tickets/:userId', async (req, res) => {
+app.get('/api/fortune/tickets/:userId', ownPlayer(), async (req, res) => {
   try {
     const user = (await getUserById(req.params.userId.toString()));
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -135,7 +148,8 @@ function selectWeightedPrize() {
 
 
 app.post('/api/fortune/spin', async (req, res) => {
-  const userId = req.body.userId?.toString();
+  const userId = req.auth.userId;
+  if(req.body.userId!==undefined&&String(req.body.userId)!==userId)return res.status(403).json({error:'FORBIDDEN'});
   if (!userId) return res.status(400).json({ error: 'userId required' });
   try {
     const tickets = (await getTickets(userId));
