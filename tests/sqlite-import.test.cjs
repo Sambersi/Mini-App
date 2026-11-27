@@ -150,6 +150,12 @@ test('projection comparison rejects rounding, truncation or a changed balance', 
   await assert.rejects(verifyRows({ query: async () => [[{ id: '1', value: '9223372036854775806' }]] }, 'test', [['1', 9223372036854775807n]]));
 });
 
+test('fractional registration times compare exactly without rounding or treating names as numbers', async () => {
+  await verifyRows({ query: async () => [[{ name: '1.00', time: '1700000000.125000000000' }]] }, 'test', [['1.00', 1700000000.125]], [1]);
+  await assert.rejects(verifyRows({ query: async () => [[{ name: '1.00', time: '1700000000.125000000001' }]] }, 'test', [['1.00', 1700000000.125]], [1]));
+  await assert.rejects(verifyRows({ query: async () => [[{ name: '1', time: '1700000000.125' }]] }, 'test', [['1.00', 1700000000.125]], [1]));
+});
+
 test('migration refuses unrelated target tables before executing DDL', async () => {
   const calls = [];
   await assert.rejects(applyFoundation({ query: async sql => { calls.push(sql); return [[{ table: 'unrelated_app' }]]; } }), { code: 'MIGRATION_TARGET_NOT_EMPTY' });
@@ -158,13 +164,13 @@ test('migration refuses unrelated target tables before executing DDL', async () 
 
 test('migration refuses an edited applied version before changing schema', async () => {
   const calls = [];
-  await assert.rejects(applyFoundation({ query: async sql => { calls.push(sql); return sql === 'SHOW TABLES' ? [[{ table: 'schema_migrations' }]] : [[{ checksum: 'different' }]]; } }), { code: 'MIGRATION_SCHEMA_CHANGED' });
+  await assert.rejects(applyFoundation({ query: async sql => { calls.push(sql); return sql === 'SHOW TABLES' ? [[{ table: 'schema_migrations' }]] : [[{ version: 1, checksum: 'different' }]]; } }), { code: 'MIGRATION_SCHEMA_CHANGED' });
   assert.equal(calls.some(sql => sql.startsWith('CREATE')), false);
 });
 
 test('migration refuses an activated MariaDB runtime before any data import', async () => {
   await assert.rejects(applyFoundation({ query: async sql => {
-    if (sql === 'SHOW TABLES' || sql.startsWith('SELECT checksum')) return [[]];
+    if (sql === 'SHOW TABLES' || sql.startsWith('SELECT version')) return [[]];
     if (sql.startsWith('SELECT runtime_active')) return [[{ runtime_active: 1 }]];
     return [{}];
   } }), { code: 'MIGRATION_RUNTIME_ACTIVE' });

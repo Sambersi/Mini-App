@@ -47,9 +47,20 @@ async function insertBatches(connection, sql, rows) {
   }
 }
 
-async function verifyRows(connection, sql, expected) {
+function canonicalDecimal(value) {
+  if (value === null) return null;
+  const match = String(value).match(/^(-?)(\d+)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/);
+  if (!match) throw new Error('Invalid numeric timestamp');
+  let digits = (match[2] + (match[3] || '')).replace(/^0+/, '') || '0';
+  let exponent = Number(match[4] || 0) - (match[3] || '').length;
+  if (digits === '0') return '0';
+  while (digits.endsWith('0')) { digits = digits.slice(0, -1); exponent++; }
+  return match[1] + digits + 'e' + exponent;
+}
+
+async function verifyRows(connection, sql, expected, decimalColumns = []) {
   const [rows] = await connection.query(sql);
-  const normalize = row => JSON.stringify(row.map(v => v === null ? null : String(v)));
+  const normalize = row => JSON.stringify(row.map((v, i) => decimalColumns.includes(i) ? canonicalDecimal(v) : v === null ? null : String(v)));
   const actual = rows.map(row => normalize(Object.values(row))).sort();
   const wanted = expected.map(normalize).sort();
   const mismatch = actual.findIndex((row, i) => row !== wanted[i]);
@@ -89,7 +100,7 @@ async function projectPlayers(connection, db, runId) {
 
 async function verifyProjection(connection, db, runId) {
   const data = buildProjection(db);
-  await verifyRows(connection, 'SELECT telegram_id,numeric_id,display_name,registered,registration_ts FROM players', data.players);
+  await verifyRows(connection, 'SELECT telegram_id,numeric_id,display_name,registered,registration_ts FROM players', data.players, [4]);
   await verifyRows(connection, 'SELECT player_id,asset,bucket,balance FROM wallets', data.wallets);
   await verifyRows(connection, 'SELECT player_id,item_code,quantity FROM inventory_balances', data.inventory);
   await verifyRows(connection, 'SELECT player_id,referrer_id FROM player_referrals', data.referrals);

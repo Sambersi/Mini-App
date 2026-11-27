@@ -1,0 +1,1 @@
+ALTER TABLE players MODIFY COLUMN registration_ts DECIMAL(30,12) NULL;
