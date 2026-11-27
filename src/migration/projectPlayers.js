@@ -118,4 +118,4 @@ function projectionSummary(data) {
     referrals: data.referrals.length, issues, readyForRuntime: false };
 }
 
-module.exports = { buildProjection, projectPlayers, verifyProjection, verifyRows };
+module.exports = { buildProjection, projectPlayers, verifyProjection, verifyRows, canonicalDecimal };

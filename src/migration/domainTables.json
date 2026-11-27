@@ -1,0 +1,2624 @@
+[
+  {
+    "name": "action_logs",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "action_type",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "target_user_id",
+        "type": "VARCHAR(191)",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "details",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "timestamp",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "auction",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "prize",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "minBet",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "minStep",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "highestBid",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "highestBidder",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "participants",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "bids",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "isFinished",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "bet_history",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "round_hash",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "multiplier",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "amount",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "is_win",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "win_amount",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "timestamp",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "boss_damage",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "damage",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "timestamp",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "boss_state",
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "last_attack_time",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "boss_caller_id",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "bosses",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "name",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "phase",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "1",
+        "autoIncrement": false
+      },
+      {
+        "name": "start_time",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "imageFile",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "phase1_hp",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "phase2_hp",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "phase1_max_hp",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "phase2_max_hp",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "correct_button_index",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "prize_type",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "prize_amount",
+        "type": "DECIMAL(65,30)",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "chats",
+    "columns": [
+      {
+        "name": "chat_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "is_double_chat",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "is_dice_chat",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "chat_id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "daily_admin_actions",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "admin_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "action_type",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "target_user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "timestamp",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "daily_admin_kick_actions",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "admin_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "target_user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "timestamp",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "dice_bets",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "round_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "username",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "amount",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "dice1",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "dice2",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "dice_bets_log",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "ts",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "round_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "username",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "amount",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "dice1",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "dice2",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "total_points",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "is_winner",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "win_amount",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "dice_game_logs",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_id",
+        "type": "VARCHAR(191)",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "round_id",
+        "type": "VARCHAR(191)",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "amount",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "dice1",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "dice2",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "is_win",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "win_amount",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "timestamp",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "dice_rounds",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "chat_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "start_time",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "end_time",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "total_bank",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "round_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": [
+      [
+        "round_id"
+      ]
+    ]
+  },
+  {
+    "name": "dice_rounds_log",
+    "columns": [
+      {
+        "name": "round_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "start_ts",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "end_ts",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "round_amount",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "total_bank",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "participants_count",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "winner_id",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "status",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'active'",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "round_id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "double_bets",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "round_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "username",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "multiplier",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "amount",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "is_win",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "win_amount",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "created_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "game_choice",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "double_bets_log",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "ts",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "round_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "username",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "multiplier",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "amount",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "status",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": "'accepted'",
+        "autoIncrement": false
+      },
+      {
+        "name": "reject_reason",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "game_choice",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "is_win",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "win_amount",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "payout_status",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'pending'",
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_title",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "double_game_logs",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_id",
+        "type": "VARCHAR(191)",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "round_hash",
+        "type": "VARCHAR(191)",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "multiplier",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "amount",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "is_win",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "win_amount",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "timestamp",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "double_notifications",
+    "columns": [
+      {
+        "name": "notification_key",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "round_hash",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "sent_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "notification_key"
+    ],
+    "unique": []
+  },
+  {
+    "name": "double_round_state",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "state",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": "'ACCEPTING'",
+        "autoIncrement": false
+      },
+      {
+        "name": "hash",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "result",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "salt",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "end_time",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "cell_contents",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "final_multipliers",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "game_button_active",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "processed_chats",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'[]'",
+        "autoIncrement": false
+      },
+      {
+        "name": "game_choices",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'{}'",
+        "autoIncrement": false
+      },
+      {
+        "name": "global_choices",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'{}'",
+        "autoIncrement": false
+      },
+      {
+        "name": "notifications",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'{}'",
+        "autoIncrement": false
+      },
+      {
+        "name": "updated_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "double_rounds",
+    "columns": [
+      {
+        "name": "round_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "start_ts",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "end_ts",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "result_multiplier",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "salt",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "total_bank",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "bets_count",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "chats_count",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "participants_count",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "status",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'active'",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "round_id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "empire_attacks",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "attacker_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "defender_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "business_id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "timestamp",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "(UNIX_TIMESTAMP())",
+        "autoIncrement": false
+      },
+      {
+        "name": "result",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "stolen_imp",
+        "type": "DECIMAL(65,30)",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "empire_businesses",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "owner_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "type",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "level",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "1",
+        "autoIncrement": false
+      },
+      {
+        "name": "imp_generation_rate",
+        "type": "DECIMAL(65,30)",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "max_daily_imp",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "imp_accumulated",
+        "type": "DECIMAL(65,30)",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "wear_percentage",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "last_income_time",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "created_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "(UNIX_TIMESTAMP())",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "empire_clan_members",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "clan_id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "join_date",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "(UNIX_TIMESTAMP())",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "empire_clans",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "name",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "leader_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "created_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "(UNIX_TIMESTAMP())",
+        "autoIncrement": false
+      },
+      {
+        "name": "treasury_imp",
+        "type": "DECIMAL(65,30)",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": [
+      [
+        "name"
+      ]
+    ]
+  },
+  {
+    "name": "empire_licenses",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "owner_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "business_id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "daily_limit_increase",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "expires_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "finance_log",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "ts",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "type",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "actor_user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "target_user_id",
+        "type": "VARCHAR(191)",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "amount",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "currency",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "ref",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_id",
+        "type": "VARCHAR(191)",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "reason",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "action",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "payload",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "success",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "1",
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_title",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_type",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "message_log",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "ts",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_type",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_title",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "message_text",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "is_command",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "message_logs",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_id",
+        "type": "VARCHAR(191)",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "message_text",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "timestamp",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "mutes",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "chat_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "muted_until",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "reason",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": [
+      [
+        "user_id",
+        "chat_id"
+      ]
+    ]
+  },
+  {
+    "name": "partner_requests",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "partner_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "name",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "prize_type",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "prize_amount",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "audience_type",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "status",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'pending'",
+        "autoIncrement": false
+      },
+      {
+        "name": "admin_message_id",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "created_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "(UNIX_TIMESTAMP())",
+        "autoIncrement": false
+      },
+      {
+        "name": "template",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'normal'",
+        "autoIncrement": false
+      },
+      {
+        "name": "request_type",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'promo'",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "prefixes",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "prefix",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "promo_activations",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "promo_id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "activated_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "(UNIX_TIMESTAMP())",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "promo_link_aliases",
+    "columns": [
+      {
+        "name": "alias",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "promo_name",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "created_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "(UNIX_TIMESTAMP())",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "alias"
+    ],
+    "unique": []
+  },
+  {
+    "name": "promos",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "name",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "activations_left",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "prize_type",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "prize_amount",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "created_by",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "min_status_id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "expires_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "creator_id",
+        "type": "VARCHAR(191)",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "audience_type",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'all'",
+        "autoIncrement": false
+      },
+      {
+        "name": "template",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'normal'",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": [
+      [
+        "name"
+      ]
+    ]
+  },
+  {
+    "name": "registration_sessions",
+    "columns": [
+      {
+        "name": "user_id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "registration_data",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "last_accessed",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "started_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "user_id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "reports",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "username",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "report_text",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "status",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "'not_answered'",
+        "autoIncrement": false
+      },
+      {
+        "name": "admin_response",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "admin_id",
+        "type": "VARCHAR(191)",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "admin_username",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "created_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": false,
+        "default": "(UNIX_TIMESTAMP())",
+        "autoIncrement": false
+      },
+      {
+        "name": "likes",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "dislikes",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "user_feedback",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "skin_shop_sessions",
+    "columns": [
+      {
+        "name": "user_id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "skin_shop_data",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": "NULL",
+        "autoIncrement": false
+      },
+      {
+        "name": "last_accessed",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "user_id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "skins",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "name",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "file_name",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "price",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "currency_type",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "rarity",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "glow_id",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "glow_file_name",
+        "type": "LONGTEXT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "stock",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "max_stock",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "total_serials",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "0",
+        "autoIncrement": false
+      },
+      {
+        "name": "is_visible_in_shop",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "1",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "special_prefixes",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "prefix",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "created_by",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "created_at",
+        "type": "VARCHAR(64)",
+        "notNull": false,
+        "default": "(CURRENT_TIMESTAMP)",
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": [
+      [
+        "prefix"
+      ]
+    ]
+  },
+  {
+    "name": "user_attack_states",
+    "columns": [
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "correct_button_index",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "message_id",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "created_at",
+        "type": "DECIMAL(30,12)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "user_id"
+    ],
+    "unique": []
+  },
+  {
+    "name": "user_skins",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "skin_id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "serial_number",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": [
+      [
+        "serial_number"
+      ]
+    ]
+  },
+  {
+    "name": "user_weapon_durability",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(191)",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "weapon_id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "current_durability",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": [
+      [
+        "user_id",
+        "weapon_id"
+      ]
+    ]
+  },
+  {
+    "name": "weapons",
+    "columns": [
+      {
+        "name": "id",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": true
+      },
+      {
+        "name": "name",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "image_file",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "base_damage",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "price",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "price_type",
+        "type": "LONGTEXT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "is_visible_in_shop",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "1",
+        "autoIncrement": false
+      },
+      {
+        "name": "is_visible_in_case",
+        "type": "BIGINT",
+        "notNull": false,
+        "default": "1",
+        "autoIncrement": false
+      },
+      {
+        "name": "width",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "height",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "x_position",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "y_position",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      },
+      {
+        "name": "durability",
+        "type": "BIGINT",
+        "notNull": true,
+        "default": null,
+        "autoIncrement": false
+      }
+    ],
+    "primary": [
+      "id"
+    ],
+    "unique": []
+  }
+]
