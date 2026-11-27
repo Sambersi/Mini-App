@@ -107,7 +107,7 @@ async function runWalletChecks(env = process.env) {
     await sessions.saveRegistrationSession(sessionId,{step:'captcha',attempts:3});
     assert.deepEqual(await sessions.getRegistrationSession(sessionId),{step:'captcha',attempts:3});
     const [[started]]=await pool.execute('SELECT started_at FROM registration_sessions WHERE user_id=?',[sessionId]);
-    assert.equal(String(started.started_at),'1000000');checks++;
+    assert.equal(Number(started.started_at),1000000);checks++;
     clock+=24*60*60*1000+1;
     assert.deepEqual(await sessions.getRegistrationSession(sessionId),{});checks++;
     await sessions.saveRegistrationSession(sessionId,{step:'new'});
