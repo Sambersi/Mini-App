@@ -38,6 +38,15 @@ async function runStartupChecks({ rootDir, env = process.env, log = console.log,
     log('[MYSQL IMPORT] FAILED ' + JSON.stringify(safeMysqlError(error)));
     throw new Error('MYSQL_IMPORT_FAILED');
   }
+  try {
+    if (readBoolean(env.MYSQL_WALLET_CHECKS, 'MYSQL_WALLET_CHECKS')) {
+      const result = await require('../scripts/check-wallets.cjs').runWalletChecks(env);
+      log('[WALLET CHECKS] VERIFIED ' + JSON.stringify(result));
+    }
+  } catch (error) {
+    log('[WALLET CHECKS] FAILED ' + JSON.stringify(safeMysqlError(error)));
+    throw new Error('WALLET_CHECKS_FAILED');
+  }
   log('[DATABASE] Active storage: SQLite. MariaDB import does not switch user operations.');
   return runtime;
 }

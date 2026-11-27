@@ -13,7 +13,7 @@ function getRuntimeInfo(rootDir = path.resolve(__dirname, '..')) {
   } catch (_) {
     // Deployments without .git still run; diagnostics must not stop the server.
   }
-  return { commit, stage: '02-snapshot-import', activeStorage: 'sqlite' };
+  return { commit, stage: '03-wallet-foundation', activeStorage: 'sqlite' };
 }
 
 module.exports = { getRuntimeInfo };
