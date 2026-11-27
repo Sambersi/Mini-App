@@ -37,7 +37,7 @@ test('finance projection preserves cards, levels, roles and bans and reports mis
     const {buildFinanceProjection}=require('../src/migration/projectFinance');
     const result=buildFinanceProjection(db,new Map([['1','60000000']]));
     assert.deepEqual(result.cards,[['1','1111 2222','20',1,0,'60000000']]);
-    assert.deepEqual(result.memberships,[['1','1']]);assert.deepEqual(result.bans,[['1','fixture','123']]);
+    assert.deepEqual(result.memberships,[['1','1',0,'1']]);assert.deepEqual(result.bans,[['1','fixture','123']]);
     assert.equal(result.issues.length,2);
   } finally {db.close();}
 });

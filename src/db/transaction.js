@@ -22,4 +22,12 @@ async function withTransaction(pool, work) {
   }
 }
 
-module.exports = { withTransaction };
+async function withDeadlockRetry(work){
+  for(let attempt=0;;attempt++){
+    try{return await work();}catch(error){
+      if(error.code!=='ER_LOCK_DEADLOCK'||attempt>=4)throw error;
+      await new Promise(resolve=>setTimeout(resolve,10*(attempt+1)));
+    }
+  }
+}
+module.exports = { withTransaction, withDeadlockRetry };

@@ -29,7 +29,7 @@ function createPlayersRepository(pool,{readTransaction=work=>withTransaction(poo
         ["SELECT 'owned_weapons' AS field_name,ordinal,value_json FROM player_weapon_ownership WHERE player_id=?",id],
         ["SELECT 'donations_history' AS field_name,ordinal,value_json FROM player_donation_events WHERE player_id=?",id],
         ["SELECT 'form_ids' AS field_name,ordinal,value_json FROM player_forms WHERE player_id=?",id],
-        ["SELECT 'status_ids' AS field_name,role_id AS ordinal,CAST(role_id AS CHAR) AS value_json FROM player_roles WHERE player_id=?",id],
+        ["SELECT 'status_ids' AS field_name,role_order AS ordinal,COALESCE(original_value_json,CAST(role_id AS CHAR)) AS value_json FROM player_roles WHERE player_id=?",id],
       ];
       const [lists]=await connection.execute(listQueries.map(q=>q[0]).join(' UNION ALL ')+' ORDER BY field_name,ordinal',listQueries.map(q=>q[1]));
       const values=Object.fromEntries(['prefix_ids','special_prefix_ids','owned_weapons','donations_history','form_ids','status_ids'].map(key=>[key,[]]));

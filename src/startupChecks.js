@@ -9,6 +9,13 @@ async function runStartupChecks({ rootDir, env = process.env, log = console.log,
   importer = options => require('./migration/stageTwo').runStageTwo(options) } = {}) {
   const runtime = getRuntimeInfo(rootDir);
   log('[RELEASE] ' + JSON.stringify(runtime));
+  if(env.DB_BACKEND&&env.DB_BACKEND!=='sqlite'){
+    if(env.DB_BACKEND!=='mysql')throw new Error('DB_BACKEND_INVALID');
+    const {createMysqlApi,assertApiComplete}=require('./db/api');
+    // A feature flag must never create a half-MySQL, half-SQLite runtime.
+    assertApiComplete(createMysqlApi({}));
+    throw new Error('MYSQL_RUNTIME_WIRING_PENDING');
+  }
   // Create a consistent host-side snapshot before legacy imports can run migrations.
   try {
     const result = await snapshot(rootDir);

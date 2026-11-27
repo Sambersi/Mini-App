@@ -6,6 +6,7 @@ const { applyFoundation } = require('../src/db/migrate');
 const { moveWalletFunds } = require('../src/services/walletMovement');
 const { createCardFinance } = require('../src/services/cardFinance');
 const { createSessionsRepository } = require('../src/repositories/sessions');
+const { createTelegramPayments } = require('../src/services/telegramPayments');
 
 function testConfig(env) {
   if (!env.MYSQL_TEST_DATABASE || env.MYSQL_TEST_DATABASE === env.MYSQL_DATABASE || !/^[a-zA-Z0-9_]+_checks$/.test(env.MYSQL_TEST_DATABASE)) {
@@ -116,15 +117,38 @@ async function runWalletChecks(env = process.env) {
     await Promise.all(Array.from({length:10},(_,i)=>sessions.saveSkinShopSession(sessionId,{page:i})));
     assert.equal(typeof (await sessions.getSkinShopSession(sessionId)).page,'number');checks++;
     await sessions.destroySkinShopSession(sessionId);assert.deepEqual(await sessions.getSkinShopSession(sessionId),{});checks++;
+    const payer='900000011',referrer='900000012';
+    for(const id of [payer,referrer]){
+      await pool.execute('INSERT INTO players(telegram_id,display_name,registered,source_run_id) VALUES (?,?,1,?)',[id,'Fixture','wallet_fixture']);
+      await pool.execute('INSERT INTO wallets(player_id,asset,bucket,balance) VALUES (?,?,?,0)',[id,'DF','main']);
+      await pool.execute('INSERT INTO player_donation_state(player_id,total_donated_stars) VALUES (?,0)',[id]);
+    }
+    await pool.execute('INSERT INTO player_referrals(player_id,referrer_id) VALUES (?,?)',[payer,referrer]);
+    const payments=createTelegramPayments(pool,{referralPercent:10,now:()=>1000000});
+    const payment={currency:'XTR',chargeId:'fixture_charge',playerId:payer,invoicePayload:'fixture',stars:10};
+    const paid=await payments(payment);assert.equal(paid.reward,'100');assert.equal(paid.referrerBonus,'10');checks++;
+    const repeated=await Promise.all(Array.from({length:20},()=>payments(payment)));
+    assert.ok(repeated.every(result=>result.reward==='100'));
+    const [[paymentBalance]]=await pool.execute('SELECT balance FROM wallets WHERE player_id=?',[payer]);assert.equal(String(paymentBalance.balance),'100');checks++;
+    await assert.rejects(payments({...payment,stars:11}),{code:'PAYMENT_CHARGE_CONFLICT'});checks++;
+    await pool.execute('INSERT INTO role_catalog(id,name,priority) VALUES (?,?,0)',[999991,'Partner']);
+    await pool.execute('INSERT INTO player_roles(player_id,role_id) VALUES (?,?)',[referrer,999991]);
+    assert.equal((await payments({...payment,chargeId:'fixture_partner'})).referrerBonus,'15');checks++;
     return { checks, concurrentRequests: 20, activeStorage: 'sqlite', isolatedDatabase: true };
   } finally {
     try {
       if (seeded) {
         await pool.execute('DELETE FROM registration_sessions WHERE user_id=?',['900000001']);
         await pool.execute('DELETE FROM skin_shop_sessions WHERE user_id=?',['900000001']);
+        await pool.query('DELETE FROM telegram_payments');
+        await pool.query('DELETE FROM player_donation_events');
+        await pool.query('DELETE FROM player_donation_state');
+        await pool.query('DELETE FROM player_referrals');
+        await pool.execute('DELETE FROM finance_log WHERE actor_user_id=?',['900000011']);
         await pool.query('DELETE FROM wallet_entries');
         await pool.query('DELETE FROM wallet_operations');
         await pool.query('DELETE FROM player_roles');
+        await pool.execute('DELETE FROM role_catalog WHERE id=?',[999991]);
         await pool.query('DELETE FROM player_bans');
         await pool.query('DELETE FROM player_cards');
         await pool.query('DELETE FROM wallets');

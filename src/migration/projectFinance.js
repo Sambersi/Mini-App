@@ -2,6 +2,7 @@
 
 const { verifyRows } = require('./projectPlayers');
 const { encodeRow } = require('./sqliteSource');
+const {parseSourceList}=require('./projectPlayerCollections');
 
 // Read the existing exceptional limits without copying player identifiers into
 // a second configuration. No eval and no import of the legacy runtime.
@@ -31,8 +32,11 @@ function buildFinanceProjection(db, ceilings = new Map()) {
     let values;
     try { values = JSON.parse(u.status_ids || '[]'); } catch (_) { issue(id, 'status_ids', u.status_ids); continue; }
     if (!Array.isArray(values)) { issue(id, 'status_ids', u.status_ids); continue; }
-    for (const role of new Set(values.map(String))) {
-      if (roleIds.has(role)) memberships.push([id, role]);
+    const tokens=parseSourceList(u.status_ids||'[]').tokens;
+    const seen=new Set();
+    for (let index=0;index<values.length;index++) {
+      const role=String(values[index]);if(seen.has(role))continue;seen.add(role);
+      if (roleIds.has(role)) memberships.push([id, role,index,tokens[index]]);
       else issue(id, 'role:' + role, role);
     }
   }
@@ -55,7 +59,7 @@ async function projectFinance(connection, db, runId, ceilings) {
       ['INSERT INTO role_catalog(id,name,priority) VALUES ?', data.roles],
       ['INSERT INTO player_cards(player_id,card_number,account_level,transfers_blocked,account_blocked,transfer_ceiling) VALUES ?', data.cards],
       ['INSERT INTO player_bans(player_id,reason,banned_until) VALUES ?', data.bans],
-      ['INSERT INTO player_roles(player_id,role_id) VALUES ?', data.memberships],
+      ['INSERT INTO player_roles(player_id,role_id,role_order,original_value_json) VALUES ?', data.memberships],
     ];
     for (const [sql, rows] of statements) for (let i=0;i<rows.length;i+=200) await connection.query(sql,[rows.slice(i,i+200)]);
     await connection.query('DELETE FROM migration_issues WHERE run_id=? AND issue_code=?',[runId,'INVALID_FINANCE_REFERENCE']);
@@ -63,7 +67,7 @@ async function projectFinance(connection, db, runId, ceilings) {
     await verifyRows(connection,'SELECT player_id,card_number,account_level,transfers_blocked,account_blocked,transfer_ceiling FROM player_cards',data.cards);
     await verifyRows(connection,'SELECT player_id,reason,banned_until FROM player_bans',data.bans,[2]);
     await verifyRows(connection,'SELECT id,name,priority FROM role_catalog',data.roles);
-    await verifyRows(connection,'SELECT player_id,role_id FROM player_roles',data.memberships);
+    await verifyRows(connection,'SELECT player_id,role_id,role_order,original_value_json FROM player_roles',data.memberships);
     await connection.commit();
     return { cards:data.cards.length,bans:data.bans.length,roles:data.roles.length,memberships:data.memberships.length,issues:data.issues.length };
   } catch(e) { await connection.rollback(); throw e; }
