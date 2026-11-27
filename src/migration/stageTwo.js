@@ -60,7 +60,7 @@ async function runStageTwo({ rootDir, env = process.env, log = console.log }) {
   } catch (error) {
     // Private backup folder only: never send raw driver messages or row values to console/Git.
     fs.writeFileSync(path.join(snapshot.folder, 'failure.json'), JSON.stringify({
-      code: error.code || 'MIGRATION_FAILED', message: error.message,
+      code: error.code || 'MIGRATION_FAILED', message: error.message, details: error.details,
     }, null, 2));
     throw error;
   } finally {

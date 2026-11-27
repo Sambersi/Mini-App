@@ -52,7 +52,14 @@ async function verifyRows(connection, sql, expected) {
   const normalize = row => JSON.stringify(row.map(v => v === null ? null : String(v)));
   const actual = rows.map(row => normalize(Object.values(row))).sort();
   const wanted = expected.map(normalize).sort();
-  if (actual.length !== wanted.length || actual.some((row, i) => row !== wanted[i])) throw new Error('Normalized projection differs from source');
+  const mismatch = actual.findIndex((row, i) => row !== wanted[i]);
+  if (actual.length !== wanted.length || mismatch !== -1) {
+    const error = Object.assign(new Error('Normalized projection differs from source'), { code: 'MIGRATION_PROJECTION_MISMATCH' });
+    // Diagnostic row values are written only to the private backup report, never the console.
+    error.details = { sql, actualCount: actual.length, expectedCount: wanted.length,
+      actual: actual[mismatch], expected: wanted[mismatch] };
+    throw error;
+  }
 }
 
 async function projectPlayers(connection, db, runId) {
