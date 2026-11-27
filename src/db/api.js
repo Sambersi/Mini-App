@@ -8,13 +8,15 @@ const {createGameRecords}=require('../repositories/gameRecords');
 const {createChatModes}=require('../repositories/chatModes');
 const {createPlayerRegistration}=require('../services/playerRegistration');
 const {withDeadlockRetry}=require('./transaction');
+const {createProfileViews}=require('../repositories/profileViews');
 function createMysqlApi(runtime,{now=()=>Date.now()}={}){
   const executor={execute:(sql,params)=>runtime.currentExecutor().execute(sql,params)};
   const registration=createPlayerRegistration(executor,{now,runTransaction:work=>{
     const run=()=>runtime.transaction(()=>work(runtime.currentExecutor()));
     return runtime.inTransaction?.()?run():withDeadlockRetry(run);
   }});
-  return {...createLegacyReads(runtime),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...createCatalogs(runtime),...createGameRecords(runtime),...createChatModes(runtime),...registration,transaction:work=>runtime.transaction(work)};
+  const reads=createLegacyReads(runtime);
+  return {...reads,...createProfileViews(runtime,reads,{now}),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...createCatalogs(runtime),...createGameRecords(runtime),...createChatModes(runtime),...registration,transaction:work=>runtime.transaction(work)};
 }
 function getApiCoverage(api){
   return {implemented:contract.functions.filter(key=>typeof api[key]==='function'),missing:contract.functions.filter(key=>typeof api[key]!=='function'),missingConstants:contract.constants.filter(key=>!Object.hasOwn(api,key))};

@@ -6,7 +6,7 @@ test('bulk player read batches profiles without one transaction per player',asyn
   const ids=Array.from({length:401},(_,i)=>String(i+1));
   const connection={execute:async(sql,params)=>{
     queries++;
-    if(sql==='SELECT telegram_id FROM players ORDER BY telegram_id')return [ids.map(telegram_id=>({telegram_id}))];
+    if(sql.startsWith('SELECT telegram_id FROM players ORDER BY'))return [ids.map(telegram_id=>({telegram_id}))];
     if(sql.startsWith('SELECT p.telegram_id AS id'))return [params.map(id=>({id,referrer_id:null,_invalid_referrer:null}))];
     if(sql.includes('FROM wallets'))return [params.map(player_id=>({player_id,asset:'PF',bucket:'main',balance:'100'}))];
     return [[]];

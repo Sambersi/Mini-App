@@ -8,6 +8,7 @@ const {createDatabaseRuntime}=require('../src/db/runtime');
 const {createLegacyReads}=require('../src/repositories/legacyReads');
 const {createMysqlApi}=require('../src/db/api');
 const {groups}=require('../src/db/playerFields');
+const {assertInactiveProjection}=require('../src/migration/importGuard');
 async function runRegistrationChecks(env=process.env){
   const pool=require('mysql2/promise').createPool(testConfig(env));
   const timestamp=1000000000000,referrer='900000031';let checks=0,seeded=false;
@@ -24,6 +25,9 @@ async function runRegistrationChecks(env=process.env){
     assert.equal(Number((await one('SELECT COUNT(*) AS n FROM players')).n),0,'Checks database must have no players');
     seeded=true;
     await create(referrer);
+    await pool.execute('UPDATE runtime_control SET projection_run_id=? WHERE id=1',['fixture_projection']);
+    const guardConnection=await pool.getConnection();
+    try{await assert.rejects(assertInactiveProjection(guardConnection,'fixture_projection'),{code:'MIGRATION_RUNTIME_WRITES_EXIST'});checks++;}finally{guardConnection.release();}
     const first=await profile(referrer);assert.equal(first.numeric_id,12);assert.equal(first.balance,0);assert.equal(first.active_weapon,'1');assert.equal(first.energy,0);assert.equal(first.notifications_enabled,1);assert.equal(first.card_level,null);assert.equal(first.referral_bonus_amount,10000);checks++;
     await pool.execute('UPDATE wallets SET balance=777 WHERE player_id=? AND asset=? AND bucket=?',[referrer,'PF','main']);
     await service.createUserOrUpdate({id:referrer,first_name:'<Fixture>@',balance:999999,referral_bonus_amount:999});
@@ -90,6 +94,7 @@ async function runRegistrationChecks(env=process.env){
       for(const table of ['registration_completions','inventory_entries','wallet_entries','player_referral_intents','player_referrals','player_roles',...Object.keys(groups),'inventory_balances','wallets','player_cards'])await pool.query('DELETE FROM '+table);
       await pool.execute('DELETE FROM role_catalog WHERE id=999992');
       await pool.query('DELETE FROM registration_sessions');await pool.query('DELETE FROM players');
+      await pool.query('UPDATE runtime_control SET projection_run_id=NULL WHERE id=1');
     }}finally{await pool.end();}
   }
 }

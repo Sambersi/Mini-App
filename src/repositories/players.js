@@ -7,8 +7,8 @@ function numericIdentifier(value){
   const id=BigInt(value);return id< -9223372036854775808n||id>9223372036854775807n?null:String(id);
 }
 function createPlayersRepository(pool,{readTransaction=work=>withTransaction(pool,work)}={}){
-  const fields=['p.telegram_id AS id','p.numeric_id','p.display_name AS username','p.registered AS is_registered','p.registration_ts AS registration_date','c.card_number','c.account_level','c.transfers_blocked','c.account_blocked AS is_blocked','COALESCE(r.referrer_id,ri.referral_code) AS referrer_id','mi.details_json AS _invalid_referrer'];
-  const joins=['LEFT JOIN player_cards c ON c.player_id=p.telegram_id','LEFT JOIN player_referrals r ON r.player_id=p.telegram_id','LEFT JOIN player_referral_intents ri ON ri.player_id=p.telegram_id',"LEFT JOIN migration_issues mi ON mi.run_id=p.source_run_id AND mi.issue_code='INVALID_REFERRER' AND mi.record_key=CONCAT(p.telegram_id,':referrer_id')"];
+  const fields=['p.telegram_id AS id','p.numeric_id','p.display_name AS username','p.registered AS is_registered','p.registration_ts AS registration_date','c.card_number','c.account_level','c.transfers_blocked','c.account_blocked AS is_blocked','COALESCE(r.referrer_id,ri.referral_code) AS referrer_id'];
+  const joins=['LEFT JOIN player_cards c ON c.player_id=p.telegram_id','LEFT JOIN player_referrals r ON r.player_id=p.telegram_id','LEFT JOIN player_referral_intents ri ON ri.player_id=p.telegram_id'];
   let index=0;
   for(const [table,columns]of Object.entries(groups)){
     const alias='s'+index++;fields.push(...Object.keys(columns).map(field=>alias+'.'+field));joins.push('LEFT JOIN '+table+' '+alias+' ON '+alias+'.player_id=p.telegram_id');
@@ -25,12 +25,11 @@ function createPlayersRepository(pool,{readTransaction=work=>withTransaction(poo
   async function load(connection,ids){
     if(!ids.length)return [];
     const placeholders=ids.map(()=>'?').join(','),filter='player_id IN ('+placeholders+')';
-    const [rows]=await connection.execute(base+' WHERE p.telegram_id IN ('+placeholders+') ORDER BY p.telegram_id',ids);
+    const [rows]=await connection.execute(base+' WHERE p.telegram_id IN ('+placeholders+') ORDER BY p.legacy_rowid IS NULL,p.legacy_rowid,p.telegram_id',ids);
     const players=new Map(rows.map(row=>[row.id,row]));
     if(!rows.length)return [];
     for(const player of rows){
-      if(player.referrer_id===null&&player._invalid_referrer){const details=JSON.parse(player._invalid_referrer),[value]=JSON.parse(details.value);player.referrer_id=value&&typeof value==='object'&&Object.hasOwn(value,'i')?value.i:value;}
-      delete player._invalid_referrer;Object.assign(player,{balance:null,card_balance:null,df_balance:null});
+      Object.assign(player,{balance:null,card_balance:null,df_balance:null});
       for(const [field]of listSources)player[field]=[];
     }
     const [wallets]=await connection.execute('SELECT player_id,asset,bucket,balance FROM wallets WHERE '+filter,ids);
@@ -49,7 +48,7 @@ function createPlayersRepository(pool,{readTransaction=work=>withTransaction(poo
   const repository={
     async getById(id){return readTransaction(async connection=>(await load(connection,[String(id)]))[0]||null);},
     async getAll(){return readTransaction(async connection=>{
-      const [ids]=await connection.execute('SELECT telegram_id FROM players ORDER BY telegram_id');const result=[];
+      const [ids]=await connection.execute('SELECT telegram_id FROM players ORDER BY legacy_rowid IS NULL,legacy_rowid,telegram_id');const result=[];
       for(let i=0;i<ids.length;i+=200)result.push(...await load(connection,ids.slice(i,i+200).map(row=>row.telegram_id)));
       return result;
     });},

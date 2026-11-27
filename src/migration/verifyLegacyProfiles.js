@@ -37,6 +37,10 @@ async function verifyLegacyProfiles(db,api){
     count++;
   }
   if(bulk&&(bulk.length!==count||byId.size!==count))throw Object.assign(new Error('Bulk profile count mismatch'),{code:'PROFILE_BULK_MISMATCH'});
+  if(bulk){
+    const order=db.prepare('SELECT id FROM users ORDER BY rowid').safeIntegers().all();
+    if(order.some((row,index)=>String(row.id)!==bulk[index].id))throw Object.assign(new Error('Bulk profile source order mismatch'),{code:'PROFILE_ORDER_MISMATCH'});
+  }
   return {profiles:count,fields,...(bulk?{bulkProfiles:bulk.length}:{})};
 }
 module.exports={normalizeField,verifyLegacyProfiles};

@@ -70,10 +70,12 @@ function createPlayerRegistration(pool,{now=()=>Date.now(),config=CONFIG,runTran
           await connection.execute('UPDATE player_referral_state SET referral_join_date=? WHERE player_id=?',[user.referral_join_date||Math.floor(now()/1000),id]);
           return;
         }
-        const [ids]=await connection.execute('SELECT numeric_id FROM players WHERE numeric_id IS NOT NULL');
+        const [ids]=await connection.execute('SELECT numeric_id,legacy_rowid FROM players');
         const numericId=firstAvailableNumericId(ids.map(row=>row.numeric_id));
+        const rowid=ids.reduce((max,row)=>row.legacy_rowid!==null&&BigInt(row.legacy_rowid)>max?BigInt(row.legacy_rowid):max,0n)+1n;
+        if(rowid>MAX)fail('PLAYER_IDS_EXHAUSTED');
         const timestamp=now();
-        await connection.execute('INSERT INTO players(telegram_id,numeric_id,display_name,registered,registration_ts,source_run_id) VALUES (?,?,?,0,?,NULL)',[id,numericId,name,String(timestamp/1000)]);
+        await connection.execute('INSERT INTO players(telegram_id,numeric_id,display_name,registered,registration_ts,source_run_id,legacy_rowid) VALUES (?,?,?,0,?,NULL,?)',[id,numericId,name,String(timestamp/1000),String(rowid)]);
         await connection.execute('INSERT INTO player_cards(player_id) VALUES (?)',[id]);
         for(const [asset,bucket]of [['PF','main'],['PF','card'],['DF','main']])await connection.execute('INSERT INTO wallets(player_id,asset,bucket,balance) VALUES (?,?,?,0)',[id,asset,bucket]);
         for(const item of itemFields)await connection.execute('INSERT INTO inventory_balances(player_id,item_code,quantity) VALUES (?,?,0)',[id,item]);

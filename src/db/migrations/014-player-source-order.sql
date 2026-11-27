@@ -1,0 +1,1 @@
+ALTER TABLE players ADD COLUMN legacy_rowid BIGINT NULL UNIQUE;

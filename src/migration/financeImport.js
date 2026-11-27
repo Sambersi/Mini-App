@@ -9,6 +9,9 @@ const {projectPlayerState}=require('./projectPlayerState');
 const {projectDomains}=require('./projectDomains');
 const {projectPlayerCollections}=require('./projectPlayerCollections');
 const {verifyLegacyProfiles}=require('./verifyLegacyProfiles');
+const {projectPlayerIdentity}=require('./projectPlayerIdentity');
+const {verifyProfileViews}=require('./verifyProfileViews');
+const {assertInactiveProjection}=require('./importGuard');
 async function runFinanceImport({rootDir,env=process.env,log=console.log}) {
   const runId=validateRunId(env.MYSQL_IMPORT_RUN_ID);
   const snapshot=await createImportSnapshot(rootDir,runId);
@@ -22,6 +25,7 @@ async function runFinanceImport({rootDir,env=process.env,log=console.log}) {
     await applyFoundation(connection);
     const [[run]]=await connection.query('SELECT status,snapshot_sha256 FROM migration_runs WHERE run_id=?',[runId]);
     if(run?.status!=='verified'||run.snapshot_sha256!==snapshot.sha256)throw new Error('Verified matching snapshot required');
+    await assertInactiveProjection(connection,runId);
     source=openSource(snapshot.file);
     fs.writeFileSync(path.join(snapshot.folder,'schema-manifest.json'),JSON.stringify(source.tables.map(table=>({name:table.name,...table.metadata})),null,2));
     const ceilings=legacyCeilings(fs.readFileSync(path.join(rootDir,'bank','bankTransfers.js'),'utf8'));
@@ -29,6 +33,7 @@ async function runFinanceImport({rootDir,env=process.env,log=console.log}) {
     result.playerState=await projectPlayerState(connection,source.db,runId);
     result.domains=await projectDomains(connection,source.db,runId,event=>log('[DOMAIN IMPORT] '+JSON.stringify(event)));
     result.collections=await projectPlayerCollections(connection,source.db,runId);
+    result.identity=await projectPlayerIdentity(connection,source.db,runId);
     const {createDatabaseRuntime}=require('../db/runtime');
     const {createLegacyReads}=require('../repositories/legacyReads');
     // The importer already holds the sole pool connection. Readback borrows it
@@ -37,6 +42,8 @@ async function runFinanceImport({rootDir,env=process.env,log=console.log}) {
     for(const method of ['execute','query','beginTransaction','commit','rollback'])borrowed[method]=connection[method].bind(connection);
     const readbackPool={getConnection:async()=>borrowed,execute:borrowed.execute,query:borrowed.query};
     result.profileReadback=await verifyLegacyProfiles(source.db,createLegacyReads(createDatabaseRuntime(readbackPool)));
+    const now=Date.now();
+    result.profileViews=await verifyProfileViews(source.db,require('../db/api').createMysqlApi(createDatabaseRuntime(readbackPool),{now:()=>now}),{now});
     fs.writeFileSync(path.join(snapshot.folder,'finance-report.json'),JSON.stringify(result,null,2));
     log('[FINANCE IMPORT] VERIFIED '+JSON.stringify({...result,domains:{tables:result.domains.tables,rows:result.domains.rows}}));
     return result;

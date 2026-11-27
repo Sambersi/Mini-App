@@ -1,5 +1,5 @@
 // top.js
-const { getUserById, getUserStatuses, toggleHyperlink, isHyperlinkDisabled, getCardDetails, getNumericIdByUserId, getSelectedSkinFileName } = require('../db');
+const { getUserById, getUserStatuses, toggleHyperlink, isHyperlinkDisabled, getCardDetails, getNumericIdByUserId, getSelectedSkinFileName, getTopPlayersByTotalBalance } = require('../db');
 const { topReferralsHandler } = require('./referralSystem'); // Импортируем обработчики
 const { getTopDonators } = require('./donationStats');
 const { createCanvas, loadImage } = require('canvas');
@@ -289,14 +289,8 @@ function formatBalance(totalBalance) {
   return totalBalance.toLocaleString('ru-RU').replace(/,/g, '.') + ' PF';
 }
 
-async function getTopPlayers(db) {
-  const stmt = db.prepare(`
-    SELECT id, username, balance, card_balance
-    FROM users
-    WHERE is_hidden_in_top = 0 -- Исключаем скрытых пользователей
-    ORDER BY (balance + card_balance) DESC
-  `);
-  return stmt.all();
+async function getTopPlayers() {
+  return await getTopPlayersByTotalBalance();
 }
 
 async function forbesHandler(ctx, db) {
