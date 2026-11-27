@@ -7,6 +7,7 @@ function canonicalRow(spec,row) {
   return JSON.stringify(spec.columns.map((column,i)=>{
     const value=row[i];
     if(value===null)return null;
+    if(column.numericText) return ['Infinity','-Infinity'].includes(String(value)) ? 'nonfinite:'+String(value) : canonicalDecimal(value);
     if(column.type.startsWith('DECIMAL'))return canonicalDecimal(value);
     if(column.type==='BIGINT' && !/^-?\d+$/.test(String(value)))throw Object.assign(new Error('Noninteger domain value needs review'),{code:'DOMAIN_VALUE_TYPE',details:{table:spec.name,column:column.name}});
     return String(value);
@@ -56,7 +57,7 @@ async function projectDomains(connection,db,runId,log=()=>{}) {
         const flush=async()=>{if(batch.length){await connection.query('INSERT INTO '+quote(spec.name)+'('+fields+') VALUES ?',[batch]);batch=[];}};
         let bytes=0;
         for(const row of sourceRows(db,spec)){
-          const values=row.map(v=>typeof v==='bigint'?String(v):v);
+          const values=row.map((v,i)=>v!==null&&(typeof v==='bigint'||spec.columns[i].numericText)?String(v):v);
           const size=Buffer.byteLength(JSON.stringify(values));
           if(size>4*1024*1024)throw new Error('Domain row exceeds safe packet size');
           if(bytes+size>256*1024){await flush();bytes=0;}
@@ -80,7 +81,7 @@ async function projectDomains(connection,db,runId,log=()=>{}) {
       }
       report.push({table:spec.name,rows:expected.count,hash:expected.hash});
       log({table:spec.name,rows:expected.count,status:'verified'});
-    }catch(error){await connection.rollback();throw error;}
+    }catch(error){await connection.rollback();error.details={...error.details,table:spec.name};throw error;}
   }
   return {tables:report.length,rows:report.reduce((n,t)=>n+t.rows,0),details:report};
 }

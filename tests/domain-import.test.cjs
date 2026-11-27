@@ -6,7 +6,7 @@ test('native domain mapping covers all reviewed nonplayer tables and keeps user 
   assert.equal(specs.length,43);assert.equal(new Set(specs.map(s=>s.name)).size,43);
   for(const name of ['users','statuses','blacklist','wallets'])assert.ok(!specs.some(s=>s.name===name));
   for(const name of ['double_bets','dice_bets','registration_sessions','skin_shop_sessions','promos','finance_log','user_skins','empire_businesses'])assert.ok(specs.some(s=>s.name===name));
-  const sql=fs.readFileSync(path.join(__dirname,'../src/db/migrations/006-domain-tables.sql'),'utf8')+fs.readFileSync(path.join(__dirname,'../src/db/migrations/007-historical-money-precision.sql'),'utf8');
+  const sql=['006-domain-tables.sql','007-historical-money-precision.sql','008-legacy-game-value-range.sql'].map(file=>fs.readFileSync(path.join(__dirname,'../src/db/migrations',file),'utf8')).join('\n');
   for(const spec of specs){assert.equal(spec.primary.length,1);assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS '+spec.name));for(const c of spec.columns)assert.ok(sql.includes('`'+c.name+'` '+c.type));}
 });
 test('native checksums preserve strings and INT64, normalize decimals and reject fractional integers',()=>{
@@ -26,4 +26,8 @@ test('native target fingerprint pages by key and detects a missing historical ro
     const missing=await fingerprintTarget({query:async(q,p)=>[p.length?[]:[[1,'first']]]},spec);
     assert.notEqual(missing.hash,source.hash);assert.equal(missing.count,1);
   }finally{db.close();}
+});
+test('exceptional legacy game numbers retain full exponent range and INT64 precision',()=>{
+  const spec={name:'legacy',columns:[{name:'amount',type:'LONGTEXT',numericText:true}]};
+  for(const value of [1e200,1e-100,9007199254740993n,Infinity,-Infinity])assert.equal(canonicalRow(spec,[value]),canonicalRow(spec,[String(value)]));
 });

@@ -862,10 +862,11 @@
       },
       {
         "name": "amount",
-        "type": "DECIMAL(65,30)",
+        "type": "LONGTEXT",
         "notNull": true,
         "default": null,
-        "autoIncrement": false
+        "autoIncrement": false,
+        "numericText": true
       },
       {
         "name": "is_win",
@@ -876,10 +877,11 @@
       },
       {
         "name": "win_amount",
-        "type": "DECIMAL(65,30)",
+        "type": "LONGTEXT",
         "notNull": false,
         "default": "0",
-        "autoIncrement": false
+        "autoIncrement": false,
+        "numericText": true
       },
       {
         "name": "created_at",
@@ -1264,10 +1266,11 @@
       },
       {
         "name": "total_bank",
-        "type": "DECIMAL(65,30)",
+        "type": "LONGTEXT",
         "notNull": false,
         "default": "0",
-        "autoIncrement": false
+        "autoIncrement": false,
+        "numericText": true
       },
       {
         "name": "bets_count",
