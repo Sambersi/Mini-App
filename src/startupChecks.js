@@ -5,7 +5,8 @@ const { snapshotLegacySqlite } = require('./db/legacySnapshot');
 const { getRuntimeInfo } = require('./runtimeInfo');
 
 async function runStartupChecks({ rootDir, env = process.env, log = console.log,
-  probe = checkMysqlConnection, snapshot = snapshotLegacySqlite } = {}) {
+  probe = checkMysqlConnection, snapshot = snapshotLegacySqlite,
+  importer = options => require('./migration/stageTwo').runStageTwo(options) } = {}) {
   const runtime = getRuntimeInfo(rootDir);
   log('[RELEASE] ' + JSON.stringify(runtime));
   // Create a consistent host-side snapshot before legacy imports can run migrations.
@@ -29,7 +30,15 @@ async function runStartupChecks({ rootDir, env = process.env, log = console.log,
     log('[MYSQL PREFLIGHT] FAILED ' + JSON.stringify(safeMysqlError(error)));
     throw new Error('MYSQL_PREFLIGHT_FAILED');
   }
-  log('[DATABASE] Active storage: SQLite. Stage 01 checks the target database connection only.');
+  try {
+    if (readBoolean(env.MYSQL_IMPORT_SQLITE, 'MYSQL_IMPORT_SQLITE')) {
+      await importer({ rootDir, env, log });
+    }
+  } catch (error) {
+    log('[MYSQL IMPORT] FAILED ' + JSON.stringify(safeMysqlError(error)));
+    throw new Error('MYSQL_IMPORT_FAILED');
+  }
+  log('[DATABASE] Active storage: SQLite. MariaDB import does not switch user operations.');
   return runtime;
 }
 
