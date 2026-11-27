@@ -4,6 +4,15 @@ const assert = require('node:assert/strict');
 const { normalize, integer } = require('../src/services/walletMovement');
 const { withTransaction } = require('../src/db/transaction');
 const { testConfig } = require('../scripts/check-wallets.cjs');
+test('deadlock retries are bounded and connection failures are never retried', async () => {
+  const { moveWalletFunds } = require('../src/services/walletMovement');
+  const input={operationKey:'retry',from:{playerId:'1',asset:'PF',bucket:'main'},to:{playerId:'2',asset:'PF',bucket:'main'},amount:'1'};
+  for (const [code,expected] of [['ER_LOCK_DEADLOCK',5],['ECONNRESET',1]]) {
+    let attempts=0;
+    await assert.rejects(moveWalletFunds({getConnection:async()=>{attempts++;throw Object.assign(new Error(code),{code});}},input),{code});
+    assert.equal(attempts,expected);
+  }
+});
 test('money rejects rounded JS numbers and preserves exact BIGINT strings', () => {
   assert.equal(integer('9007199254740993'), 9007199254740993n);
   for (const value of [9007199254740992, -1, 0.5, '1e3', '1.5', '9223372036854775808', null]) assert.throws(() => integer(value));

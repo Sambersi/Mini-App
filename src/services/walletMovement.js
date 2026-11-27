@@ -29,20 +29,17 @@ function normalize(input) {
 
 // Accounting primitive only. Command adapters must enforce registration, bans,
 // card ownership, account limits and permissions before invoking it in runtime.
-async function moveWalletFunds(pool, input) {
+async function moveOnce(pool, input) {
   const request = normalize(input);
   const key = input.operationKey;
   const hash = createHash('sha256').update(JSON.stringify(request)).digest('hex');
   return withTransaction(pool, async connection => {
-    try {
-      await connection.execute('INSERT INTO wallet_operations(operation_key,request_hash) VALUES (?,?)', [key, hash]);
-    } catch (error) {
-      if (error.code !== 'ER_DUP_ENTRY') throw error;
-      const [[previous]] = await connection.execute('SELECT request_hash,result_json FROM wallet_operations WHERE operation_key=? FOR UPDATE', [key]);
-      if (!previous || previous.request_hash !== hash) fail('OPERATION_KEY_CONFLICT');
-      if (!previous.result_json) fail('OPERATION_INCOMPLETE');
-      return JSON.parse(previous.result_json);
-    }
+    // Duplicate INSERT errors acquire shared locks in InnoDB; upgrading many
+    // identical retries to FOR UPDATE can deadlock. Reserve with an X lock.
+    await connection.execute('INSERT INTO wallet_operations(operation_key,request_hash) VALUES (?,?) ON DUPLICATE KEY UPDATE operation_key=VALUES(operation_key)', [key, hash]);
+    const [[previous]] = await connection.execute('SELECT request_hash,result_json FROM wallet_operations WHERE operation_key=? FOR UPDATE', [key]);
+    if (!previous || previous.request_hash !== hash) fail('OPERATION_KEY_CONFLICT');
+    if (previous.result_json) return JSON.parse(previous.result_json);
     const ordered = [request.from, request.to].sort((a, b) => {
       const x = JSON.stringify(a), y = JSON.stringify(b);
       return x < y ? -1 : x > y ? 1 : 0;
@@ -62,6 +59,18 @@ async function moveWalletFunds(pool, input) {
     await connection.execute('UPDATE wallet_operations SET result_json=? WHERE operation_key=?', [JSON.stringify(result), key]);
     return result;
   });
+}
+
+async function moveWalletFunds(pool, input) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await moveOnce(pool, input); }
+    catch (error) {
+      // InnoDB explicitly rolled back this transaction. Never retry a timeout,
+      // connection failure or an ambiguous commit automatically.
+      if (error.code !== 'ER_LOCK_DEADLOCK' || attempt >= 4) throw error;
+      await new Promise(resolve => setTimeout(resolve, 10 * (attempt + 1)));
+    }
+  }
 }
 
 module.exports = { moveWalletFunds, normalize, integer };
