@@ -48,7 +48,7 @@ async function projectDomains(connection,db,runId,log=()=>{}) {
     await connection.beginTransaction();
     try {
       if(previous){
-        if(Number(previous.source_count)!==expected.count||previous.source_hash!==expected.hash||previous.status!=='verified')throw new Error('Domain import checkpoint differs');
+        if(Number(previous.source_count)!==expected.count||previous.status!=='verified')throw new Error('Domain import checkpoint differs');
       } else {
         const [[existing]]=await connection.query('SELECT COUNT(*) AS n FROM '+quote(spec.name));
         if(Number(existing.n))throw Object.assign(new Error('Refusing to overwrite a nonempty domain table'),{code:'DOMAIN_TARGET_NOT_EMPTY'});
@@ -68,6 +68,11 @@ async function projectDomains(connection,db,runId,log=()=>{}) {
       const actual=await fingerprintTarget(connection,spec);
       if(actual.count!==expected.count||actual.hash!==expected.hash)throw Object.assign(new Error('Domain table verification failed'),{code:'DOMAIN_CHECKSUM_MISMATCH',details:{table:spec.name}});
       if(!previous)await connection.query('INSERT INTO domain_import_tables(run_id,table_name,source_count,source_hash,target_hash,status) VALUES (?,?,?,?,?,?)',[runId,spec.name,expected.count,expected.hash,actual.hash,'verified']);
+      else if(previous.source_hash!==expected.hash) {
+        // A reviewed type migration can change canonical formatting. Refresh
+        // only after a full source/target comparison, never as a skip shortcut.
+        await connection.query('UPDATE domain_import_tables SET source_hash=?,target_hash=? WHERE run_id=? AND table_name=?',[expected.hash,actual.hash,runId,spec.name]);
+      }
       await connection.commit();
       if(spec.columns.some(c=>c.autoIncrement)){
         const sequence=db.prepare('SELECT seq FROM sqlite_sequence WHERE name=?').safeIntegers().get(spec.name);
