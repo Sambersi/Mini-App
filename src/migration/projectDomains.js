@@ -25,7 +25,7 @@ function sourceRows(db,spec) {
 async function fingerprintTarget(connection,spec) {
   if(spec.primary.length!==1)throw new Error('Composite domain key requires dedicated paging');
   const hash=createHash('sha256');let count=0,last=null;
-  const fields=spec.columns.map(c=>quote(c.name)).join(','),key=quote(spec.primary[0]);
+  const fields=spec.columns.map(c=>quote(c.targetName||c.name)).join(','),key=quote(spec.primary[0]);
   const index=spec.columns.findIndex(c=>c.name===spec.primary[0]);
   for(;;){
     const [rows]=await connection.query({sql:'SELECT '+fields+' FROM '+quote(spec.name)+(last===null?'':' WHERE '+key+'>?')+' ORDER BY '+key+' LIMIT 2000',rowsAsArray:true},last===null?[]:[last]);
@@ -53,7 +53,7 @@ async function projectDomains(connection,db,runId,log=()=>{}) {
       } else {
         const [[existing]]=await connection.query('SELECT COUNT(*) AS n FROM '+quote(spec.name));
         if(Number(existing.n))throw Object.assign(new Error('Refusing to overwrite a nonempty domain table'),{code:'DOMAIN_TARGET_NOT_EMPTY'});
-        const fields=spec.columns.map(c=>quote(c.name)).join(',');let batch=[];
+        const fields=spec.columns.map(c=>quote(c.targetName||c.name)).join(',');let batch=[];
         const flush=async()=>{if(batch.length){await connection.query('INSERT INTO '+quote(spec.name)+'('+fields+') VALUES ?',[batch]);batch=[];}};
         let bytes=0;
         for(const row of sourceRows(db,spec)){

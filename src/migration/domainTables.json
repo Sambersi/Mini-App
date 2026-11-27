@@ -2416,10 +2416,11 @@
       },
       {
         "name": "correct_button_index",
-        "type": "BIGINT",
+        "type": "LONGTEXT",
         "notNull": false,
         "default": null,
-        "autoIncrement": false
+        "autoIncrement": false,
+        "targetName": "state_json"
       },
       {
         "name": "message_id",
