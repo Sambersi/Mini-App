@@ -183,7 +183,7 @@ async function awardStatusHandler(ctx) {
 
     const skinName = skinNameMap[status.name];
     if (skinName) {
-      const skinId = getSkinIdByName(skinName);
+      const skinId = (await getSkinIdByName(skinName));
       if (skinId) {
         const addResult = await addSkinToUser(player.id, skinId);
         if (addResult.success || addResult.alreadyOwned) {

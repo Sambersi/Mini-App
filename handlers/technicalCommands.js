@@ -1,3 +1,5 @@
+
+const { asyncArray: __asyncDbArray } = require("../src/utils/asyncArray");
 //technicalCommands.js
 const { getUserById, giveItemToUser, getTopPlayersByCardBalance,
   blockTransfersByNumericId, updateUsername, isUserBanned, getBlacklistEntry,  getBossDamageByUserId,
@@ -94,7 +96,7 @@ async function idHandler(ctx) {
       return ctx.reply('❕ У вас нет прав для использования этой команды.');
     }
 
-    const targetUser = getTargetUserId(ctx);
+    const targetUser = (await getTargetUserId(ctx));
     if (!targetUser) {
       return ctx.reply('❕ Ответьте на сообщение пользователя.');
     }
@@ -136,7 +138,7 @@ async function profHandler(ctx) {
     }
 
     // 2. Получение целевого пользователя
-    const targetUser = getTargetUserId(ctx);
+    const targetUser = (await getTargetUserId(ctx));
     if (!targetUser) {
       return ctx.reply('❌ Ответьте на сообщение пользователя или укажите его числовой ID.');
     }
@@ -308,7 +310,7 @@ async function deleteHandler(ctx) {
     }
 
     // Получаем ID целевого пользователя
-    const targetUser = getTargetUserId(ctx);
+    const targetUser = (await getTargetUserId(ctx));
     if (!targetUser) {
       return ctx.reply('✖️ Ответьте на сообщение пользователя или укажите его ID.');
     }
@@ -325,7 +327,7 @@ async function deleteHandler(ctx) {
     }
 
     // Полностью удаляем аккаунт пользователя
-    const deleteResult = deleteUserAccount(user.id);
+    const deleteResult = (await deleteUserAccount(user.id));
     if (!deleteResult.success) {
       return ctx.reply('✖️ Произошла ошибка при удалении аккаунта.');
     }
@@ -379,7 +381,7 @@ async function changeIdHandler(ctx) {
     }
 
     // Обновляем numeric_id
-    const updateResult = updateNumericId(oldNumericId, newNumericId);
+    const updateResult = (await updateNumericId(oldNumericId, newNumericId));
     if (!updateResult.success) {
       return ctx.reply(`✖️ ${updateResult.message}`);
     }
@@ -410,7 +412,7 @@ async function freeIdsHandler(ctx) {
     }
 
     // Получаем список свободных зарезервированных numeric_id
-    const freeReservedIds = getFreeReservedNumericIds();
+    const freeReservedIds = (await getFreeReservedNumericIds());
 
     if (freeReservedIds.length === 0) {
       return ctx.reply('✖️ Нет свободных зарезервированных numeric_id.');
@@ -742,7 +744,7 @@ async function takeHandler(ctx) {
     }
 
     // Вызываем функцию из базы данных
-    const result = takeItemFromUser(userId, itemType, amount);
+    const result = (await takeItemFromUser(userId, itemType, amount));
 
     // Если операция не удалась, отправляем ошибку
     if (!result.success) {
@@ -818,7 +820,7 @@ async function giveHandler(ctx) {
     }
 
     // Вызываем функцию из базы данных
-    const result = giveItemToUser(userId, itemType, amount);
+    const result = (await giveItemToUser(userId, itemType, amount));
 
     // Если операция не удалась, отправляем ошибку
     if (!result.success) {
@@ -916,19 +918,19 @@ async function blockTransfersHandler(ctx) {
           return ctx.reply('❌ Некорректный NUMERIC_ID. Убедитесь, что вы ввели число.');
       }
 
-      const targetUser = getUserByNumericId(numericId); // Находим пользователя по numeric_id
+      const targetUser = (await getUserByNumericId(numericId)); // Находим пользователя по numeric_id
 
       if (!targetUser) {
           return ctx.reply('❌ Игрок с таким NUMERIC_ID не найден.');
       }
 
       // Проверяем, не заблокированы ли уже переводы
-      if (areTransfersBlockedByNumericId(numericId)) {
+      if ((await areTransfersBlockedByNumericId(numericId))) {
           return ctx.reply('❌ Переводы для этого игрока уже заблокированы.');
       }
 
       // Блокируем переводы
-      blockTransfersByNumericId(numericId);
+      (await blockTransfersByNumericId(numericId));
 
       // Создаем гиперссылку на пользователя
       const userLink = createUserLink(targetUser.id, targetUser.username);
@@ -969,19 +971,19 @@ async function unblockTransfersHandler(ctx) {
           return ctx.reply('❌ Некорректный NUMERIC_ID. Убедитесь, что вы ввели число.');
       }
 
-      const targetUser = getUserByNumericId(numericId); // Находим пользователя по numeric_id
+      const targetUser = (await getUserByNumericId(numericId)); // Находим пользователя по numeric_id
 
       if (!targetUser) {
           return ctx.reply('❌ Игрок с таким NUMERIC_ID не найден.');
       }
 
       // Проверяем, заблокированы ли переводы
-      if (!areTransfersBlockedByNumericId(numericId)) {
+      if (!(await areTransfersBlockedByNumericId(numericId))) {
           return ctx.reply('❌ Переводы для этого игрока уже разблокированы.');
       }
 
       // Разблокируем переводы
-      unblockTransfersByNumericId(numericId);
+      (await unblockTransfersByNumericId(numericId));
 
       // Создаем гиперссылку на пользователя
       const userLink = createUserLink(targetUser.id, targetUser.username);
@@ -1004,7 +1006,7 @@ async function resetHandler(ctx) {
       }
       
       // Получаем целевого пользователя (по ответу на сообщение или по ID)
-      const targetUser = getTargetUserId(ctx);
+      const targetUser = (await getTargetUserId(ctx));
       if (!targetUser) {
           return ctx.reply('❌ Ответьте на сообщение пользователя или укажите его числовой ID.');
       }
@@ -1021,7 +1023,7 @@ async function resetHandler(ctx) {
       }
       
       // Выполняем обнуление аккаунта
-      const resetResult = resetAccount(user.id);
+      const resetResult = (await resetAccount(user.id));
       if (!resetResult.success) {
           return ctx.reply('✖️ Произошла ошибка при обнулении аккаунта.');
       }
@@ -1074,7 +1076,7 @@ async function subtractReferralsHandler(ctx) {
       }
       
       // Выполняем вычитание рефералов
-      const result = subtractReferrals(user.id, countToSubtract);
+      const result = (await subtractReferrals(user.id, countToSubtract));
       if (!result.success) {
           return ctx.reply('❌ Произошла ошибка при вычитании рефералов.');
       }
@@ -1124,10 +1126,10 @@ async function toggleTopVisibilityHandler(ctx) {
     }
 
     // Проверяем текущее состояние видимости
-    const isHidden = isUserHiddenInTop(user.id);
+    const isHidden = (await isUserHiddenInTop(user.id));
 
     // Переключаем состояние видимости
-    const success = toggleUserVisibilityInTop(user.id, !isHidden);
+    const success = (await toggleUserVisibilityInTop(user.id, !isHidden));
     if (!success) {
       return ctx.reply('❌ Произошла ошибка при обновлении состояния видимости.');
     }
@@ -1171,7 +1173,7 @@ async function unblockTopVisibilityHandler(ctx) {
     }
 
     // Проверяем текущее состояние видимости
-    const isHidden = isUserHiddenInTop(user.id);
+    const isHidden = (await isUserHiddenInTop(user.id));
 
     // Если пользователь уже виден в топе
     if (!isHidden) {
@@ -1179,7 +1181,7 @@ async function unblockTopVisibilityHandler(ctx) {
     }
 
     // Разблокируем пользователя в топе
-    const success = toggleUserVisibilityInTop(user.id, false); // Передаем false для разблокировки
+    const success = (await toggleUserVisibilityInTop(user.id, false)); // Передаем false для разблокировки
     if (!success) {
       return ctx.reply('❌ Произошла ошибка при обновлении состояния видимости.');
     }
@@ -1334,22 +1336,22 @@ async function giveEnergyHandler(ctx) {
     }
 
     // Находим пользователя по numeric_id
-    const targetUser = getUserByNumericId(numericId);
+    const targetUser = (await getUserByNumericId(numericId));
     if (!targetUser) {
       return ctx.reply('❌ Игрок с таким NUMERIC_ID не найден.');
     }
 
     // Получаем текущую энергию пользователя
-    const currentEnergy = getCurrentEnergy(targetUser.id);
+    const currentEnergy = (await getCurrentEnergy(targetUser.id));
 
     // Вычисляем новое значение энергии
     const newEnergy = currentEnergy + energyAmount;
 
     // Обновляем энергию пользователя в базе данных
-    updateUserEnergy(targetUser.id, newEnergy, Math.floor(Date.now() / 1000));
+    (await updateUserEnergy(targetUser.id, newEnergy, Math.floor(Date.now() / 1000)));
 
     // Создаем ссылку на пользователя
-    const userLink = createUserLink(targetUser.id, targetUser.username, isHyperlinkDisabled(targetUser.id));
+    const userLink = createUserLink(targetUser.id, targetUser.username, (await isHyperlinkDisabled(targetUser.id)));
 
     // Отправляем подтверждение
     await ctx.replyWithHTML(
@@ -1411,13 +1413,13 @@ async function takeEnergyHandler(ctx) {
     }
 
     // Находим пользователя по numeric_id
-    const targetUser = getUserByNumericId(numericId);
+    const targetUser = (await getUserByNumericId(numericId));
     if (!targetUser) {
       return ctx.reply('❌ Игрок с таким NUMERIC_ID не найден.');
     }
 
     // Получаем текущую энергию пользователя
-    const currentEnergy = getCurrentEnergy(targetUser.id);
+    const currentEnergy = (await getCurrentEnergy(targetUser.id));
 
     // Проверяем, можно ли забрать указанное количество энергии
     if (currentEnergy < energyAmount) {
@@ -1432,10 +1434,10 @@ async function takeEnergyHandler(ctx) {
     const newEnergy = currentEnergy - energyAmount;
 
     // Обновляем энергию пользователя в базе данных
-    updateUserEnergy(targetUser.id, newEnergy, Math.floor(Date.now() / 1000));
+    (await updateUserEnergy(targetUser.id, newEnergy, Math.floor(Date.now() / 1000)));
 
     // Создаем ссылку на пользователя
-    const userLink = createUserLink(targetUser.id, targetUser.username, isHyperlinkDisabled(targetUser.id));
+    const userLink = createUserLink(targetUser.id, targetUser.username, (await isHyperlinkDisabled(targetUser.id)));
 
     // Отправляем подтверждение
     await ctx.replyWithHTML(
@@ -1558,7 +1560,7 @@ async function checkPlayerWeaponsAndDamage(ctx) {
     }
 
     // Получаем данные пользователя по числовому ID
-    const targetUser = getUserByNumericId(numericId);
+    const targetUser = (await getUserByNumericId(numericId));
     if (!targetUser) {
       return await ctx.reply(`❌ Пользователь с числовым ID ${numericId} не найден.`);
     }
@@ -1567,7 +1569,7 @@ async function checkPlayerWeaponsAndDamage(ctx) {
     const userLink = createUserLink(targetUser.id, targetUser.username);
 
     // Получаем список всех оружий пользователя
-    const allWeapons = getUserWeapons(targetUser.id); // Используем Telegram ID пользователя
+    const allWeapons = (await getUserWeapons(targetUser.id)); // Используем Telegram ID пользователя
 
     // Если у пользователя нет оружий
     if (!allWeapons || allWeapons.length === 0) {
@@ -1575,22 +1577,22 @@ async function checkPlayerWeaponsAndDamage(ctx) {
     }
 
     // Получаем информацию о нанесенном уроне
-    const totalDamageDealt = getBossDamageByUserId(targetUser.id) || 0;
+    const totalDamageDealt = (await getBossDamageByUserId(targetUser.id)) || 0;
 
     // Формируем сообщение с информацией об оружиях
     let weaponsInfo = `🔍 Информация об оружии пользователя ${userLink}:\n\n`;
 
-    allWeapons.forEach((weapon, index) => {
+    (await __asyncDbArray("forEach", allWeapons, async (weapon, index) => {
       const durabilityMessage =
         weapon.name === 'Кулак'
           ? `Прочность: ∞/∞`
-          : `Прочность: <b>${getCurrentWeaponDurability(targetUser.id, weapon.id)}/${weapon.durability}</b>`;
+          : `Прочность: <b>${(await getCurrentWeaponDurability(targetUser.id, weapon.id))}/${weapon.durability}</b>`;
       weaponsInfo += `
 [${index + 1}] 🔫 Оружие: <b>${weapon.name}</b>
    ⚔️ Урон: <b>${weapon.base_damage}</b>
    🔧 ${durabilityMessage}
 `;
-    });
+    }));
 
     // Добавляем информацию о нанесенном уроне
     weaponsInfo += `\n📊 Общий нанесенный урон по боссу: <b>${totalDamageDealt}</b>`;
@@ -1689,7 +1691,7 @@ async function reduceBossHpHandler(ctx) {
     }
 
     // Получаем текущего босса
-    const currentBoss = getCurrentBoss();
+    const currentBoss = (await getCurrentBoss());
     if (!currentBoss) {
       return ctx.reply("❌ В данный момент активных боссов нет.");
     }
@@ -1702,7 +1704,7 @@ async function reduceBossHpHandler(ctx) {
     const newHp = Math.max(currentPhaseHp - hpToReduce, 0);
 
     // Обновляем состояние босса в базе данных
-    updateBossState(currentBoss.id, newHp, currentBoss.phase);
+    (await updateBossState(currentBoss.id, newHp, currentBoss.phase));
 
     // Формируем сообщение об успешном снятии здоровья
     const message = `
@@ -1794,14 +1796,14 @@ async function updateSkinPriceHandler(ctx) {
   }
 
   try {
-      const skin = getSkinById(skinId);
+      const skin = (await getSkinById(skinId));
       if (!skin) {
           await ctx.reply(`❌ Скин с ID ${skinId} не найден.`);
           return;
       }
 
       // Используем функцию из db.js
-      const isUpdated = updateSkinPrice(skinId, newPrice);
+      const isUpdated = (await updateSkinPrice(skinId, newPrice));
 
       if (isUpdated) {
           await ctx.reply(`✅ Цена скина "${skin.name}" (ID: ${skinId}) успешно изменена на ${newPrice}.`);
@@ -1897,7 +1899,7 @@ async function infoBalanceHandler(ctx) {
       }
 
       // Получаем данные о балансе игрока
-      const result = getPlayerBalanceInfoByNumericId(numericId);
+      const result = (await getPlayerBalanceInfoByNumericId(numericId));
 
       if (!result.success) {
           return ctx.reply(`❌ ${result.message}`);
@@ -1956,7 +1958,7 @@ async function setBalanceHandler(ctx) {
       }
 
       // Вызываем функцию для установки баланса
-      const result = setPlayerBalanceByNumericId(numericId, newBalance);
+      const result = (await setPlayerBalanceByNumericId(numericId, newBalance));
 
       if (!result.success) {
           return ctx.reply(`❌ ${result.message}`);
@@ -1994,10 +1996,10 @@ async function giveTicketsHandler(ctx) {
       return ctx.reply('❌ Numeric ID и количество должны быть числами.');
     }
 
-    const result = giveTicketsAdmin(numericId, amount);
+    const result = (await giveTicketsAdmin(numericId, amount));
 
     if (result.success) {
-      const user = getUserByNumericId(numericId);
+      const user = (await getUserByNumericId(numericId));
       const userLink = createUserLink(user.id, user.username);
       
       await ctx.replyWithHTML(
@@ -2045,10 +2047,10 @@ async function takeTicketsHandler(ctx) {
       return ctx.reply('❌ Numeric ID и количество должны быть числами.');
     }
 
-    const result = takeTicketsAdmin(numericId, amount);
+    const result = (await takeTicketsAdmin(numericId, amount));
 
     if (result.success) {
-      const user = getUserByNumericId(numericId);
+      const user = (await getUserByNumericId(numericId));
       const userLink = createUserLink(user.id, user.username);
       
       await ctx.replyWithHTML(
@@ -2086,7 +2088,7 @@ async function logsHandler(ctx) {
     const user = await getUserByNumericId(numericId);
     if (!user) return ctx.reply('❌ Пользователь не найден.');
     
-    const logsText = getUserLogs(user.id, filter, 30);
+    const logsText = (await getUserLogs(user.id, filter, 30));
     const message = `📜 <b>Логи игрока ${user.username} (ID: ${numericId})</b>\nФильтр: <code>${filter}</code>\n\n${logsText || 'Логов не найдено.'}`;
     
     // Разбиваем на части, если сообщение слишком длинное (Telegram лимит 4096)

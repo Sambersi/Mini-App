@@ -29,7 +29,7 @@ async function giveCandyHandler(ctx) {
       return ctx.reply(`❌ Игрок с NUMERIC_ID ${numericId} не найден.`);
     }
 
-    const result = giveCandy(user.id, amount);
+    const result = (await giveCandy(user.id, amount));
     if (!result.success) {
       return ctx.reply(`❌ ${result.message}`);
     }
@@ -71,7 +71,7 @@ async function takeCandyHandler(ctx) {
       return ctx.reply(`❌ Игрок с NUMERIC_ID ${numericId} не найден.`);
     }
 
-    const result = takeCandy(user.id, amount);
+    const result = (await takeCandy(user.id, amount));
     if (!result.success) {
       return ctx.reply(`❌ ${result.message}`);
     }

@@ -17,8 +17,8 @@ async function listAllPrefixes(ctx) {
     }
 
     // Получаем список всех префиксов
-    const prefixes = db.getAllPrefixes(); // Обычные префиксы
-    const specialPrefixes = db.getAllSpecialPrefixes(); // Специальные префиксы
+    const prefixes = (await db.getAllPrefixes()); // Обычные префиксы
+    const specialPrefixes = (await db.getAllSpecialPrefixes()); // Специальные префиксы
 
     // Формируем сообщение со списком префиксов
     let message = '📋 <b>Доступные префиксы:</b>\n';
@@ -67,12 +67,12 @@ async function assignPrefix(ctx, parts) {
       return ctx.reply('❌ Некорректный ID префикса.');
     }
 
-    const user = db.getUserByNumericId(targetUserId);
+    const user = (await db.getUserByNumericId(targetUserId));
     if (!user) {
       return ctx.reply(`❌ Пользователь с numeric_id ${targetUserId} не найден.`);
     }
 
-    const prefix = db.getPrefixById(prefixId);
+    const prefix = (await db.getPrefixById(prefixId));
     if (!prefix) {
       return ctx.reply(`❌ Префикс с ID ${prefixId} не найден.`);
     }
@@ -83,7 +83,7 @@ async function assignPrefix(ctx, parts) {
     }
 
     userPrefixes.push(prefixId);
-    db.updateUserFieldByNumericId(targetUserId, 'prefix_ids', JSON.stringify(userPrefixes));
+    (await db.updateUserFieldByNumericId(targetUserId, 'prefix_ids', JSON.stringify(userPrefixes)));
 
     await ctx.replyWithHTML(
       `✅ Префикс "<b>${prefix.prefix}</b>" успешно выдан пользователю с id ${targetUserId}.`
@@ -111,12 +111,12 @@ async function removePrefix(ctx, parts) {
       return ctx.reply('❌ Некорректный ID префикса.');
     }
 
-    const user = db.getUserByNumericId(targetUserId);
+    const user = (await db.getUserByNumericId(targetUserId));
     if (!user) {
       return ctx.reply(`❌ Пользователь с numeric_id ${targetUserId} не найден.`);
     }
 
-    const prefix = db.getPrefixById(prefixId);
+    const prefix = (await db.getPrefixById(prefixId));
     if (!prefix) {
       return ctx.reply(`❌ Префикс с ID ${prefixId} не найден.`);
     }
@@ -127,11 +127,11 @@ async function removePrefix(ctx, parts) {
     }
 
     const updatedPrefixes = userPrefixes.filter(id => id !== prefixId);
-    db.updateUserFieldByNumericId(targetUserId, 'prefix_ids', JSON.stringify(updatedPrefixes));
+    (await db.updateUserFieldByNumericId(targetUserId, 'prefix_ids', JSON.stringify(updatedPrefixes)));
 
     // Если удаляемый префикс был активным, обнуляем active_prefix_id
     if (user.active_prefix_id === prefixId) {
-      db.updateUserFieldByNumericId(targetUserId, 'active_prefix_id', null);
+      (await db.updateUserFieldByNumericId(targetUserId, 'active_prefix_id', null));
     }
 
     await ctx.replyWithHTML(
@@ -149,14 +149,14 @@ async function listUserPrefixes(ctx) {
     const userId = ctx.from.id; // ID текущего пользователя
 
     // Получаем пользователя из базы данных
-    let user = db.getUserById(userId);
+    let user = (await db.getUserById(userId));
     if (!user) {
       // Если пользователь не найден, создаем его
-      db.createUserOrUpdate({
+      (await db.createUserOrUpdate({
         id: userId,
         first_name: ctx.from.first_name || 'Unknown',
-      });
-      user = db.getUserById(userId); // Получаем созданного пользователя
+      }));
+      user = (await db.getUserById(userId)); // Получаем созданного пользователя
     }
 
     // Получаем список обычных и специальных префиксов пользователя
@@ -164,8 +164,8 @@ async function listUserPrefixes(ctx) {
     const userSpecialPrefixes = JSON.parse(user.special_prefix_ids || '[]');
 
     // Получаем все доступные префиксы из обеих таблиц
-    const allPrefixes = db.getAllPrefixes(); // Обычные префиксы
-    const allSpecialPrefixes = db.getAllSpecialPrefixes(); // Специальные префиксы
+    const allPrefixes = (await db.getAllPrefixes()); // Обычные префиксы
+    const allSpecialPrefixes = (await db.getAllSpecialPrefixes()); // Специальные префиксы
 
     const activePrefixId = user.active_prefix_id;
 
@@ -228,20 +228,20 @@ async function setActivePrefix(ctx, parts) {
     }
 
     // Получаем данные пользователя по Telegram ID
-    const user = db.getUserById(userId);
+    const user = (await db.getUserById(userId));
     if (!user) {
       return ctx.reply('❌ Ваш профиль не найден.');
     }
 
     // Если префикс равен 0, убираем активный префикс
     if (prefixId === 0) {
-      db.updateUserFieldByNumericId(user.numeric_id, 'active_prefix_id', null);
+      (await db.updateUserFieldByNumericId(user.numeric_id, 'active_prefix_id', null));
       return ctx.replyWithHTML(`✅ Активный префикс успешно удален.`);
     }
 
     // Проверяем существование префикса в базе данных
-    const allPrefixes = db.getAllPrefixes(); // Обычные префиксы
-    const allSpecialPrefixes = db.getAllSpecialPrefixes(); // Специальные префиксы
+    const allPrefixes = (await db.getAllPrefixes()); // Обычные префиксы
+    const allSpecialPrefixes = (await db.getAllSpecialPrefixes()); // Специальные префиксы
     const prefix = allPrefixes.find(p => p.id === prefixId) || allSpecialPrefixes.find(p => p.id === prefixId);
 
     if (!prefix) {
@@ -257,7 +257,7 @@ async function setActivePrefix(ctx, parts) {
     }
 
     // Устанавливаем активный префикс
-    db.updateUserFieldByNumericId(user.numeric_id, 'active_prefix_id', prefixId);
+    (await db.updateUserFieldByNumericId(user.numeric_id, 'active_prefix_id', prefixId));
 
     // Отправляем подтверждение пользователю
     await ctx.replyWithHTML(`✅ Префикс "<b>${prefix.prefix}</b>" успешно установлен как активный.`);
@@ -307,7 +307,7 @@ async function createSpecialPrefixCommand(ctx) {
 
     // Создаём специальный префикс
     console.log(`[LOG] Попытка создания префикса "${prefix}" пользователем с ID ${userId}`);
-    const result = createSpecialPrefix(prefix, userId);
+    const result = (await createSpecialPrefix(prefix, userId));
 
     console.log(`[LOG] Результат создания префикса:`, result); // Лог: Результат операции
     await ctx.reply(result.message);

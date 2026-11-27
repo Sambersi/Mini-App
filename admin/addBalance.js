@@ -47,19 +47,19 @@ function parseAmountWithSuffix(amountInput) {
 }
 
 // Функция для поиска пользователя по numeric_id, telegram_id или никнейму
-function resolveUser(identifier) {
+async function resolveUser(identifier) {
   if (!identifier) return null;
   const cleanId = identifier.replace(/^@/, ''); // Убираем @, если есть
   
   let user = null;
   // Если строка состоит только из цифр, ищем по ID (numeric_id или telegram_id)
   if (/^\d+$/.test(cleanId)) {
-    user = getUserByAnyId(cleanId);
+    user = (await getUserByAnyId(cleanId));
   }
   
   // Если не нашли по ID или ввели никнейм, ищем по нику
   if (!user) {
-    user = getUserByUsername(cleanId);
+    user = (await getUserByUsername(cleanId));
   }
   
   return user;
@@ -216,7 +216,7 @@ async function addBalanceHandler(ctx) {
       return ctx.reply('У вас нет прав для использования этой команды.');
     }
 
-    const user = resolveUser(identifier);
+    const user = (await resolveUser(identifier));
     if (!user) {
       return ctx.reply('Пользователь с указанным ID или никнеймом не найден.');
     }
@@ -224,7 +224,7 @@ async function addBalanceHandler(ctx) {
     const result = await updateUserBalanceByNumericId(user.numeric_id, amount);
     if (!result.success) {
       // Логируем неудачу в БД
-      logAdminItem({
+      (await logAdminItem({
         adminId: ctx.from.id,
         targetUserId: user.id,
         direction: 'give',
@@ -232,7 +232,7 @@ async function addBalanceHandler(ctx) {
         amount: amount,
         comment: result.message || 'Ошибка обновления',
         success: false
-      });
+      }));
       return ctx.reply(result.message || 'Не удалось обновить баланс.');
     }
 
@@ -261,7 +261,7 @@ async function addBalanceHandler(ctx) {
     await sendUserNotification(ctx, user.id, userMessage); 
 
     // Логирование в новую систему логов (finance_log)
-    logAdminItem({
+    (await logAdminItem({
       adminId: ctx.from.id,
       targetUserId: user.id,
       direction: 'give',
@@ -269,7 +269,7 @@ async function addBalanceHandler(ctx) {
       amount: amount,
       comment: 'Выдача PF',
       success: true
-    });
+    }));
 
     // Логирование выдачи администратором для указанных ID (старый лог в чат)
     const LOG_GIVE_CHAT_ID = process.env.LOG_GIVE_CHAT_ID; 
@@ -333,7 +333,7 @@ async function removeBalanceHandler(ctx) {
       return ctx.reply('У вас нет прав для использования этой команды.');
     }
 
-    const user = resolveUser(identifier);
+    const user = (await resolveUser(identifier));
     if (!user) {
       return ctx.reply('Пользователь с указанным ID или никнеймом не найден.');
     }
@@ -345,7 +345,7 @@ async function removeBalanceHandler(ctx) {
     const result = await updateUserBalanceByNumericId(user.numeric_id, -amount);
     if (!result.success) {
       // Логируем неудачу в БД
-      logAdminItem({
+      (await logAdminItem({
         adminId: ctx.from.id,
         targetUserId: user.id,
         direction: 'take',
@@ -353,7 +353,7 @@ async function removeBalanceHandler(ctx) {
         amount: amount,
         comment: result.message || 'Ошибка обновления',
         success: false
-      });
+      }));
       return ctx.reply(result.message || 'Не удалось обновить баланс.');
     }
 
@@ -382,7 +382,7 @@ async function removeBalanceHandler(ctx) {
     await sendUserNotification(ctx, user.id, userMessage); 
 
     // Логирование в новую систему логов (finance_log)
-    logAdminItem({
+    (await logAdminItem({
       adminId: ctx.from.id,
       targetUserId: user.id,
       direction: 'take',
@@ -390,7 +390,7 @@ async function removeBalanceHandler(ctx) {
       amount: amount,
       comment: 'Списание PF',
       success: true
-    });
+    }));
   } catch (error) {
     console.error('Ошибка при выполнении команды "забрать":', error);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');

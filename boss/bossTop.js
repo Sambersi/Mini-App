@@ -74,7 +74,7 @@ async function bossTopHandler(ctx) {
         const damage = formatNumber(player?.total_damage || 0);
   
         // Создаем ссылку на пользователя
-        const userLink = createUserLink(userId, username, isHyperlinkDisabled(userId));
+        const userLink = createUserLink(userId, username, (await isHyperlinkDisabled(userId)));
   
         // Преобразуем позицию в эмодзи
         const positionEmoji = numberToEmoji(position);
@@ -93,7 +93,7 @@ async function bossTopHandler(ctx) {
           const userPositionEmoji = numberToEmoji(userPosition);
   
           // Создаем ссылку на текущего пользователя
-          const userLink = createUserLink(currentUserId, currentUser.username, isHyperlinkDisabled(currentUserId));
+          const userLink = createUserLink(currentUserId, currentUser.username, (await isHyperlinkDisabled(currentUserId)));
   
           // Добавляем разделительную линию
           message += `\n─────────────────────\n\n${userPositionEmoji} ${userLink} — ${totalDamage} урона`;
@@ -104,7 +104,7 @@ async function bossTopHandler(ctx) {
         const userPositionEmoji = numberToEmoji(userPosition);
   
         // Создаем ссылку на текущего пользователя
-        const userLink = createUserLink(currentUserId, ctx.from.username, isHyperlinkDisabled(currentUserId));
+        const userLink = createUserLink(currentUserId, ctx.from.username, (await isHyperlinkDisabled(currentUserId)));
   
         // Добавляем разделительную линию
         message += `\n─────────────────────\n\n${userPositionEmoji} ${userLink} — 0 урона`;

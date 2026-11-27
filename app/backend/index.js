@@ -102,11 +102,11 @@ app.get('/api/admin/check/:userId', (req, res) => {
   res.json({ isAdmin: true });
 });
 
-app.get('/api/fortune/tickets/:userId', (req, res) => {
+app.get('/api/fortune/tickets/:userId', async (req, res) => {
   try {
-    const user = getUserById(req.params.userId.toString());
+    const user = (await getUserById(req.params.userId.toString()));
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ tickets: getTickets(req.params.userId.toString()) });
+    res.json({ tickets: (await getTickets(req.params.userId.toString())) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -134,16 +134,16 @@ function selectWeightedPrize() {
 }
 
 
-app.post('/api/fortune/spin', (req, res) => {
+app.post('/api/fortune/spin', async (req, res) => {
   const userId = req.body.userId?.toString();
   if (!userId) return res.status(400).json({ error: 'userId required' });
   try {
-    const tickets = getTickets(userId);
+    const tickets = (await getTickets(userId));
     if (tickets < 1) return res.status(402).json({ error: 'No tickets' });
-    const takeResult = takeTickets(userId, 1);
+    const takeResult = (await takeTickets(userId, 1));
     if (!takeResult.success) return res.status(500).json({ error: takeResult.message });
     const prize = selectWeightedPrize();
-    awardPrizeToUser(userId, prize);
+    (await awardPrizeToUser(userId, prize));
     res.json({ prize: { title: prize.title, type: prize.type }, ticketsLeft: tickets - 1 });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -152,11 +152,11 @@ app.post('/api/fortune/spin', (req, res) => {
 
 const LOGS_PAGE_SIZE = 42;
 
-function parseLogsQuery(req) {
+async function parseLogsQuery(req) {
   const rawTs = parseInt(req.query.targetTs, 10);
   return {
     targetTs: Number.isNaN(rawTs) ? null : rawTs,
-    searchIds: resolveLogSearchIds(String(req.query.search || '')),
+    searchIds: (await resolveLogSearchIds(String(req.query.search || ''))),
     page: Math.max(1, parseInt(req.query.page, 10) || 1),
   };
 }
@@ -244,9 +244,9 @@ function getBetsPage({ targetTs = null, searchIds = null, hash = null, limit = 5
   return { rows, total, offset: off };
 }
 
-app.get('/api/admin/logs/finance', (req, res) => {
+app.get('/api/admin/logs/finance', async (req, res) => {
   try {
-    const { targetTs, searchIds, page } = parseLogsQuery(req);
+    const { targetTs, searchIds, page } = (await parseLogsQuery(req));
     const types = req.query.types ? String(req.query.types).split(',').filter(Boolean) : null;
     const result = getFinancePage({
       targetTs,
@@ -267,9 +267,9 @@ app.get('/api/admin/logs/finance', (req, res) => {
   }
 });
 
-app.get('/api/admin/logs/double', (req, res) => {
+app.get('/api/admin/logs/double', async (req, res) => {
   try {
-    const { targetTs, searchIds, page } = parseLogsQuery(req);
+    const { targetTs, searchIds, page } = (await parseLogsQuery(req));
     const view = req.query.view === 'bets' ? 'bets' : 'rounds';
     const searchRaw = String(req.query.search || '').trim();
     let result;
@@ -301,9 +301,9 @@ app.get('/api/admin/logs/double', (req, res) => {
   }
 });
 
-app.get('/api/admin/logs/double/round/:roundId', (req, res) => {
+app.get('/api/admin/logs/double/round/:roundId', async (req, res) => {
   try {
-    const details = getDoubleRoundDetails(req.params.roundId);
+    const details = (await getDoubleRoundDetails(req.params.roundId));
     if (!details.success) return res.status(404).json({ error: details.error });
     res.json(details);
   } catch (e) {

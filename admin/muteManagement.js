@@ -287,7 +287,7 @@ async function muteUserHandler(ctx) {
     }
 
     // === ЛОГ: мут в finance_log (только после успешного restrictChatMember) ===
-    logModeration({
+    (await logModeration({
       adminId: senderId,
       targetUserId: userToMute.id,
       type: 'mute',
@@ -296,7 +296,7 @@ async function muteUserHandler(ctx) {
       reason: reason,
       durationHours: muteHours,
       success: 1,
-    });
+    }));
 
     // Формируем сообщение администратору
     const username = userToMute.username || 'Неизвестный';
@@ -448,14 +448,14 @@ async function unmuteUserHandler(ctx) {
     }
 
     // === ЛОГ: размут в finance_log (только после успешного restrictChatMember) ===
-    logModeration({
+    (await logModeration({
       adminId: senderId,
       targetUserId: userToUnmute.id,
       type: 'unmute',
       chatId: chatId,
       chatTitle: ctx.chat?.title || null, // <--- ДОБАВЛЕНО: Название чата
       success: 1,
-    });
+    }));
 
     // Формируем сообщение администратору
     const username = userToUnmute.username || 'Неизвестный';

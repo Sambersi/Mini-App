@@ -46,7 +46,7 @@ const {
      const WINDOW_SIZE = 24 * 60 * 60; // 24 часа в секундах
      const now = Math.floor(Date.now() / 1000);
      // 1. Получаем время последнего действия
-     const lastActionTime = getLastAdminActionTime(adminIdStr);
+     const lastActionTime = (await getLastAdminActionTime(adminIdStr));
      // 2. Если действий не было вообще, квота полная
      if (lastActionTime === null) {
         return { allowed: true, remaining: LIMIT };
@@ -58,7 +58,7 @@ const {
      // 4. Иначе, считаем действия за последние 24ч от ПОСЛЕДНЕГО действия
      const windowStart = lastActionTime - WINDOW_SIZE;
      const windowEnd = lastActionTime;
-     const actions = getAdminActionsInRange(adminIdStr, windowStart, windowEnd);
+     const actions = (await getAdminActionsInRange(adminIdStr, windowStart, windowEnd));
      const actionCount = actions.length;
      const remaining = LIMIT - actionCount;
      return { allowed: remaining > 0, remaining };
@@ -150,7 +150,7 @@ const {
   // 1. Проверка базовых прав и контекста
    if (!(await isAdmin_ban(ctx))) {
      // Определяем, почему нет доступа
-     const statuses = await getUserStatuses(senderId).catch(() => []);
+     const statuses = await (await getUserStatuses(senderId)).catch(() => []);
      const isRegularAdmin = statuses.includes('Администратор');
      const isTechOrMainAdmin = statuses.includes('Тех администратор') || isMainAdmin(senderId);
      const isSpecialAdmin = SPECIAL_ADMINS.includes(senderId);
@@ -269,7 +269,7 @@ const {
    await addToBlacklist(userToBan.id, reason, banUntil);
    // 10.1. Единый аудит-лог бана (для отображения в мини-аппе)
    const actionText = `БАН${reason ? ': ' + reason : ''}${banHours ? ` (${banHours} ч)` : ' (навсегда)'}`;
-   logFinance({
+   (await logFinance({
      type: 'ban',
      actorUserId: senderId,
      targetUserId: userToBan.id,
@@ -280,12 +280,12 @@ const {
      action: actionText,
      payload: { banHours: banHours ?? null, banUntil: banUntil ?? null },
      success: 1,
-   });
+   }));
    // 11. Запись действия в лог (если это обычный админ или специальный админ)
    const senderStatuses = await getUserStatuses(senderId);
    const isSenderSpecialAdminForLogging = SPECIAL_ADMINS.includes(senderId);
    if (actionPermission.remaining < Infinity && (senderStatuses.includes('Администратор') || isSenderSpecialAdminForLogging)) {
-      const recordResult = recordAdminAction(senderId, 'ban', userToBan.id);
+      const recordResult = (await recordAdminAction(senderId, 'ban', userToBan.id));
       if (!recordResult.success) {
         console.error(`[ЧС] Не удалось записать действие бана админа ${senderId} для пользователя ${userToBan.id}:`, recordResult.error);
       }
@@ -339,7 +339,7 @@ const {
   // 1. Проверка базовых прав и контекста
    if (!(await isAdmin_ban(ctx))) {
      // Определяем, почему нет доступа
-     const statuses = await getUserStatuses(senderId).catch(() => []);
+     const statuses = await (await getUserStatuses(senderId)).catch(() => []);
      const isRegularAdmin = statuses.includes('Администратор');
      const isTechOrMainAdmin = statuses.includes('Тех администратор') || isMainAdmin(senderId);
      const isSpecialAdmin = SPECIAL_ADMINS.includes(senderId);
@@ -397,7 +397,7 @@ const {
    await removeFromBlacklist(userToUnban.id);
    // 7.1. Единый аудит-лог разбана (для отображения в мини-аппе)
    const actionText = 'РАЗБАН';
-   logFinance({
+   (await logFinance({
      type: 'unban',
      actorUserId: senderId,
      targetUserId: userToUnban.id,
@@ -408,12 +408,12 @@ const {
      action: actionText,
      payload: null,
      success: 1,
-   });
+   }));
    // 8. Запись действия в лог (если это обычный админ или специальный админ)
    const senderStatuses = await getUserStatuses(senderId);
    const isSenderSpecialAdminForLogging = SPECIAL_ADMINS.includes(senderId);
    if (actionPermission.remaining < Infinity && (senderStatuses.includes('Администратор') || isSenderSpecialAdminForLogging)) {
-      const recordResult = recordAdminAction(senderId, 'unban', userToUnban.id);
+      const recordResult = (await recordAdminAction(senderId, 'unban', userToUnban.id));
       if (!recordResult.success) {
         console.error(`[ЧС] Не удалось записать действие разбана админа ${senderId} для пользователя ${userToUnban.id}:`, recordResult.error);
       }
@@ -460,7 +460,7 @@ const {
   const senderId = ctx.from.id.toString();
   // Проверка прав и контекста
    if (!(await isAdmin_ban(ctx))) {
-     const statuses = await getUserStatuses(senderId).catch(() => []);
+     const statuses = await (await getUserStatuses(senderId)).catch(() => []);
      const isRegularAdmin = statuses.includes('Администратор');
      const isTechOrMainAdmin = statuses.includes('Тех администратор') || isMainAdmin(senderId);
      const isSpecialAdmin = SPECIAL_ADMINS.includes(senderId);
@@ -499,7 +499,7 @@ const {
    }
    // Добавляем логирование просмотра черного списка (для отображения в мини-аппе)
    const actionText = `Просмотр ЧС (записей: ${blacklist.length})`;
-   logFinance({
+   (await logFinance({
      type: 'view_blacklist',
      actorUserId: senderId,
      targetUserId: null,
@@ -510,7 +510,7 @@ const {
      action: actionText,
      payload: { recordsCount: blacklist.length },
      success: 1,
-   });
+   }));
    await ctx.reply(response, { parse_mode: 'HTML' });
   } catch (error) {
   console.error('Ошибка при выполнении команды "чс":', error);

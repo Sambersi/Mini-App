@@ -55,7 +55,7 @@ async function statisticsHandler(ctx) {
     const bestStreak = user.best_win_streak || 0;
     const net = winnings - losses;
 
-    const breakdown = buildMultiplierBreakdown(getMultiplierStats(userId));
+    const breakdown = buildMultiplierBreakdown((await getMultiplierStats(userId)));
     const favoriteLine = breakdown.total >= MIN_EVENTS && breakdown.favorite
       ? `${breakdown.favorite.m} (индекс ${breakdown.favorite.index.toFixed(2)})`
       : '— (мало ставок)';

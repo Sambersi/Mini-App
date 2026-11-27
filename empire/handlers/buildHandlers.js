@@ -10,7 +10,7 @@ const ITEMS_PER_PAGE = 8; // Сколько бизнесов отображат�
 // --- Основное меню постройки ---
 async function showBuildMenu(ctx, page = 1) {
     const userId = ctx.from.id.toString();
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
 
     // Получаем все типы бизнесов
     const allTypes = Object.entries(BUSINESS_TYPES_MAP);
@@ -34,7 +34,7 @@ async function showBuildMenu(ctx, page = 1) {
 
     for (const [id, info] of pageTypes) {
         // Проверяем, есть ли у пользователя уже этот тип бизнеса
-        const userBusinesses = getUserBusinesses(userId);
+        const userBusinesses = (await getUserBusinesses(userId));
         const userBusinessOfType = userBusinesses.find(b => b.type === info.name);
 
         // Формируем текст кнопки
@@ -87,8 +87,8 @@ async function handleViewBusinessInfo(ctx) {
     }
 
     const userId = ctx.from.id.toString();
-    const user = getUserById(userId);
-    const userBusinesses = getUserBusinesses(userId);
+    const user = (await getUserById(userId));
+    const userBusinesses = (await getUserBusinesses(userId));
     const userBusinessOfType = userBusinesses.find(b => b.type === typeInfo.name);
 
     let config, upgradePrice, upgradeCurrency;
@@ -156,7 +156,7 @@ async function handleShowUpgradeDetails(ctx) {
     const typeId = parseInt(ctx.match[2], 10); // type id
 
     const typeInfo = BUSINESS_TYPES_MAP[typeId];
-    const business = getBusinessById(businessId);
+    const business = (await getBusinessById(businessId));
 
     if (!typeInfo || !business) {
         await ctx.answerCbQuery('❌ Бизнес не найден.');
@@ -220,7 +220,7 @@ async function handleConfirmBuyBusiness(ctx) {
     }
 
     const userId = ctx.from.id.toString();
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
 
     // Проверяем баланс
     const price = getBusinessPriceByTypeId(typeId, 1); // Цена уровня 1
@@ -230,7 +230,7 @@ async function handleConfirmBuyBusiness(ctx) {
     }
 
     // Проверяем, есть ли уже такой бизнес
-    if (hasBusinessOfType(userId, typeInfo.name)) {
+    if ((await hasBusinessOfType(userId, typeInfo.name))) {
         await ctx.answerCbQuery('❌ У вас уже есть этот тип бизнеса.', { show_alert: true });
         return;
     }
@@ -242,7 +242,7 @@ async function handleConfirmBuyBusiness(ctx) {
         // Поэтому передаём -price (отрицательное изменение)
         await updateUserBalance(userId, -price); // Списываем средства
 
-        const creationSuccess = createBusiness(userId, typeId, 1);
+        const creationSuccess = (await createBusiness(userId, typeId, 1));
 
         if (creationSuccess) {
             await ctx.answerCbQuery(`✅ Бизнес "${typeInfo.baseConfig.name}" успешно куплен!`, { show_alert: true });
@@ -267,7 +267,7 @@ async function handleConfirmUpgradeBusiness(ctx) {
     const typeId = parseInt(ctx.match[2], 10); // type id
 
     const typeInfo = BUSINESS_TYPES_MAP[typeId];
-    const business = getBusinessById(businessId);
+    const business = (await getBusinessById(businessId));
 
     if (!typeInfo || !business) {
         await ctx.answerCbQuery('❌ Бизнес не найден.');
@@ -293,7 +293,7 @@ async function handleConfirmUpgradeBusiness(ctx) {
     }
 
     const upgradePrice = getBusinessUpgradePriceByTypeId(typeId, currentLevel);
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
 
     // Проверяем баланс
     if (user.balance < upgradePrice) {
@@ -306,7 +306,7 @@ async function handleConfirmUpgradeBusiness(ctx) {
         // Используем функцию updateUserBalance из основной базы данных
         await updateUserBalance(userId, -upgradePrice); // Списываем средства
 
-        const upgradeSuccess = upgradeBusinessLevel(businessId, currentLevel + 1); // Улучшаем до следующего уровня
+        const upgradeSuccess = (await upgradeBusinessLevel(businessId, currentLevel + 1)); // Улучшаем до следующего уровня
 
         if (upgradeSuccess) {
             // await ctx.answerCbQuery(`✅ Бизнес "${typeInfo.baseConfig.name}" улучшен до уровня ${currentLevel + 1}!`, { show_alert: true });
@@ -330,7 +330,7 @@ async function handleConfirmUpgradeBusiness(ctx) {
             // Мы можем получить обновлённые данные и сформировать сообщение так же, как в handleViewBusinessInfo.
 
             // 1. Получаем обновлённый бизнес (уровень уже увеличен)
-            const updatedBusiness = getBusinessById(businessId);
+            const updatedBusiness = (await getBusinessById(businessId));
             if (!updatedBusiness) {
                  console.error(`[handleConfirmUpgradeBusiness] Бизнес с ID ${businessId} не найден после улучшения.`);
                  await ctx.answerCbQuery('❌ Ошибка при обновлении сообщения.', { show_alert: true });
@@ -347,7 +347,7 @@ async function handleConfirmUpgradeBusiness(ctx) {
             }
 
             // 3. Получаем данные пользователя и проверяем баланс для следующего улучшения
-            const userAfterUpgrade = getUserById(userId);
+            const userAfterUpgrade = (await getUserById(userId));
             let upgradePriceNext = null;
             let canUpgrade = false;
             let upgradeButtonLabel = '❌ Недостаточно средств';

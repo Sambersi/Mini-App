@@ -66,8 +66,8 @@ async function showAdminPanel(ctx) {
     const totalPF = regularUsers.reduce((sum, user) => sum + user.balance, 0);
     const totalDF = regularUsers.reduce((sum, user) => sum + (user.df_balance || 0), 0);
     const totalCardBalance = regularUsers.reduce((sum, user) => sum + (user.card_balance || 0), 0);
-    const online5m = getActivePlayersCount(5 * 60 * 1000);
-    const active24h = getActivePlayersCount(24 * 60 * 60 * 1000);
+    const online5m = (await getActivePlayersCount(5 * 60 * 1000));
+    const active24h = (await getActivePlayersCount(24 * 60 * 60 * 1000));
 
     const adminPanelMessage = `
 📊 <b>Админ-панель</b> 📊

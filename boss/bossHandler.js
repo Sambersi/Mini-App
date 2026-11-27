@@ -323,17 +323,17 @@ function generateMathKeyboard(phase) {
 
 async function bossHandler(ctx) {
     try {
-        const currentBoss = getCurrentBoss();
+        const currentBoss = (await getCurrentBoss());
         if (!currentBoss) {
             return ctx.reply('❌ В данный момент активных боссов нет.');
         }
 
         const isBossAlive = currentBoss.phase === 1 ? currentBoss.phase1_hp > 0 : currentBoss.phase2_hp > 0;
         const userId = ctx.from.id.toString();
-        const user = getUserById(userId);
+        const user = (await getUserById(userId));
         if (!user) return ctx.reply('Ошибка: пользователь не найден.');
 
-        const activeWeapon = getActiveWeapon(userId);
+        const activeWeapon = (await getActiveWeapon(userId));
         
         // --- ЛОГИКА РАСЧЕТА УРОНА С УЧЕТОМ ТИПА ОРУЖИЯ ---
         let displayAttackPower = user.attack_power || 0;
@@ -366,7 +366,7 @@ async function bossHandler(ctx) {
         const maxPhaseHp = currentBoss.phase === 1 ? currentBoss.phase1_max_hp : currentBoss.phase2_max_hp;
         const formattedCurrentHp = currentPhaseHp.toLocaleString('ru-RU');
         const formattedMaxHp = maxPhaseHp.toLocaleString('ru-RU');
-        const userLink = createUserLink(userId, user.username, isHyperlinkDisabled(userId));
+        const userLink = createUserLink(userId, user.username, (await isHyperlinkDisabled(userId)));
 
         let message;
         if (isBossAlive) {
@@ -466,8 +466,8 @@ async function startNewBoss(ctx) {
             return await ctx.reply('❌ Указанный файл изображения не найден.');
         }
 
-        resetBossDamage();
-        reduceAttackPowerBy90Percent();
+        (await resetBossDamage());
+        (await reduceAttackPowerBy90Percent());
 
         // ФИКСИРОВАННОЕ ИМЯ БОССА
         const bossName = 'Математика';
@@ -479,7 +479,7 @@ async function startNewBoss(ctx) {
     ├ Тип приза: ${prizeType}
     ├ Количество приза: ${prizeAmount}`);
 
-        const result = addNewBoss(bossName, imageFile, hp, prizeType, prizeAmount);
+        const result = (await addNewBoss(bossName, imageFile, hp, prizeType, prizeAmount));
         if (result && result.changes > 0) {
             const phase1MaxHp = Math.floor(hp / 2);
             const phase2MaxHp = Math.ceil(hp / 2);
@@ -512,7 +512,7 @@ async function attackBoss(ctx) {
         const userId = ctx.from.id.toString();
         console.log(`[LOG] Пользователь ${userId} вызвал функцию attackBoss`);
 
-        const lastAttackTime = getLastAttackTime(userId);
+        const lastAttackTime = (await getLastAttackTime(userId));
         const now = Date.now();
         if (lastAttackTime && now - lastAttackTime < 800) {
             const remainingCooldown = Math.ceil((800 - (now - lastAttackTime)) / 1000);
@@ -522,20 +522,20 @@ async function attackBoss(ctx) {
                 return await ctx.reply(`⏳ Подождите еще ${remainingCooldown} сек. перед следующей атакой.`);
             }
         }
-        updateLastAttackTime(userId, now);
+        (await updateLastAttackTime(userId, now));
 
-        const user = getUserById(userId);
+        const user = (await getUserById(userId));
         if (!user) return await ctx.reply('Ошибка: пользователь не найден.');
-        const userLink = createUserLink(userId, user.username, isHyperlinkDisabled(userId));
+        const userLink = createUserLink(userId, user.username, (await isHyperlinkDisabled(userId)));
 
-        const currentEnergy = getCurrentEnergy(userId);
+        const currentEnergy = (await getCurrentEnergy(userId));
         if (currentEnergy <= 0) {
-            const energyInfo = getTimeUntilNextEnergyRestore(userId);
+            const energyInfo = (await getTimeUntilNextEnergyRestore(userId));
             if (!energyInfo) return await ctx.reply(`❌ ${userLink}, не удалось получить информацию о вашей энергии.`);
 
             const { currentEnergy: updatedEnergy, nextRestoreTime } = energyInfo;
             const now = Math.floor(Date.now() / 1000);
-            const maxEnergy = getMaxEnergyByStatus(userId);
+            const maxEnergy = (await getMaxEnergyByStatus(userId));
 
             if (updatedEnergy >= maxEnergy) {
                 return await ctx.replyWithHTML(`⚡️ ${userLink}, ваша энергия максимально заполнена: <b>${updatedEnergy}/${maxEnergy}</b>`);
@@ -553,7 +553,7 @@ async function attackBoss(ctx) {
             );
         }
 
-        const currentBoss = getCurrentBoss();
+        const currentBoss = (await getCurrentBoss());
         if (!currentBoss) return await ctx.reply(`❌ В данный момент активных боссов нет.`);
         if (currentBoss.phase1_hp === 0 && currentBoss.phase2_hp === 0) return await ctx.reply(`⚠️ Босс уже повержен!`);
 
@@ -576,7 +576,7 @@ async function attackBoss(ctx) {
             // Извлекаем текущую серию из состояния атаки (если есть)
             let currentStreak = 0;
             let timeLimit = INITIAL_TIME_LIMIT;
-            const existingAttackState = getAttackState(userId);
+            const existingAttackState = (await getAttackState(userId));
             if (existingAttackState && existingAttackState.correct_button_index) {
                 try {
                     const parsedState = JSON.parse(existingAttackState.correct_button_index);
@@ -596,14 +596,14 @@ async function attackBoss(ctx) {
             }
 
             // Получаем активное оружие и его прочность
-            const activeWeapon = getActiveWeapon(userId);
+            const activeWeapon = (await getActiveWeapon(userId));
             let currentDurability = 0;
             let durabilityMessage = '';
             if (activeWeapon) {
                 if (activeWeapon.name === 'Кулак') {
                     durabilityMessage = `🔧 Прочность вашего оружия ${activeWeapon.name}: ∞/∞`;
                 } else {
-                    currentDurability = getCurrentWeaponDurability(userId, activeWeapon.id);
+                    currentDurability = (await getCurrentWeaponDurability(userId, activeWeapon.id));
                     durabilityMessage = `🔧 Прочность вашего оружия ${activeWeapon.name}: ${Math.max(currentDurability, 0)}/${activeWeapon.durability}`;
                 }
             }
@@ -638,7 +638,7 @@ async function attackBoss(ctx) {
             };
             
             // Конвертируем в JSON и сохраняем как строку (поскольку БД принимает только примитивные типы)
-            saveAttackState(userId, JSON.stringify(attackStateData), message.message_id);
+            (await saveAttackState(userId, JSON.stringify(attackStateData), message.message_id));
             console.log(`[LOG] Пользователь ${userId} создал новое меню атаки. Message ID: ${message.message_id}`);
             console.log(`[DEBUG] Сохраненные данные:`, attackStateData);
 
@@ -654,7 +654,7 @@ async function attackBoss(ctx) {
             const timerId = setInterval(async () => {
                 try {
                     // Проверяем, существует ли ещё состояние атаки
-                    const updatedAttackState = getAttackState(userId);
+                    const updatedAttackState = (await getAttackState(userId));
                     if (!updatedAttackState || updatedAttackState.message_id !== message.message_id) {
                         console.log(`[DEBUG] Состояние атаки для пользователя ${userId} больше не существует или message_id не совпадает. Останавливаем таймер.`);
                         clearInterval(timerId);
@@ -695,14 +695,14 @@ async function attackBoss(ctx) {
                         let newCurrentStreak = 0; // Сбрасываем серию
                         let newTimeLimit = INITIAL_TIME_LIMIT;
                         
-                        const newActiveWeapon = getActiveWeapon(userId);
+                        const newActiveWeapon = (await getActiveWeapon(userId));
                         let newCurrentDurability = 0;
                         let newDurabilityMessage = '';
                         if (newActiveWeapon) {
                             if (newActiveWeapon.name === 'Кулак') {
                                 newDurabilityMessage = `🔧 Прочность вашего оружия ${newActiveWeapon.name}: ∞/∞`;
                             } else {
-                                newCurrentDurability = getCurrentWeaponDurability(userId, newActiveWeapon.id);
+                                newCurrentDurability = (await getCurrentWeaponDurability(userId, newActiveWeapon.id));
                                 newDurabilityMessage = `🔧 Прочность вашего оружия ${newActiveWeapon.name}: ${Math.max(newCurrentDurability, 0)}/${newActiveWeapon.durability}`;
                             }
                         }
@@ -733,19 +733,19 @@ async function attackBoss(ctx) {
                             timeLimit: newTimeLimit,
                             createdAt: Date.now()
                         };
-                        saveAttackState(userId, JSON.stringify(newAttackStateData), newMessage.message_id);
+                        (await saveAttackState(userId, JSON.stringify(newAttackStateData), newMessage.message_id));
                         
                     } else {
                         // Обновляем сообщение с новым временем
                         const timeValue = Math.ceil(timeLeft);
                         
                         let durabilityMessage = '';
-                        const activeWeapon = getActiveWeapon(userId);
+                        const activeWeapon = (await getActiveWeapon(userId));
                         if (activeWeapon) {
                             if (activeWeapon.name === 'Кулак') {
                                 durabilityMessage = `🔧 Прочность вашего оружия ${activeWeapon.name}: ∞/∞`;
                             } else {
-                                const currentDurability = getCurrentWeaponDurability(userId, activeWeapon.id);
+                                const currentDurability = (await getCurrentWeaponDurability(userId, activeWeapon.id));
                                 durabilityMessage = `🔧 Прочность вашего оружия ${activeWeapon.name}: ${Math.max(currentDurability, 0)}/${activeWeapon.durability}`;
                             }
                         }
@@ -797,7 +797,7 @@ async function attackBoss(ctx) {
 
         // --- ОБРАБОТКА ВЫБОРА ОТВЕТА ---
         const selectedButtonIndex = parseInt(ctx.match[1], 10);
-        const attackState = getAttackState(userId);
+        const attackState = (await getAttackState(userId));
 
         if (!attackState || ctx.callbackQuery.message.message_id !== attackState.message_id) {
             console.log(`[WARNING] Пользователь ${userId} попытался использовать чужое меню атаки:` +
@@ -861,8 +861,8 @@ async function attackBoss(ctx) {
         console.log(`[DEBUG]   Результат проверки: ${parseInt(selectedAnswerText)} === ${correctResult} -> ${isCorrect}`);
         console.log(`[DEBUG]   Пример: ${example}`);
 
-        reduceUserEnergy(userId);
-        const activeWeapon = getActiveWeapon(userId);
+        (await reduceUserEnergy(userId));
+        const activeWeapon = (await getActiveWeapon(userId));
         if (!activeWeapon) return await ctx.reply(`❌ ${userLink}, ошибка: Активное оружие не найдено.`);
 
         let damage = 0;
@@ -874,7 +874,7 @@ async function attackBoss(ctx) {
             // --- РАСЧЁТ УРОНА ---
             let baseDamage = 0;
             if (activeWeapon.name === 'Кулак') {
-                const attackPower = getUserAttackPower(userId);
+                const attackPower = (await getUserAttackPower(userId));
                 baseDamage = activeWeapon.base_damage * attackPower;
             } else {
                 baseDamage = activeWeapon.base_damage;
@@ -905,8 +905,8 @@ async function attackBoss(ctx) {
             const currentHp = currentBoss.phase === 1 ? currentBoss.phase1_hp : currentBoss.phase2_hp;
             const actualDamage = Math.min(finalDamage, currentHp);
             newHp = Math.max(currentHp - actualDamage, 0);
-            updateBossState(currentBoss.id, newHp, currentBoss.phase);
-            addBossDamageToUser(userId, actualDamage);
+            (await updateBossState(currentBoss.id, newHp, currentBoss.phase));
+            (await addBossDamageToUser(userId, actualDamage));
 
             damage = actualDamage;
             
@@ -956,7 +956,7 @@ async function attackBoss(ctx) {
             }
 
             // Формируем постоянную часть сообщения (о прочности)
-            const currentDurability = getCurrentWeaponDurability(userId, activeWeapon.id);
+            const currentDurability = (await getCurrentWeaponDurability(userId, activeWeapon.id));
             let durabilityMessage = '';
             if (activeWeapon.name === 'Кулак') {
                 durabilityMessage = `🔧 Прочность вашего оружия ${activeWeapon.name}: ∞/∞`;
@@ -990,14 +990,14 @@ async function attackBoss(ctx) {
             // Отправляем новое сообщение с результатом и новым примером
             const newMessage = await ctx.replyWithHTML(fullSuccessMessage, { reply_markup: newKeyboard });
             newAttackStateData.messageId = newMessage.message_id;
-            saveAttackState(userId, JSON.stringify(newAttackStateData), newMessage.message_id);
+            (await saveAttackState(userId, JSON.stringify(newAttackStateData), newMessage.message_id));
             console.log(`[LOG] Пользователь ${userId} обновил состояние атаки. Новый Message ID: ${newMessage.message_id}`);
             console.log(`[DEBUG] Новые сохраненные данные:`, newAttackStateData);
 
             if (currentBoss.phase === 1 && newHp === 0) {
-                transitionToPhase2(currentBoss.id);
+                (await transitionToPhase2(currentBoss.id));
                 await ctx.reply(`👾 Босс переходит во вторую фазу!`);
-                const usersWithDamage = getUsersWithDamage();
+                const usersWithDamage = (await getUsersWithDamage());
                 for (const user of usersWithDamage) {
                     try {
                         await ctx.telegram.sendMessage(user.user_id, `👾 Босс перешёл во вторую фазу! Готовьтесь к сложной битве!`, { parse_mode: 'HTML' });
@@ -1014,19 +1014,19 @@ async function attackBoss(ctx) {
                         await ctx.telegram.sendMessage(MAIN_ADMIN, prizeDistributionReport, { parse_mode: 'HTML' });
                     } catch (error) { console.error(`Ошибка при отправке отчета администратору:`, error); }
                 }
-                const usersWithDamage = getUsersWithDamage();
+                const usersWithDamage = (await getUsersWithDamage());
                 for (const user of usersWithDamage) {
                     try {
                         await ctx.telegram.sendMessage(user.user_id, `🎉 Босс повержен! Спасибо за участие в битве!`, { parse_mode: 'HTML' });
                     } catch (error) { console.error(`Ошибка при отправке рассылки пользователю ${user.user_id}:`, error); }
                 }
-                deleteAttackState(userId); // Удаляем состояние после победы
+                (await deleteAttackState(userId)); // Удаляем состояние после победы
             }
         } else {
             // --- ОШИБКА В АТАКЕ ИЛИ ИСТЕЧЕНИЕ ВРЕМЕНИ ---
-            const currentDurability = getCurrentWeaponDurability(userId, activeWeapon.id);
+            const currentDurability = (await getCurrentWeaponDurability(userId, activeWeapon.id));
             const durabilityLoss = 1;
-            reduceWeaponDurability(userId, activeWeapon.id, durabilityLoss);
+            (await reduceWeaponDurability(userId, activeWeapon.id, durabilityLoss));
             const updatedDurability = currentDurability - durabilityLoss;
 
             let durabilityMessage = '';
@@ -1061,8 +1061,8 @@ async function attackBoss(ctx) {
 
             if (updatedDurability <= 0 && activeWeapon.name !== 'Кулак') {
                 console.log(`[DEBUG] Оружие сломалось. Вызываем removeBrokenWeapon и switchToDefaultWeapon.`);
-                removeBrokenWeapon(userId, activeWeapon.id);
-                switchToDefaultWeapon(userId);
+                (await removeBrokenWeapon(userId, activeWeapon.id));
+                (await switchToDefaultWeapon(userId));
 
                 const brokenWeaponMessage = `❌ ${userLink}, вы ошиблись в решении примера! \n\n` +
                     `🔏Правильный ответ был [${correctResult}]. Ваше оружие ${activeWeapon.name} сломалось, вы можете снова приобрести её в магазине.\n\n` +
@@ -1092,7 +1092,7 @@ async function attackBoss(ctx) {
                 newAttackStateData.messageId = newMessage.message_id;
                 // Для сломанного оружия сохраняем состояние с Кулаком
                 newAttackStateData.currentStreak = 0; // Сбрасываем серию
-                saveAttackState(userId, JSON.stringify(newAttackStateData), newMessage.message_id);
+                (await saveAttackState(userId, JSON.stringify(newAttackStateData), newMessage.message_id));
                 console.log(`[LOG] Пользователь ${userId} обновил состояние атаки (оружие сломано). Новый Message ID: ${newMessage.message_id}`);
                 return;
             }
@@ -1107,7 +1107,7 @@ async function attackBoss(ctx) {
             // Отправляем новое сообщение с ошибкой и новым примером
             const newMessage = await ctx.replyWithHTML(fullErrorMessage, { reply_markup: newKeyboard });
             newAttackStateData.messageId = newMessage.message_id;
-            saveAttackState(userId, JSON.stringify(newAttackStateData), newMessage.message_id);
+            (await saveAttackState(userId, JSON.stringify(newAttackStateData), newMessage.message_id));
             console.log(`[LOG] Пользователь ${userId} обновил состояние атаки (ошибка). Новый Message ID: ${newMessage.message_id}`);
         }
         
@@ -1208,7 +1208,7 @@ async function handleAttackButton(ctx) {
             console.log(`[DEBUG] ctx.callbackQuery.message.message_id:`, ctx.callbackQuery?.message?.message_id);
 
             // Получаем состояние атаки для пользователя
-            let attackState = getAttackState(userId);
+            let attackState = (await getAttackState(userId));
             console.log(`[DEBUG] Состояние атаки пользователя ${userId}:`, JSON.stringify(attackState));
 
             if (!attackState) {

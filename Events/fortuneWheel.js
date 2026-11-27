@@ -123,14 +123,14 @@ async function fortuneWheelHandler(ctx) {
   const userId = ctx.from?.id?.toString();
   if (!userId) return;
 
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) {
     return ctx.reply('❌ Вы не зарегистрированы. Используйте /start.');
   }
 
   activeSpins.delete(userId);
 
-  const tickets = getTickets(userId);
+  const tickets = (await getTickets(userId));
   const pfBalance = user.balance || 0;
   const cardBalance = user.card_balance || 0;
   const totalBalance = pfBalance + cardBalance;
@@ -187,7 +187,7 @@ async function fortuneWheelHandler(ctx) {
 // === ВРАЩЕНИЕ КОЛЕСА ===
 async function spinFortuneWheel(ctx) {
   const userId = ctx.from?.id?.toString();
-  const numericId = getUserById(userId)?.numeric_id || '—';
+  const numericId = (await getUserById(userId))?.numeric_id || '—';
   const chatId = ctx.chat?.id;
 
   console.log(`[FORTUNE] Начало вращения для userId=${userId}, chatId=${chatId}`);
@@ -207,10 +207,10 @@ async function spinFortuneWheel(ctx) {
     return ctx.answerCbQuery(`⏳ Ждите ещё ${remaining} сек.`, { show_alert: true });
   }
 
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) return ctx.reply('❌ Вы не зарегистрированы.');
 
-  const tickets = getTickets(userId);
+  const tickets = (await getTickets(userId));
   
   // ИЗМЕНЕНО: Проверка билетов перед запуском
   if (tickets < 1) {
@@ -230,7 +230,7 @@ async function spinFortuneWheel(ctx) {
   }
 
   // 2. Списание билета
-  const takeResult = takeTickets(userId, 1);
+  const takeResult = (await takeTickets(userId, 1));
   if (!takeResult.success) {
     return ctx.answerCbQuery(`❌ ${takeResult.message}`, { show_alert: true });
   }
@@ -303,25 +303,25 @@ async function spinFortuneWheel(ctx) {
     if (prize.type === 'pf') {
       await updateUserBalance(userId, prize.amount);
     } else if (prize.type === 'containers') {
-      const res = updateContainerCount(userId, 3, prize.amount);
+      const res = (await updateContainerCount(userId, 3, prize.amount));
       if (!res.success) throw new Error(res.message);
     } else if (prize.type === 'status') {
       const res = await updateUserStatus(userId, prize.id);
       if (!res.success) throw new Error(res.message);
     } else if (prize.type === 'prefix') {
-      const prefix = getAllPrefixes().find(p => p.prefix === prize.name);
+      const prefix = (await getAllPrefixes()).find(p => p.prefix === prize.name);
       if (!prefix) throw new Error(`Префикс "${prize.name}" не найден`);
-      const added = addPrefixToUser(userId, prefix.id);
+      const added = (await addPrefixToUser(userId, prefix.id));
       if (!added) throw new Error('Не удалось добавить префикс');
     } else if (prize.type === 'secret') {
-      const skinId = getSkinIdByName('Тыквенный спас');
+      const skinId = (await getSkinIdByName('Тыквенный спас'));
       if (!skinId) throw new Error('Скин "Тыквенный спас" не найден в базе.');
-      const skinResult = addSkinToUser(userId, skinId);
+      const skinResult = (await addSkinToUser(userId, skinId));
       if (!skinResult.success) throw new Error(skinResult.message);
     }
 
-    const updatedUser = getUserById(userId);
-    const updatedTickets = getTickets(userId);
+    const updatedUser = (await getUserById(userId));
+    const updatedTickets = (await getTickets(userId));
     const pfBalance = updatedUser?.balance || 0;
     const goldContainers = updatedUser?.container_type_3 || 0;
     
@@ -390,7 +390,7 @@ async function spinFortuneWheel(ctx) {
     success = false;
     
     // Даже при ошибке показываем актуальное состояние билетов
-    const currentTickets = getTickets(userId);
+    const currentTickets = (await getTickets(userId));
     try {
         await ctx.reply(
             currentTickets > 0 

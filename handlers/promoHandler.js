@@ -356,20 +356,20 @@ function getPromoPostReadyKeyboard(session) {
 // НОВОЕ: СБОРКА ИТОГОВОГО ТЕКСТА ПОСТА
 // Лейбл ссылки добавляется ТОЛЬКО если ссылка включена.
 // =====================================================
-function getPromoLink(promoName) {
+async function getPromoLink(promoName) {
   const botUsername = process.env.BOT_USERNAME || 'F_roobot';
   let alias = null;
   try {
     const { generatePromoAlias, savePromoAlias } = require('../db');
-    alias = generatePromoAlias(promoName);
-    if (alias) savePromoAlias(alias, promoName);
+    alias = (await generatePromoAlias(promoName));
+    if (alias) (await savePromoAlias(alias, promoName));
   } catch (e) {}
   const linkPayload = alias ? `promo_${alias}` : `promo_${promoName}`;
   return `https://t.me/${botUsername}?start=${linkPayload}`;
 }
 
-function buildPostCaption(session) {
-  const link = getPromoLink(session.promoName);
+async function buildPostCaption(session) {
+  const link = (await getPromoLink(session.promoName));
   const linkBlock = `🔗 Ссылка:\n<code>${link}</code>`;
 
   let text = session.text || '';
@@ -395,7 +395,7 @@ function buildPostCaption(session) {
 // НОВОЕ: ОТПРАВКА ГОТОВОГО ПОСТА (ФОТО ПРОМО + ТЕКСТ)
 // =====================================================
 async function sendPostToChat(ctx, chatId, session) {
-  const caption = buildPostCaption(session);
+  const caption = (await buildPostCaption(session));
   const hasPhoto = session.photoPath && fs.existsSync(session.photoPath);
 
   if (hasPhoto && caption.length <= 1024) {
@@ -490,7 +490,7 @@ async function showPostEditStep(ctx, session) {
   session.step = 'edit';
   const caption = fitCaption(
     `✏️ <b>Редактирование текста поста</b>\n\n` +
-    `Текущий текст:\n${buildPostCaption(session) || '<i>пусто</i>'}\n\n` +
+    `Текущий текст:\n${(await buildPostCaption(session)) || '<i>пусто</i>'}\n\n` +
     `Отправьте новый текст сообщением.`
   );
   await editMenuMessage(ctx, session, caption, { reply_markup: getPromoPostEditKeyboard().reply_markup });
@@ -503,7 +503,7 @@ async function showPostReadyMenu(ctx, session) {
     `📢 Канал: <b>${session.channel ? session.channel.name : '—'}</b>\n` +
     `🏷 Промокод: <code>${escapeHtml(session.promoName)}</code>\n` +
     `🔗 Ссылка в посте: <b>${linkState}</b>\n\n` +
-    `<b>Текст поста (как будет опубликован):</b>\n${buildPostCaption(session) || '<i>пусто</i>'}`
+    `<b>Текст поста (как будет опубликован):</b>\n${(await buildPostCaption(session)) || '<i>пусто</i>'}`
   );
   await editMenuMessage(ctx, session, caption, { reply_markup: getPromoPostReadyKeyboard(session).reply_markup });
 }
@@ -696,7 +696,7 @@ async function showPromoSummary(ctx, promoName, photoPath = null) {
       return;
     }
 
-    const promoLink = getPromoLink(promoName);
+    const promoLink = (await getPromoLink(promoName));
 
     let limitStr = promo.activations_left === -1
       ? `⏳ Время: ${promo.expires_at ? 'до ' + formatMoscowTime(promo.expires_at) : '∞'}`
@@ -1351,7 +1351,7 @@ async function finalizePromoCreation(ctx, session) {
       console.error('[PROMO IMG ERROR]', imgErr);
     }
 
-    const promoLink = getPromoLink(d.name);
+    const promoLink = (await getPromoLink(d.name));
 
     let limitStr = d.isTimeBased
       ? `⏳ Время: ${formatDuration(d.durationMinutes)} (до ${formatMoscowTimeShort(expiresAt)})`
@@ -1435,25 +1435,25 @@ async function usePromoHandler(ctx) {
       console.log(`[PROMO DEBUG] Попытка активации промокода: "${promoName}" пользователем ${userId}`);
       const promo = await getPromoByName(promoName);
       if (!promo) {
-          logPromoActivation({ userId, promoName, success: false, reason: 'Промокод не найден' });
+          (await logPromoActivation({ userId, promoName, success: false, reason: 'Промокод не найден' }));
           return ctx.reply('❕ Промокод не найден.');
       }
 
       if (promo.expires_at) {
           if (now > promo.expires_at) {
-              logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Срок действия истёк' });
+              (await logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Срок действия истёк' }));
               await deletePromoById(promo.id);
               return ctx.reply('❕ Срок действия этого промокода истек.');
           }
       }
 
       if (promo.activations_left <= 0 && promo.activations_left !== -1) {
-          logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Активации исчерпаны' });
+          (await logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Активации исчерпаны' }));
           return ctx.reply('❕ Активации исчерпаны.');
       }
 
       if (await hasUserActivatedPromo(promo.id, userId)) {
-          logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Уже активирован ранее' });
+          (await logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Уже активирован ранее' }));
           return ctx.reply('❕ Вы уже активировали этот код.');
       }
 
@@ -1462,7 +1462,7 @@ async function usePromoHandler(ctx) {
           const { getReferrerId } = require('../db');
           const userReferrerId = await getReferrerId(userId);
           if (userReferrerId !== promo.creator_id) {
-              logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Не является рефералом партнера' });
+              (await logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: 'Не является рефералом партнера' }));
               return ctx.reply('❕ Этот промокод доступен только для рефералов конкретного партнёра.');
           }
       }
@@ -1471,7 +1471,7 @@ async function usePromoHandler(ctx) {
           const statuses = await getUserStatuses(userId);
           const reqStatus = getStatusNameById(promo.min_status_id);
           if (!statuses.includes(reqStatus)) {
-              logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: `Недостаточный статус (требуется ${reqStatus})` });
+              (await logPromoActivation({ userId, promoName: promo.name, prizeType: promo.prize_type, prizeAmount: promo.prize_amount, success: false, reason: `Недостаточный статус (требуется ${reqStatus})` }));
               return ctx.reply(`❕ Недостаточный статус. Требуется: ${reqStatus}.`);
           }
       }
@@ -1494,7 +1494,7 @@ async function usePromoHandler(ctx) {
       if (Math.random() < 0.15) {
           const count = Math.floor(Math.random() * 4) + 2;
           const { giveCandy } = require('../db');
-          giveCandy(userId, count);
+          (await giveCandy(userId, count));
           candyMsg = `\n🍬 +${count} конфет бонусом!`;
       }
 

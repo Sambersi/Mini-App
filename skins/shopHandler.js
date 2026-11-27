@@ -23,7 +23,7 @@ const rarityEmojis = {
 };
 
 // Форматирование сообщения для главного меню магазина скинов
-function formatShopMessage(skins, currentPage, totalPages) {
+async function formatShopMessage(skins, currentPage, totalPages) {
   const startIdx = currentPage * 5;
   const endIdx = Math.min((currentPage + 1) * 5, skins.length);
   let message = '🛒 <b>Магазин скинов</b>\n\n';
@@ -32,7 +32,7 @@ function formatShopMessage(skins, currentPage, totalPages) {
   for (let i = startIdx; i < endIdx; i++) {
     const skin = skins[i];
     const rarityEmoji = rarityEmojis[skin.rarity] || '❓'; // Смайлик для редкости
-    const stockInfo = getSkinStock(skin.id);
+    const stockInfo = (await getSkinStock(skin.id));
     message += `${rarityEmoji} ${skin.name} - ${formatNumberWithDots(skin.price)} ${skin.currency_type} [${stockInfo.stock}/${stockInfo.max_stock} шт.]\n• Редкость: ${skin.rarity} \n\n`;
   }  
   message += `▫️Страница ${currentPage + 1}/${totalPages}\n`;
@@ -41,13 +41,13 @@ function formatShopMessage(skins, currentPage, totalPages) {
 }
 
 // Форматирование сообщения для покупки скина
-function formatBuySkinMessage(skin, currentIndex, totalSkins, isOwned) {
+async function formatBuySkinMessage(skin, currentIndex, totalSkins, isOwned) {
   let message = '🛒 <b>Покупка скина</b>\n\n';
   message += `▫️<b>Название:</b> ${skin.name}\n`;
   const rarityEmoji = rarityEmojis[skin.rarity] || '❓'; // Смайлик для редкости
   message += `${rarityEmoji} Редкость: <b>${skin.rarity}</b>\n`;
   message += `💰<b>Цена:</b> ${formatNumberWithDots(skin.price)} ${skin.currency_type}\n`; // Форматируем цену
-  const stockInfo = getSkinStock(skin.id);
+  const stockInfo = (await getSkinStock(skin.id));
   message += `💳 <b>Осталось:</b> ${stockInfo.stock}/${stockInfo.max_stock} шт.\n`;
   message += `${isOwned ? '✅ <b>Наличие у игрока:</b> Да\n' : '❌ <b>Наличие у игрока:</b> Нет\n\n'}`;
   message += `🎨 Скин ${currentIndex + 1} из ${totalSkins}`;
@@ -106,10 +106,10 @@ async function skinShopHandler(ctx) {
     const userId = ctx.from.id.toString();
     
     // Инициализация состояния магазина скинов
-    let session = getSkinShopSession(userId);
+    let session = (await getSkinShopSession(userId));
     if (!session?.skinShop) {
       session.skinShop = { initiator: userId, currentPage: 0, currentSkinIndex: 0 };
-      saveSkinShopSession(userId, session);
+      (await saveSkinShopSession(userId, session));
     }
 
     const skins = await getAllSkins(true);
@@ -119,7 +119,7 @@ async function skinShopHandler(ctx) {
 
     const totalPages = Math.ceil(skins.length / 5);
     const currentPage = session.skinShop.currentPage;
-    const message = formatShopMessage(skins, currentPage, totalPages);
+    const message = (await formatShopMessage(skins, currentPage, totalPages));
     const keyboard = createShopKeyboard(currentPage, totalPages);
 
     await ctx.replyWithHTML(message, keyboard);
@@ -135,13 +135,13 @@ async function handlePageChange(ctx) {
     const page = parseInt(ctx.match[1], 10);
     const userId = ctx.from.id.toString();
 
-    let session = getSkinShopSession(userId);
+    let session = (await getSkinShopSession(userId));
     if (!session?.skinShop || session.skinShop.initiator !== userId) {
       return ctx.answerCbQuery('Это меню создано другим пользователем или устарело.', { show_alert: true });
     }
 
     session.skinShop.currentPage = page;
-    saveSkinShopSession(userId, session);
+    (await saveSkinShopSession(userId, session));
 
     const skins = await getAllSkins(true);
     if (!skins || skins.length === 0) {
@@ -149,7 +149,7 @@ async function handlePageChange(ctx) {
     }
 
     const totalPages = Math.ceil(skins.length / 5);
-    const message = formatShopMessage(skins, page, totalPages);
+    const message = (await formatShopMessage(skins, page, totalPages));
     const keyboard = createShopKeyboard(page, totalPages);
 
     await ctx.editMessageText(message, { parse_mode: 'HTML', ...keyboard });
@@ -164,7 +164,7 @@ async function handleSelectSkinToBuy(ctx) {
   try {
     const userId = ctx.from.id.toString();
 
-    let session = getSkinShopSession(userId);
+    let session = (await getSkinShopSession(userId));
     if (!session?.skinShop || session.skinShop.initiator !== userId) {
       return ctx.answerCbQuery('Это меню создано другим пользователем или устарело.', { show_alert: true });
     }
@@ -175,13 +175,13 @@ async function handleSelectSkinToBuy(ctx) {
     }
 
     session.skinShop.currentSkinIndex = 0;
-    saveSkinShopSession(userId, session);
+    (await saveSkinShopSession(userId, session));
 
     const skin = skins[session.skinShop.currentSkinIndex];
     const availableSkins = await getUserAvailableSkins(userId);
     const isOwned = availableSkins.includes(skin.id);
 
-    const message = formatBuySkinMessage(skin, session.skinShop.currentSkinIndex, skins.length, isOwned);
+    const message = (await formatBuySkinMessage(skin, session.skinShop.currentSkinIndex, skins.length, isOwned));
     const keyboard = createBuySkinKeyboard(session.skinShop.currentSkinIndex, skins.length, isOwned);
 
     const imagePath = path.join(__dirname, '../images', skin.file_name);
@@ -206,7 +206,7 @@ async function handleSkinNavigation(ctx) {
     const currentSkinIndexStr = ctx.match[2]; // Индекс скина из кнопки
     const userId = ctx.from.id.toString();
 
-    let session = getSkinShopSession(userId);
+    let session = (await getSkinShopSession(userId));
     if (!session?.skinShop || session.skinShop.initiator !== userId) {
       return ctx.answerCbQuery('Это меню создано другим пользователем или устарело.', { show_alert: true });
     }
@@ -235,13 +235,13 @@ async function handleSkinNavigation(ctx) {
     }
 
     session.skinShop.currentSkinIndex = newIndex;
-    saveSkinShopSession(userId, session);
+    (await saveSkinShopSession(userId, session));
 
     const skin = skins[newIndex];
     const availableSkins = await getUserAvailableSkins(userId);
     const isOwned = availableSkins.includes(skin.id);
 
-    const message = formatBuySkinMessage(skin, newIndex, skins.length, isOwned);
+    const message = (await formatBuySkinMessage(skin, newIndex, skins.length, isOwned));
     const keyboard = createBuySkinKeyboard(newIndex, skins.length, isOwned);
 
     const imagePath = path.join(__dirname, '../images', skin.file_name);
@@ -278,7 +278,7 @@ async function handleBuySkin(ctx) {
   try {
       const currentSkinIndexStr = ctx.match[1];
       const userId = ctx.from.id.toString();
-      let session = getSkinShopSession(userId);
+      let session = (await getSkinShopSession(userId));
 
       // Проверяем, что сессия принадлежит текущему пользователю
       if (!session?.skinShop || session.skinShop.initiator !== userId) {
@@ -309,7 +309,7 @@ async function handleBuySkin(ctx) {
       }
 
       // Проверка баланса пользователя
-      const userBalance = getUserBalance(userId, skin.currency_type);
+      const userBalance = (await getUserBalance(userId, skin.currency_type));
       if (userBalance < skin.price) {
           const message = `✖️ Недостаточно средств для покупки скина.\n\n💰 Требуется для покупки - ${formatNumberWithDots(skin.price)} ${skin.currency_type}.`;
           ctx.answerCbQuery(message);
@@ -317,14 +317,14 @@ async function handleBuySkin(ctx) {
       }
 
       // Проверка наличия скина в наличии
-      const stockInfo = getSkinStock(skin.id);
+      const stockInfo = (await getSkinStock(skin.id));
       if (stockInfo.stock <= 0) {
           ctx.answerCbQuery('❕ Скины этого типа закончились.');
           return ctx.reply('❕ Скины этого типа закончились.');
       }
 
       // Списание средств
-      const success = deductCurrencyFromUser(userId, skin.currency_type, skin.price);
+      const success = (await deductCurrencyFromUser(userId, skin.currency_type, skin.price));
       if (!success) {
           ctx.answerCbQuery('Не удалось списать средства.');
           return ctx.reply('Не удалось списать средства.');
@@ -334,10 +334,10 @@ async function handleBuySkin(ctx) {
       const addResult = await addSkinToUser(userId, skin.id);
       if (addResult.success) {
           // Обновляем количество доступных скинов
-          updateSkinStock(skin.id, stockInfo.stock - 1);
+          (await updateSkinStock(skin.id, stockInfo.stock - 1));
 
           // Формируем обновленное сообщение и клавиатуру
-          const updatedMessage = formatBuySkinMessage(skin, currentIndex, skins.length, true); // isOwned = true
+          const updatedMessage = (await formatBuySkinMessage(skin, currentIndex, skins.length, true)); // isOwned = true
           const updatedKeyboard = createBuySkinKeyboard(currentIndex, skins.length, true); // isOwned = true
 
           // Редактируем медиа-сообщение
@@ -374,7 +374,7 @@ async function handleBuySkin(ctx) {
 async function handleCloseShop(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    destroySkinShopSession(userId);
+    (await destroySkinShopSession(userId));
     ctx.answerCbQuery('Вы скрыли магазин скинов.');
     await ctx.deleteMessage(); // Удаляем сообщение магазина
     return ctx.reply('Вы скрыли магазин скинов.');
@@ -390,14 +390,14 @@ async function handleToShop(ctx) {
   try {
     const userId = ctx.from.id.toString();
 
-    let session = getSkinShopSession(userId);
+    let session = (await getSkinShopSession(userId));
     if (!session?.skinShop || session.skinShop.initiator !== userId) {
       ctx.answerCbQuery('Это меню создано другим пользователем или устарело.', { show_alert: true });
       return ctx.reply('Это меню создано другим пользователем или устарело.');
     }
 
     session.skinShop.currentSkinIndex = 0;
-    saveSkinShopSession(userId, session);
+    (await saveSkinShopSession(userId, session));
 
     const skins = await getAllSkins(true);
     if (!skins || skins.length === 0) {
@@ -407,7 +407,7 @@ async function handleToShop(ctx) {
 
     const totalPages = Math.ceil(skins.length / 5);
     const currentPage = session.skinShop.currentPage;
-    const message = formatShopMessage(skins, currentPage, totalPages);
+    const message = (await formatShopMessage(skins, currentPage, totalPages));
     const keyboard = createShopKeyboard(currentPage, totalPages);
 
     // Если сообщение содержит изображение, отправляем новое текстовое сообщение

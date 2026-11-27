@@ -116,7 +116,7 @@ async function handleReward(userId, reward, user) {
 
     case 'skin':
       const skinRarity = reward.rarity[Math.floor(Math.random() * reward.rarity.length)];
-      const randomSkin = getRandomSkinByRarity(skinRarity); // Получаем случайный скин
+      const randomSkin = (await getRandomSkinByRarity(skinRarity)); // Получаем случайный скин
     
       if (randomSkin) {
         const addResult = await addSkinToUser(userId, randomSkin.id); // Пробуем добавить
@@ -161,9 +161,9 @@ async function handleReward(userId, reward, user) {
 }
 
 // Функция для получения случайного префикса
-function getRandomPrefix() {
+async function getRandomPrefix() {
   try {
-    const prefixes = getAllPrefixes(); // Получаем все доступные префиксы
+    const prefixes = (await getAllPrefixes()); // Получаем все доступные префиксы
     if (!prefixes || prefixes.length === 0) {
       console.error('[PREFIX] Нет доступных префиксов.');
       return null;
@@ -177,9 +177,9 @@ function getRandomPrefix() {
 }
 
 // Функция для получения случайного скина по редкости
-function getRandomSkinByRarity(rarity) {
+async function getRandomSkinByRarity(rarity) {
   try {
-    const skins = getAllSkins();
+    const skins = (await getAllSkins());
     
     // Фильтруем только те скины, которые в списке allowedSkinNamesForDrop и подходят по редкости
     const filteredSkins = skins.filter(skin => 
@@ -220,7 +220,7 @@ async function openContainerHandler(ctx, containerNumber, quantity = 1) {
     }
 
     // Начинаем транзакцию
-    beginTransaction();
+    (await beginTransaction());
 
     try {
       let totalPF = 0;
@@ -362,11 +362,11 @@ ${rewardMessages.join('')}──────────────────
       await ctx.replyWithHTML(finalMessage, keyboard);
 
       // Фиксируем транзакцию
-      commitTransaction();
+      (await commitTransaction());
 
     } catch (error) {
       // Откатываем транзакцию в случае ошибки
-      rollbackTransaction();
+      (await rollbackTransaction());
       console.error('[openContainerHandler] Ошибка транзакции:', error);
       throw error;
     }

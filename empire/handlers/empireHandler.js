@@ -9,7 +9,7 @@ async function empireHandler(ctx) {
   const userId = ctx.from.id;
   const user = await getUserById(userId.toString()); // Из основной базы
   const empireUser = user; // Теперь все данные в одном объекте
-  const businesses = getUserBusinesses(userId); // Из вспомогательной таблицы
+  const businesses = (await getUserBusinesses(userId)); // Из вспомогательной таблицы
 
   let totalAccumulatedImp = 0;
   let totalLevel = 0;
@@ -54,7 +54,7 @@ ${config.emoji} <b>${config.name} (ТипID: ${typeId}, Ур. ${business.level})
 
 👤 <b>Владелец:</b> ${user.username}
 📊 <b>Суммарный уровень бизнесов:</b> ${totalLevel}
-💰 <b>Баланс IMP:</b> ${getEmpireBalance(userId).toFixed(2)}
+💰 <b>Баланс IMP:</b> ${(await getEmpireBalance(userId)).toFixed(2)}
 📦 <b>Всего накоплено IMP:</b> ${totalAccumulatedImp.toFixed(2)}
 
 ${businessDetailsText || 'У вас пока нет бизнесов. Начните строительство!'}
@@ -74,7 +74,7 @@ ${businessDetailsText || 'У вас пока нет бизнесов. Начни
 async function empireStatisticsHandler(ctx) {
   const userId = ctx.from.id;
   const user = await getUserById(userId.toString());
-  const businesses = getUserBusinesses(userId);
+  const businesses = (await getUserBusinesses(userId));
 
   let totalLevel = 0;
   let totalImpGenerated = 0; // empire_total_imp_generated

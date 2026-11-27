@@ -37,13 +37,13 @@ async function upgradeAttackPower(ctx) {
     const userId = ctx.from.id.toString();
 
     // Получаем данные пользователя из базы данных
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
     if (!user) {
       return await ctx.reply('❌ Пользователь не найден.');
     }
 
     // Формируем обращение к пользователю
-    const userLink = createUserLink(userId, user.username, isHyperlinkDisabled(userId));
+    const userLink = createUserLink(userId, user.username, (await isHyperlinkDisabled(userId)));
 
     // Текущий уровень силы урона
     const currentAttackPower = user.attack_power || 1; // Базовое значение = 1
@@ -60,12 +60,12 @@ async function upgradeAttackPower(ctx) {
     }
 
     // Получаем максимальную энергию для пользователя
-    const maxEnergy = getMaxEnergyByStatus(userId); // Динамическое значение максимальной энергии
+    const maxEnergy = (await getMaxEnergyByStatus(userId)); // Динамическое значение максимальной энергии
 
     // Проверяем текущую энергию пользователя
-    const currentEnergy = getCurrentEnergy(userId);
+    const currentEnergy = (await getCurrentEnergy(userId));
     if (currentEnergy <= 0) {
-      const energyInfo = getTimeUntilNextEnergyRestore(userId);
+      const energyInfo = (await getTimeUntilNextEnergyRestore(userId));
       if (!energyInfo) {
         return await ctx.reply(`❌ ${userLink}, не удалось получить информацию о вашей энергии.`);
       }
@@ -99,21 +99,21 @@ async function upgradeAttackPower(ctx) {
 
     // Уменьшаем баланс пользователя
     try {
-      updateUserBalance(userId, -nextUpgradeCost); // Вызываем функцию обновления баланса
+      (await updateUserBalance(userId, -nextUpgradeCost)); // Вызываем функцию обновления баланса
     } catch (error) {
       console.error('[upgradeAttackPower] Ошибка при обновлении баланса:', error.message);
       return await ctx.reply(`❌ ${userLink}, произошла ошибка: ${error.message}`);
     }
 
     // Снимаем одну единицу энергии
-    reduceUserEnergy(userId);
+    (await reduceUserEnergy(userId));
 
     // Повышаем силу урона
     const newAttackPower = currentAttackPower + 1;
-    updateAttackPower(userId, newAttackPower);
+    (await updateAttackPower(userId, newAttackPower));
 
     // Получаем обновленные данные пользователя
-    const updatedUser = getUserById(userId);
+    const updatedUser = (await getUserById(userId));
     const updatedBalance = updatedUser.balance || 0;
 
     // Создаем клавиатуру с кнопкой для повторной прокачки
@@ -155,7 +155,7 @@ async function showSkillUpgradeMenu(ctx) {
     console.log('[DEBUG] User ID:', userId);
 
     // Получаем данные пользователя
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
     console.log('[DEBUG] User data:', user);
 
     if (!user) {
@@ -164,10 +164,10 @@ async function showSkillUpgradeMenu(ctx) {
     }
 
     // Формируем обращение к пользователю
-    const userLink = createUserLink(userId, user.username, isHyperlinkDisabled(userId));
+    const userLink = createUserLink(userId, user.username, (await isHyperlinkDisabled(userId)));
 
     // Получаем активное оружие
-    const activeWeapon = getActiveWeapon(userId);
+    const activeWeapon = (await getActiveWeapon(userId));
     console.log('[DEBUG] Active weapon:', activeWeapon);
 
     // Вычисляем итоговую силу урона
@@ -185,7 +185,7 @@ async function showSkillUpgradeMenu(ctx) {
     // Получаем текущую прочность активного оружия
     let durabilityInfo = '';
     if (activeWeapon && activeWeapon.name !== 'Кулак') {
-      const currentDurability = getCurrentWeaponDurability(userId, activeWeapon.id);
+      const currentDurability = (await getCurrentWeaponDurability(userId, activeWeapon.id));
       const maxDurability = activeWeapon.durability;
     
       if (currentDurability === 0) {
@@ -237,13 +237,13 @@ async function changeWeapon(ctx) {
     const userId = ctx.from.id.toString();
 
     // Получаем данные пользователя
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
     if (!user) {
       return await ctx.reply('❌ Пользователь не найден.');
     }
 
     // Формируем обращение к пользователю
-    const userLink = createUserLink(userId, user.username, isHyperlinkDisabled(userId));
+    const userLink = createUserLink(userId, user.username, (await isHyperlinkDisabled(userId)));
 
     // Преобразуем active_weapon в число
     const activeWeaponId = parseInt(user.active_weapon, 10);
@@ -257,13 +257,13 @@ async function changeWeapon(ctx) {
     }
 
     // Получаем все виды оружия из базы данных
-    const weapons = getAllWeapons();
+    const weapons = (await getAllWeapons());
 
     // Фильтруем оружия, которые есть у игрока
     const ownedWeapons = weapons.filter((weapon) => ownedWeaponsIds.includes(weapon.id));
 
     // Добавляем "Кулак" в список доступных оружий
-    const defaultWeapon = getWeaponByName('Кулак'); // Получаем кулак из базы данных
+    const defaultWeapon = (await getWeaponByName('Кулак')); // Получаем кулак из базы данных
     if (!defaultWeapon) {
       return await ctx.reply('❌ Ошибка: Кулак не найден.');
     }
@@ -310,17 +310,17 @@ async function weaponShop(ctx) {
     const userId = ctx.from.id.toString();
 
     // Получаем данные пользователя
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
     if (!user) {
       return await ctx.reply('❌ Пользователь не найден.');
     }
 
     // Формируем обращение к пользователю
-    const userLink = createUserLink(userId, user.username, isHyperlinkDisabled(userId));
+    const userLink = createUserLink(userId, user.username, (await isHyperlinkDisabled(userId)));
 
     const currentBalance = user.balance || 0;
     const ownedWeaponsIds = user.owned_weapons || [];
-    const weapons = getAllWeapons(); // Получаем все виды оружия из базы данных
+    const weapons = (await getAllWeapons()); // Получаем все виды оружия из базы данных
 
     // Исключаем кулак из списка оружий
     const availableWeapons = weapons.filter(
@@ -367,16 +367,16 @@ async function buyWeapon(ctx) {
     const weaponId = parseInt(ctx.match[1], 10); // Извлекаем ID оружия из callback_data
 
     // Получаем данные пользователя
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
     if (!user) {
       return await ctx.reply('❌ Пользователь не найден.');
     }
 
     // Формируем обращение к пользователю
-    const userLink = createUserLink(userId, user.username, isHyperlinkDisabled(userId));
+    const userLink = createUserLink(userId, user.username, (await isHyperlinkDisabled(userId)));
     const currentBalance = user.balance || 0;
     const ownedWeaponsIds = user.owned_weapons || [];
-    const weapons = getAllWeapons(); // Получаем все виды оружия из базы данных
+    const weapons = (await getAllWeapons()); // Получаем все виды оружия из базы данных
 
     // Находим оружие по ID
     const weapon = weapons.find((w) => w.id === weaponId);
@@ -397,7 +397,7 @@ async function buyWeapon(ctx) {
     }
 
     // Уменьшаем баланс пользователя
-    updateUserBalance(userId, -weapon.price);
+    (await updateUserBalance(userId, -weapon.price));
 
     // Добавляем оружие в список купленных
     const updatedOwnedWeapons = [...ownedWeaponsIds, weapon.id];

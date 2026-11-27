@@ -318,7 +318,7 @@ async function forbesHandler(ctx, db) {
     if (ctx.chat.type !== 'private') {
       const callingUser = await getUserById(callingUserId);
       const username = callingUser?.username || 'Неизвестный';
-      const disableHyperlink = isHyperlinkDisabled(callingUserId);
+      const disableHyperlink = (await isHyperlinkDisabled(callingUserId));
       const userLink = createUserLink(callingUserId, username, disableHyperlink);
       message += `🏆 ${userLink}, топ игроков по суммарному балансу PF:\n\n`;
     } else {
@@ -357,7 +357,7 @@ async function forbesHandler(ctx, db) {
       const username = player.username || `User${userId}`;
       const totalBalance = player.balance + player.card_balance;
       const formattedBalance = formatBalance(totalBalance);
-      const disableHyperlink = isHyperlinkDisabled(userId);
+      const disableHyperlink = (await isHyperlinkDisabled(userId));
       const userLink = createUserLink(userId, username, disableHyperlink);
 
       message += `${position} ${userLink} — ${formattedBalance}\n`;
@@ -382,7 +382,7 @@ async function forbesHandler(ctx, db) {
         const positionEmoji = numberToEmoji(userPosition);
         const callingUser = await getUserById(callingUserId);
         const username = callingUser?.username || 'Неизвестный';
-        const disableHyperlink = isHyperlinkDisabled(callingUserId);
+        const disableHyperlink = (await isHyperlinkDisabled(callingUserId));
         const userLink = createUserLink(callingUserId, username, disableHyperlink);
         message += `${positionEmoji} ${userLink} — ${userBalance}`;
       }
@@ -442,14 +442,14 @@ async function toggleHyperlinkHandler(ctx, db) {
     const userId = ctx.from.id.toString();
 
     // Получаем текущее состояние гиперссылки
-    const currentStatus = isHyperlinkDisabled(userId);
+    const currentStatus = (await isHyperlinkDisabled(userId));
 
     // Переключаем состояние гиперссылки
-    const success = toggleHyperlink(userId);
+    const success = (await toggleHyperlink(userId));
 
     if (success) {
       // Получаем новое состояние гиперссылки
-      const newStatus = isHyperlinkDisabled(userId);
+      const newStatus = (await isHyperlinkDisabled(userId));
 
       // Формируем сообщение в зависимости от нового состояния
       if (newStatus) {

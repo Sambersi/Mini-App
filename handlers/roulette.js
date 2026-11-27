@@ -221,7 +221,7 @@ async function proceedWithGame(originalCtx, userId) {
             }
             
             // Получаем баланс пользователя
-            const userBalance = getUserBalance(userId, 'PF');
+            const userBalance = (await getUserBalance(userId, 'PF'));
             
             // Парсим ставку
             let betAmount;
@@ -243,7 +243,7 @@ async function proceedWithGame(originalCtx, userId) {
 
             // Списываем ставку с баланса
             try {
-                updateUserBalance(userId, -betAmount); // Списываем ставку
+                (await updateUserBalance(userId, -betAmount)); // Списываем ставку
             } catch (error) {
                 throw new Error('❌ Произошла ошибка при списании средств.');
             }
@@ -264,7 +264,7 @@ async function proceedWithGame(originalCtx, userId) {
             const slotEmojis = slotResults.map(symbol => symbolToEmoji[symbol]);
 
             // Форматируем текстовое представление результата
-            const userLink = createUserLink(userId); // Создаем ссылку на пользователя
+            const userLink = (await createUserLink(userId)); // Создаем ссылку на пользователя
             const formattedResult = `🎰 ${userLink}, результаты ставки:\n\n${slotEmojis.join(' | ')}\n`;
 
             // Проверяем выигрышные комбинации
@@ -276,7 +276,7 @@ async function proceedWithGame(originalCtx, userId) {
             // Начисляем выигрыш на баланс
             if (winnings > 0) {
                 try {
-                    updateUserBalance(userId, winnings); // Начисляем выигрыш
+                    (await updateUserBalance(userId, winnings)); // Начисляем выигрыш
                 } catch (error) {
                     console.error('[Казино] Ошибка при начислении выигрыша:', error);
                     // Важно: средства уже списаны, но выигрыш не начислен. Можно добавить логику восстановления.
@@ -323,7 +323,7 @@ async function proceedWithGame(originalCtx, userId) {
             }
             
             // Получаем текущий баланс пользователя
-            const userBalance = getUserBalance(userId, 'PF');
+            const userBalance = (await getUserBalance(userId, 'PF'));
 
             // Проверяем баланс пользователя
             if (userBalance < betAmount) {
@@ -332,7 +332,7 @@ async function proceedWithGame(originalCtx, userId) {
 
             // Списываем ставку с баланса
             try {
-                updateUserBalance(userId, -betAmount);
+                (await updateUserBalance(userId, -betAmount));
             } catch (error) {
                 throw new Error('❌ Произошла ошибка при списании средств.');
             }
@@ -353,7 +353,7 @@ async function proceedWithGame(originalCtx, userId) {
             const slotEmojis = slotResults.map(symbol => symbolToEmoji[symbol]);
 
             // Форматируем текстовое представление результата
-            const userLink = createUserLink(userId); // Создаем ссылку на пользователя
+            const userLink = (await createUserLink(userId)); // Создаем ссылку на пользователя
             const formattedResult = `🎰 ${userLink}, результаты ставки:\n\n${slotEmojis.join(' | ')}\n`;
 
             // Проверяем выигрышные комбинации
@@ -365,7 +365,7 @@ async function proceedWithGame(originalCtx, userId) {
             // Начисляем выигрыш на баланс
             if (winnings > 0) {
                 try {
-                    updateUserBalance(userId, winnings);
+                    (await updateUserBalance(userId, winnings));
                 } catch (error) {
                     console.error('[Казино] Ошибка при начислении выигрыша:', error);
                     // Важно: средства уже списаны, но выигрыш не начислен.
@@ -461,8 +461,8 @@ async function casinoCaptchaWrongHandler(ctx) {
 // --- Функции для игры в казино ---
 
 // Функция для создания гиперссылки на пользователя с использованием HTML
-function createUserLink(userId) {
-    const user = getUserById(userId);
+async function createUserLink(userId) {
+    const user = (await getUserById(userId));
     if (!user) {
         return 'Неизвестный';
     }
@@ -615,7 +615,7 @@ async function rouletteHandler(ctx) {
             return await ctx.reply('❌ Пожалуйста, укажите корректную ставку.\n• Например: казино 1к');
         }
 
-        const userBalance = getUserBalance(userId, 'PF');
+        const userBalance = (await getUserBalance(userId, 'PF'));
 
         let betAmount;
         try {
@@ -636,7 +636,7 @@ async function rouletteHandler(ctx) {
         }
 
         try {
-            updateUserBalance(userId, -betAmount);
+            (await updateUserBalance(userId, -betAmount));
         } catch (error) {
             delete cooldowns[userId];
             return await ctx.reply('❌ Произошла ошибка при списании средств.');
@@ -652,7 +652,7 @@ async function rouletteHandler(ctx) {
 
         const slotEmojis = slotResults.map(symbol => symbolToEmoji[symbol]);
 
-        const userLink = createUserLink(userId);
+        const userLink = (await createUserLink(userId));
         const formattedResult = `🎰 ${userLink}, результаты ставки:\n\n${slotEmojis.join(' | ')}\n`;
 
         const winInfo = checkWin(slotResults);
@@ -661,7 +661,7 @@ async function rouletteHandler(ctx) {
 
         if (winnings > 0) {
             try {
-                updateUserBalance(userId, winnings);
+                (await updateUserBalance(userId, winnings));
             } catch (error) {
                 console.error('[Казино] Ошибка при начислении выигрыша:', error);
                 delete cooldowns[userId];
@@ -756,7 +756,7 @@ async function repeatBetHandler(ctx, betAmountOverride) {
         cooldowns[userId] = true;
 
 
-        const userBalance = getUserBalance(userId, 'PF');
+        const userBalance = (await getUserBalance(userId, 'PF'));
 
         if (userBalance < betAmount) {
             delete cooldowns[userId];
@@ -764,7 +764,7 @@ async function repeatBetHandler(ctx, betAmountOverride) {
         }
 
         try {
-            updateUserBalance(userId, -betAmount);
+            (await updateUserBalance(userId, -betAmount));
         } catch (error) {
             delete cooldowns[userId];
             return await ctx.answerCbQuery('❌ Произошла ошибка при списании средств.');
@@ -780,7 +780,7 @@ async function repeatBetHandler(ctx, betAmountOverride) {
 
         const slotEmojis = slotResults.map(symbol => symbolToEmoji[symbol]);
 
-        const userLink = createUserLink(userId);
+        const userLink = (await createUserLink(userId));
         const formattedResult = `🎰 ${userLink}, результаты ставки:\n\n${slotEmojis.join(' | ')}\n`;
 
         const winInfo = checkWin(slotResults);
@@ -789,7 +789,7 @@ async function repeatBetHandler(ctx, betAmountOverride) {
 
         if (winnings > 0) {
             try {
-                updateUserBalance(userId, winnings);
+                (await updateUserBalance(userId, winnings));
             } catch (error) {
                 console.error('[Казино] Ошибка при начислении выигрыша:', error);
                 delete cooldowns[userId];

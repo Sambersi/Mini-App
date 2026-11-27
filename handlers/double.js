@@ -44,7 +44,7 @@ async function doubleHandler(ctx) {
       const hash = doubleGame.round.hash;
 
       // ИЗМЕНЕНО: используем getDoubleBetsByRound вместо getBetsByRoundId
-      const chatBets = getDoubleBetsByRound(hash).filter(bet => bet.chat_id === chatId.toString());
+      const chatBets = (await getDoubleBetsByRound(hash)).filter(bet => bet.chat_id === chatId.toString());
 
       if (!chatBets.length) {
         const remainingTime = Math.max(0, Math.ceil((doubleGame.round.endTime - Date.now()) / 1000));

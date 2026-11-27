@@ -58,7 +58,7 @@ async function canUserPerformKickAction(adminId) {
       const now = Math.floor(Date.now() / 1000);
 
       // 1. Получаем время последнего действия кика
-      const lastKickActionTime = getLastAdminKickActionTime(adminIdStr); // Предполагается, что эта функция реализована в db.js
+      const lastKickActionTime = (await getLastAdminKickActionTime(adminIdStr)); // Предполагается, что эта функция реализована в db.js
 
       // 2. Если действий кика не было вообще, квота полная
       if (lastKickActionTime === null) {
@@ -74,7 +74,7 @@ async function canUserPerformKickAction(adminId) {
       const windowStart = lastKickActionTime - WINDOW_SIZE;
       const windowEnd = lastKickActionTime;
 
-      const kickActions = getAdminKickActionsInRange(adminIdStr, windowStart, windowEnd); // Предполагается, что эта функция реализована в db.js
+      const kickActions = (await getAdminKickActionsInRange(adminIdStr, windowStart, windowEnd)); // Предполагается, что эта функция реализована в db.js
       const kickCount = kickActions.length;
 
       const remaining = LIMIT - kickCount;
@@ -207,7 +207,7 @@ async function kickUserHandler(ctx) {
     // 1. Проверка базовых прав и контекста (используем обновлённую функцию)
     if (!(await isAdmin_kick(ctx))) {
       // Определяем, почему нет доступа
-      const statuses = await getUserStatuses(senderId).catch(() => []);
+      const statuses = await (await getUserStatuses(senderId)).catch(() => []);
       const isRegularAdmin = statuses.includes('Администратор');
       const isTechOrMainAdmin = statuses.includes('Тех администратор') || isMainAdmin(senderId);
       const isSpecialAdmin = SPECIAL_ADMINS.includes(senderId);
@@ -293,7 +293,7 @@ async function kickUserHandler(ctx) {
     await ctx.telegram.banChatMember(ctx.chat.id, userToKick.id);
 
     // 4.1. Единый аудит-лог кика
-    logModeration({
+    (await logModeration({
       adminId: senderId,
       targetUserId: userToKick.id,
       type: 'kick',
@@ -301,13 +301,13 @@ async function kickUserHandler(ctx) {
       chatTitle: ctx.chat?.title || null, // ← НАЗВАНИЕ ЧАТА
       reason,
       success: 1,
-    });
+    }));
 
     // 5. Запись действия в лог (если это обычный админ или специальный админ)
     const statuses = await getUserStatuses(senderId);
     const isSpecialAdmin = SPECIAL_ADMINS.includes(senderId);
     if (kickPermission.remaining < Infinity && (statuses.includes('Администратор') || isSpecialAdmin)) {
-       const recordResult = recordAdminKickAction(senderId, userToKick.id); // Предполагается, что эта функция реализована в db.js
+       const recordResult = (await recordAdminKickAction(senderId, userToKick.id)); // Предполагается, что эта функция реализована в db.js
        if (!recordResult.success) {
          console.error(`[Кик] Не удалось записать действие кика админа ${senderId} для пользователя ${userToKick.id}:`, recordResult.error);
        }

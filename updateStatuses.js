@@ -36,7 +36,7 @@ async function updateStatuses() {
                     console.log(`[STATUSES] Добавлен новый статус: ${status.name} (приоритет: ${status.priority})`);
                 }
             } else if (existing.priority !== status.priority) {
-                const result = updateStatusPriority(status.name, status.priority);
+                const result = (await updateStatusPriority(status.name, status.priority));
                 if (result.success) {
                     prioritiesUpdated = true;
                     console.log(`[STATUSES] Обновлён приоритет статуса "${status.name}": ${existing.priority} → ${status.priority}`);

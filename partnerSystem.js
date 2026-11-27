@@ -174,7 +174,7 @@ async function isPartner(userId) {
 
 async function hasPartnerAdminRights(userId) {
     try {
-        const ids = getUserStatusIds(userId);
+        const ids = (await getUserStatusIds(userId));
         const hasRights = ids.some(id => ALLOWED_ADMIN_STATUS_IDS.includes(id));
         console.log(`[PARTNER AUTH] User: ${userId} | StatusIDs: ${JSON.stringify(ids)} | AllowedIDs: ${JSON.stringify(ALLOWED_ADMIN_STATUS_IDS)} | Result: ${hasRights}`);
         return hasRights;
@@ -185,8 +185,8 @@ async function hasPartnerAdminRights(userId) {
 }
 
 // ========== ТЕКСТ КАРТОЧКИ ЗАПРОСА ==========
-function composeRequestCardText(d, withStats = true) {
-    const user = getUserById(d.partner_id);
+async function composeRequestCardText(d, withStats = true) {
+    const user = (await getUserById(d.partner_id));
     const userLink = createUserLink(d.partner_id, user?.username || 'Неизвестный');
     const idLabel = d.id ? ` #${d.id}` : '';
     const isCurrency = d.request_type === 'currency';
@@ -211,7 +211,7 @@ function composeRequestCardText(d, withStats = true) {
             `🎨 Шаблон: ${templateText}\n`;
     }
     if (withStats) {
-        const s = getPartnerRequestsStats(d.partner_id, 24);
+        const s = (await getPartnerRequestsStats(d.partner_id, 24));
         const currentPF = (user?.balance || 0).toLocaleString('ru-RU');
         const currentDF = (user?.df_balance || 0).toLocaleString('ru-RU');
         
@@ -244,7 +244,7 @@ async function showPartnerMenu(ctx) {
     if (!(await isPartner(userId))) {
         return ctx.reply('❌ У вас нет статуса "Партнёр". Доступ запрещен.');
     }
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
     const text = `🤝 <b>Панель Партнёра</b>\n\n👤 ${user?.username || 'Неизвестный'}\n🆔 Numeric ID: <code>${user?.numeric_id || '—'}</code>\n\nВыберите действие:`;
     const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('📝 Запрос на промокод', 'partner_create_req')],
@@ -256,7 +256,7 @@ async function showPartnerMenu(ctx) {
 
 async function showMyRequests(ctx, userId) {
     try {
-        const requests = getPartnerRequestsByPartner(userId);
+        const requests = (await getPartnerRequestsByPartner(userId));
         
         if (!requests || requests.length === 0) {
             return safeEditOrReply(ctx, '📭 <b>Мои запросы</b>\n\nУ вас пока нет отправленных запросов.', {
@@ -610,9 +610,9 @@ async function handlePartnerCallback(ctx) {
 // ========== ОТПРАВКА АДМИНАМ (ПРОМО) ==========
 async function submitRequestToAdmins(ctx, data) {
     try {
-        const requestId = createPartnerRequest(data.partner_id, data.name, data.prize_type, data.prize_amount, data.audience_type, data.template);
+        const requestId = (await createPartnerRequest(data.partner_id, data.name, data.prize_type, data.prize_amount, data.audience_type, data.template));
         const cardData = { ...data, id: requestId };
-        const msgText = composeRequestCardText(cardData, true);
+        const msgText = (await composeRequestCardText(cardData, true));
         const kb = getRequestCardKeyboard({ id: requestId });
         const photoPath = await generatePartnerPromoImage(data);
 
@@ -627,7 +627,7 @@ async function submitRequestToAdmins(ctx, data) {
             sentMsg = await ctx.telegram.sendMessage(PARTNER_ADMIN_CHAT_ID, msgText, { parse_mode: 'HTML', ...kb });
         }
         
-        updatePartnerRequestAdminMessageId(requestId, sentMsg.message_id);
+        (await updatePartnerRequestAdminMessageId(requestId, sentMsg.message_id));
         await safeEditOrReply(ctx, `✅ Запрос отправлен администраторам! Номер запроса: <b>#${requestId}</b>`, { parse_mode: 'HTML' });
     } catch (e) {
         console.error('[PARTNER] Ошибка отправки:', e);
@@ -638,13 +638,13 @@ async function submitRequestToAdmins(ctx, data) {
 // ========== ОТПРАВКА АДМИНАМ (ВАЛЮТА) ==========
 async function submitCurrencyRequestToAdmins(ctx, data) {
     try {
-        const requestId = createPartnerCurrencyRequest(data.partner_id, data.name, data.prize_type, data.prize_amount);
+        const requestId = (await createPartnerCurrencyRequest(data.partner_id, data.name, data.prize_type, data.prize_amount));
         const cardData = { ...data, id: requestId, request_type: 'currency' };
-        const msgText = composeRequestCardText(cardData, true);
+        const msgText = (await composeRequestCardText(cardData, true));
         const kb = getRequestCardKeyboard({ id: requestId });
 
         const sentMsg = await ctx.telegram.sendMessage(PARTNER_ADMIN_CHAT_ID, msgText, { parse_mode: 'HTML', ...kb });
-        updatePartnerRequestAdminMessageId(requestId, sentMsg.message_id);
+        (await updatePartnerRequestAdminMessageId(requestId, sentMsg.message_id));
         
         await safeEditOrReply(ctx, `✅ Запрос на валюту отправлен! Номер запроса: <b>#${requestId}</b>`, { parse_mode: 'HTML' });
     } catch (e) {
@@ -668,7 +668,7 @@ async function showAdminRequestsMenu(ctx) {
 
 async function showActiveRequests(ctx) {
     try {
-        const requests = getPendingPartnerRequests();
+        const requests = (await getPendingPartnerRequests());
         if (!requests || requests.length === 0) {
             return safeEditOrReply(ctx, '🟡 <b>Активные запросы</b>\n\nНет активных запросов.', { 
                 parse_mode: 'HTML',
@@ -679,7 +679,7 @@ async function showActiveRequests(ctx) {
         for (const r of requests) {
             const isCurrency = r.request_type === 'currency';
             const prizeName = PRIZE_TYPES.find(p => p.id === r.prize_type)?.name || r.prize_type;
-            const user = getUserById(r.partner_id);
+            const user = (await getUserById(r.partner_id));
             text += `#${r.id} | ${isCurrency ? '💰 Валюта' : '🎁 Промо'} | <code>${r.name}</code>\n` +
                     `   👤 ${user?.username || r.partner_id} | 🎁 ${(r.prize_amount || 0).toLocaleString('ru-RU')} ${prizeName}\n` +
                     `   📅 ${new Date((r.created_at || 0) * 1000).toLocaleDateString('ru-RU')}\n` +
@@ -701,7 +701,7 @@ async function showActiveRequests(ctx) {
 
 async function showOldRequests(ctx) {
     try {
-        const requests = getFinishedPartnerRequests(20);
+        const requests = (await getFinishedPartnerRequests(20));
         if (!requests || requests.length === 0) {
             return safeEditOrReply(ctx, '⚪ <b>Старые запросы</b>\n\nЗавершенных запросов пока нет.', { 
                 parse_mode: 'HTML',
@@ -741,11 +741,11 @@ async function openAdminRequestById(ctx, idStr) {
     if (isNaN(id)) {
         return ctx.reply('❌ Укажите ID запроса числом. Пример: <code>запрос 12</code>', { parse_mode: 'HTML' });
     }
-    const request = getPartnerRequestById(id);
+    const request = (await getPartnerRequestById(id));
     if (!request) {
         return ctx.reply(`❌ Запрос #${id} не найден.`);
     }
-    const text = composeRequestCardText(request, true);
+    const text = (await composeRequestCardText(request, true));
     if (request.status !== 'pending') {
         const statusText = request.status === 'approved' ? '✅ Одобрено' : '❌ Отклонено';
         return ctx.reply(text + `\n\n📊 Статус: <b>${statusText}</b>`, { parse_mode: 'HTML' });
@@ -790,13 +790,13 @@ async function handleAdminRequestCallback(ctx) {
         const mId = data.match(/^adminid_(accept|reject|edit)_(\d+)$/);
         if (mId) {
             action = mId[1];
-            request = getPartnerRequestById(parseInt(mId[2], 10));
+            request = (await getPartnerRequestById(parseInt(mId[2], 10)));
         } else {
             // Старый формат кнопок (сообщения, уже висящие в чате)
             const mOld = data.match(/^admin_(req|curr)_(accept|reject|edit)_([^_]+)_(.+)$/);
             if (mOld) {
                 action = mOld[2];
-                request = getPartnerRequestByPartnerAndName(mOld[3], mOld[4], 'pending');
+                request = (await getPartnerRequestByPartnerAndName(mOld[3], mOld[4], 'pending'));
             }
         }
 
@@ -842,7 +842,7 @@ async function startAdminEdit(ctx, userId, request) {
 }
 
 async function showAdminEditMenu(ctx, userId, session) {
-    const base = getPartnerRequestById(session.requestId) || {};
+    const base = (await getPartnerRequestById(session.requestId)) || {};
     const d = { ...base, ...session.data };
     const isCurrency = d.request_type === 'currency';
     let text;
@@ -895,7 +895,7 @@ async function handleAdminEditCallback(ctx, userId, data) {
     }
 
     if (data === 'adminedit_save') {
-        const request = getPartnerRequestById(session.requestId);
+        const request = (await getPartnerRequestById(session.requestId));
         if (!request || request.status !== 'pending') {
             adminEditSessions.delete(userId);
             await safeEditOrReply(ctx, '⚠️ Запрос уже обработан.', { parse_mode: 'HTML' });
@@ -998,7 +998,7 @@ async function handleAdminEditInput(ctx, adminId, text) {
 // ========== ОДОБРЕНИЕ / ОТКЛОНЕНИЕ ==========
 async function updateAdminMessageFinal(ctx, request, suffix) {
     if (!request.admin_message_id) return;
-    const text = composeRequestCardText(request, false) + '\n\n' + suffix;
+    const text = (await composeRequestCardText(request, false)) + '\n\n' + suffix;
     const opts = { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } };
     try {
         await ctx.telegram.editMessageCaption(PARTNER_ADMIN_CHAT_ID, request.admin_message_id, undefined, text, opts);
@@ -1014,13 +1014,13 @@ async function updateAdminMessageFinal(ctx, request, suffix) {
 async function approveRequest(ctx, request, adminId, customData = null) {
     const data = customData || request;
     try {
-        const result = createPartnerPromo(
+        const result = (await createPartnerPromo(
             data.name, -1, data.prize_type, data.prize_amount,
             'partner_system', 0, null, request.partner_id, data.audience_type || 'all', data.template || 'normal'
-        );
+        ));
         if (!result.success) throw new Error(result.message || 'Ошибка создания промо');
 
-        updatePartnerRequestStatus(request.id, 'approved');
+        (await updatePartnerRequestStatus(request.id, 'approved'));
 
         const adminLink = createUserLink(adminId, ctx.from.username || 'Админ');
         await updateAdminMessageFinal(ctx, request, `✅ <b>ОДОБРЕНО</b> администратором ${adminLink}`);
@@ -1043,12 +1043,12 @@ async function approveCurrencyRequest(ctx, request, adminId, customData = null) 
         const { updateUserBalance, updateUserDFBalance } = require('./db');
         const amount = data.prize_amount || 0;
         if (data.prize_type === 'balance') {
-            updateUserBalance(request.partner_id, amount);
+            (await updateUserBalance(request.partner_id, amount));
         } else {
-            updateUserDFBalance(request.partner_id, amount);
+            (await updateUserDFBalance(request.partner_id, amount));
         }
 
-        updatePartnerRequestStatus(request.id, 'approved');
+        (await updatePartnerRequestStatus(request.id, 'approved'));
 
         const currencyName = data.prize_type === 'balance' ? 'PF' : 'DF';
         const adminLink = createUserLink(adminId, ctx.from.username || 'Админ');
@@ -1065,7 +1065,7 @@ async function approveCurrencyRequest(ctx, request, adminId, customData = null) 
 }
 
 async function rejectRequest(ctx, request, adminId) {
-    updatePartnerRequestStatus(request.id, 'rejected');
+    (await updatePartnerRequestStatus(request.id, 'rejected'));
     const adminLink = createUserLink(adminId, ctx.from.username || 'Админ');
     await updateAdminMessageFinal(ctx, request, `❌ <b>ОТКЛОНЕНО</b> администратором ${adminLink}`);
     await safeEditOrReply(ctx, `❌ Запрос #${request.id} отклонен.`, { parse_mode: 'HTML' });

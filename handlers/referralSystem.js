@@ -1,3 +1,5 @@
+
+const { asyncArray: __asyncDbArray } = require("../src/utils/asyncArray");
 //referralSystem.js
 const {
   getUserById,
@@ -73,11 +75,11 @@ async function referralLinkHandler(ctx) {
             return ctx.reply('Произошла ошибка при генерации реферальной ссылки.');
         }
 
-        const currentBank = getReferrerBank(userId);
+        const currentBank = (await getReferrerBank(userId));
         const formattedBank = Math.floor(currentBank).toLocaleString('ru-RU');
 
         // ПРОВЕРКА СТАТУСА ПАРТНЕРА
-        const userStatuses = getUserStatusesSync(userId);
+        const userStatuses = (await getUserStatusesSync(userId));
         const isUserPartner = userStatuses.some(s => s.toLowerCase() === 'партнёр' || s.toLowerCase() === 'partner');
 
         let partnerButton;
@@ -261,8 +263,8 @@ async function handleMyReferrals(ctx) {
 async function handleRefInfo(ctx) {
   try {
       const userId = ctx.from.id.toString();
-      const refsCount = getReferralCount(userId);
-      const currentPercent = getReferrerBankPercent(refsCount);
+      const refsCount = (await getReferralCount(userId));
+      const currentPercent = (await getReferrerBankPercent(refsCount));
 
       ctx.replyWithHTML(
           `ℹ️ <b>Информация о реферальной системе:</b>\n\n` +
@@ -393,7 +395,7 @@ async function setReferralBonusForAllUsers(ctx) {
       const newBonusAmount = CONFIG.REFERRAL_BONUS_REFERRER_PF;
 
       // Получаем всех пользователей
-      const allUsers = getAllUsers();
+      const allUsers = (await getAllUsers());
 
       // Обновляем бонус рефералу для каждого пользователя
       for (const user of allUsers) {
@@ -788,7 +790,7 @@ async function topReferralsHandler(ctx) {
       }
 
       // Проверяем состояние гиперссылки для вызывающего пользователя
-      const disableHyperlinkCallingUser = isHyperlinkDisabled(callingUserId);
+      const disableHyperlinkCallingUser = (await isHyperlinkDisabled(callingUserId));
       const callingUserLink = createUserLink(
           callingUserId,
           callingUser?.username || 'Неизвестный',
@@ -799,7 +801,7 @@ async function topReferralsHandler(ctx) {
       let message = `🏆 ${callingUserLink}, топ рефералов:\n\n`;
 
       // Добавляем список топ-рефералов (только первые 10)
-      allReferrals.slice(0, 10).forEach((referral, index) => {
+      (await __asyncDbArray("forEach", allReferrals.slice(0, 10), async (referral, index) => {
           if (!referral || typeof referral !== 'object') {
               console.warn(`⚠️ Пропущен некорректный элемент в списке рефералов (индекс: ${index}).`);
               return;
@@ -807,17 +809,17 @@ async function topReferralsHandler(ctx) {
 
           const position = index === 9 ? '🔟' : `${index + 1}️⃣`; // 🔟 для 10-го места
           const username = referral.username || `User${referral.userId}`;
-          const disableHyperlink = isHyperlinkDisabled(referral.userId); // Проверяем состояние гиперссылки для текущего игрока
+          const disableHyperlink = (await isHyperlinkDisabled(referral.userId)); // Проверяем состояние гиперссылки для текущего игрока
           const userLink = createUserLink(referral.userId, username, disableHyperlink); // Гиперссылка на пользователя
           const pluralSuffix = getPlural(referral.referralCount || 0); // Склонение слова "реферал"
 
           message += `${position} ${userLink} — ${referral.referralCount || 0} реферал${pluralSuffix}\n`;
-      });
+      }));
 
       // Если пользователь не входит в топ-10, добавляем его место в конце
       if (userPosition > 10) {
           const pluralSuffix = getPlural(userReferrals || 0); // Склонение слова "реферал"
-          const disableHyperlink = isHyperlinkDisabled(callingUserId); // Проверяем состояние гиперссылки для вызывающего пользователя
+          const disableHyperlink = (await isHyperlinkDisabled(callingUserId)); // Проверяем состояние гиперссылки для вызывающего пользователя
           const userLink = createUserLink(
               callingUserId,
               callingUser?.username || 'Неизвестный',
@@ -885,7 +887,7 @@ async function topSeasonalReferralsHandler(ctx) {
       const referrer = seasonalReferrers[i];
       const position = i === 9 ? '🔟' : `${i + 1}️⃣`;
       const username = referrer.username || 'Неизвестный';
-      const disableHyperlink = isHyperlinkDisabled(referrer.telegram_id);
+      const disableHyperlink = (await isHyperlinkDisabled(referrer.telegram_id));
       const userLink = createUserLink(referrer.telegram_id, username, disableHyperlink);
       message += `${position} ${userLink} — ${referrer.referrals_count} реферал${getPlural(referrer.referrals_count)}\n`;
 
@@ -907,7 +909,7 @@ async function topSeasonalReferralsHandler(ctx) {
         if (userPosition > 10) {
           const positionEmoji = numberToEmoji(userPosition);
           const callingUser = await getUserById(callingUserId);
-          const disableHyperlink = isHyperlinkDisabled(callingUserId);
+          const disableHyperlink = (await isHyperlinkDisabled(callingUserId));
           const userLink = createUserLink(
             callingUserId,
             callingUser?.username || 'Неизвестный',
@@ -955,7 +957,7 @@ async function handleWithdrawReferrerBank(ctx) {
     const userId = ctx.from.id.toString();
     
     // Пытаемся снять средства
-    const result = withdrawReferrerBank(userId);
+    const result = (await withdrawReferrerBank(userId));
 
     if (result.success) {
       const formattedAmount = Math.floor(result.amount).toLocaleString('ru-RU');

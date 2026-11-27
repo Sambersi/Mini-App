@@ -11,13 +11,13 @@ async function exchangeCandyToTickets(ctx) {
   const userId = ctx.from?.id?.toString();
   if (!userId) return;
 
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) {
     return ctx.reply('❌ Вы не зарегистрированы. Используйте /start.');
   }
 
   const candy = user.candy || 0;
-  const tickets = getTickets(userId);
+  const tickets = (await getTickets(userId));
 
   const maxTicketsFromCandy = Math.floor(candy / CANDY_PER_TICKET);
 
@@ -62,7 +62,7 @@ async function exchangeOneTicket(ctx) {
   const userId = ctx.from?.id?.toString();
   if (!userId) return;
 
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) {
     return ctx.answerCbQuery('❌ Вы не зарегистрированы.');
   }
@@ -72,14 +72,14 @@ async function exchangeOneTicket(ctx) {
     return ctx.answerCbQuery(`❌ Недостаточно конфет. Нужно минимум ${CANDY_PER_TICKET}.`);
   }
 
-  const takeResult = takeCandy(userId, CANDY_PER_TICKET);
+  const takeResult = (await takeCandy(userId, CANDY_PER_TICKET));
   if (!takeResult.success) {
     return ctx.answerCbQuery(`❌ Не удалось списать конфеты: ${takeResult.message}`);
   }
 
-  const giveResult = giveTickets(userId, 1);
+  const giveResult = (await giveTickets(userId, 1));
   if (!giveResult.success) {
-    takeCandy(userId, -CANDY_PER_TICKET);
+    (await takeCandy(userId, -CANDY_PER_TICKET));
     return ctx.answerCbQuery(`❌ Ошибка при выдаче билетика.`);
   }
 
@@ -92,7 +92,7 @@ async function exchangeAllCandy(ctx) {
   const userId = ctx.from?.id?.toString();
   if (!userId) return;
 
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) {
     return ctx.answerCbQuery('❌ Вы не зарегистрированы.');
   }
@@ -105,14 +105,14 @@ async function exchangeAllCandy(ctx) {
   const ticketsToGive = Math.floor(candy / CANDY_PER_TICKET);
   const candyToTake = ticketsToGive * CANDY_PER_TICKET;
 
-  const takeResult = takeCandy(userId, candyToTake);
+  const takeResult = (await takeCandy(userId, candyToTake));
   if (!takeResult.success) {
     return ctx.answerCbQuery(`❌ Не удалось списать конфеты: ${takeResult.message}`);
   }
 
-  const giveResult = giveTickets(userId, ticketsToGive);
+  const giveResult = (await giveTickets(userId, ticketsToGive));
   if (!giveResult.success) {
-    takeCandy(userId, -candyToTake);
+    (await takeCandy(userId, -candyToTake));
     return ctx.answerCbQuery(`❌ Ошибка при выдаче билетиков.`);
   }
 

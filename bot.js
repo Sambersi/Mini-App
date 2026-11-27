@@ -219,11 +219,12 @@ diceGame.init(bot);
 })();
 
 const { runLogsCleanup } = require('./db');
-runLogsCleanup();                            // один раз при старте
-setInterval(runLogsCleanup, 60 * 60 * 1000); // далее каждый час
+const {startupTasks,runBackground}=require('./src/runtime/startupTasks');
+startupTasks.add('logs-cleanup',async()=>await runLogsCleanup());
+setInterval(()=>runBackground('logs-cleanup',runLogsCleanup),60*60*1000);
 
-cleanupOrphanPromoImages();                            // один раз при старте
-setInterval(cleanupOrphanPromoImages, 60 * 60 * 1000); // далее каждый час
+startupTasks.add('promo-images-cleanup',async()=>await cleanupOrphanPromoImages());
+setInterval(()=>runBackground('promo-images-cleanup',cleanupOrphanPromoImages),60*60*1000);
 
 
 // Фоновая задача для мониторинга нагрузки
@@ -969,10 +970,10 @@ bot.command('sequential', startSequentialInput);
 bot.action('sequential_cancel', handleCancel);
 
 // Запуск задачи очистки просроченных промокодов каждые 60 секунд
-setInterval(() => {
+setInterval(async () => {
   try {
     const { cleanupExpiredPromos } = require('./db');
-    const deletedCount = cleanupExpiredPromos();
+    const deletedCount = (await cleanupExpiredPromos());
     if (deletedCount > 0) {
       console.log(`[AUTO] Удалено ${deletedCount} просроченных промокодов.`);
     }
@@ -2713,7 +2714,7 @@ bot.on('text', async (ctx) => {
     const currentTime = Date.now();
     const text = ctx.message.text.trim();
     const { logMessage } = require('./db');
-    logMessage(userId, chatType, chatId, ctx.chat?.title || null, text, text.startsWith('/'));
+    (await logMessage(userId, chatType, chatId, ctx.chat?.title || null, text, text.startsWith('/')));
 
     const lowerText = text.toLowerCase();
 
@@ -2818,7 +2819,7 @@ bot.on('text', async (ctx) => {
     }
 
     // Получаем сессию регистрации
-    const registrationSession = getRegistrationSession(userId);
+    const registrationSession = (await getRegistrationSession(userId));
 
     // Проверяем время отправки сообщения
     const messageDate = ctx.message.date * 1000;
@@ -2963,7 +2964,7 @@ bot.action(/^game_choice_(-?\d+)_([a-z]+)$/, async (ctx) => {
       return ctx.answerCbQuery('❕ Кнопки выбора недоступны.');
     }
 
-    const bets = getDoubleBetsByRound(doubleGame.round.hash);
+    const bets = (await getDoubleBetsByRound(doubleGame.round.hash));
     const userBet = bets.find((b) => b.user_id === userId && b.multiplier === 'GAME');
     if (!userBet) return ctx.answerCbQuery('❕ Вы не участвуете в текущем раунде GAME.');
 
@@ -2972,7 +2973,7 @@ bot.action(/^game_choice_(-?\d+)_([a-z]+)$/, async (ctx) => {
       return ctx.answerCbQuery(`❕ Вы уже выбрали ${doubleGame.globalChoices[gKey] === 'left' ? 'левую' : 'правую'} ячейку во всех чатах.`);
     }
 
-    if (!doubleGame.recordGameChoice(userId, chatId, choice)) {
+    if (!(await doubleGame.recordGameChoice(userId, chatId, choice))) {
       return ctx.answerCbQuery('❕ Выбор уже сделан или кнопки неактивны.');
     }
     try { updateGameChoicesForRoundUser(doubleGame.round.hash, userId, chatId, choice); } catch (e) {}
@@ -3021,10 +3022,10 @@ bot.action(/^report_feedback_(\d+)_(like|dislike)$/, async (ctx) => {
       if (adminUser) {
         // Обновляем статистику администратора
         if (feedbackType === 'like') {
-          incrementLikesReceived(adminId); // Увеличиваем количество лайков
-          updateUserDFBalance(adminId, 1); // Начисляем 1 DF за лайк
+          (await incrementLikesReceived(adminId)); // Увеличиваем количество лайков
+          (await updateUserDFBalance(adminId, 1)); // Начисляем 1 DF за лайк
         } else if (feedbackType === 'dislike') {
-          incrementDislikesReceived(adminId); // Увеличиваем количество дизлайков
+          (await incrementDislikesReceived(adminId)); // Увеличиваем количество дизлайков
         }
         
         // Отправляем уведомление администратору
@@ -3158,7 +3159,7 @@ bot.action(/^repeat_round_(\d+)$/, async (ctx) => {
       }
 
       // Создаем новый раунд
-      const startResult = diceGame.startRound(chatId, bot, betAmount);
+      const startResult = (await diceGame.startRound(chatId, bot, betAmount));
       if (!startResult.success) {
         return ctx.answerCbQuery(startResult.message || 'Произошла ошибка при запуске нового раунда.');
       }
@@ -3255,9 +3256,9 @@ bot.on('message', async (ctx) => {
           console.log(`[DEBUG] Обработчик платежей: Сумма доната: ${total_amount} звезд`);
 
           const rewardAmount = total_amount * 10; // 1 звезда = 10 DF
-          updateUserDFBalance(userId, rewardAmount);
-          updateTotalDonatedStars(userId, total_amount, db);
-          addDonationToHistory(userId, total_amount, db);
+          (await updateUserDFBalance(userId, rewardAmount));
+          (await updateTotalDonatedStars(userId, total_amount, db));
+          (await addDonationToHistory(userId, total_amount, db));
 
           const referrerId = await getReferrerId(userId);
           if (referrerId) {
@@ -3266,7 +3267,7 @@ bot.on('message', async (ctx) => {
               
               // ПРОВЕРКА НА ПАРТНЕРА
               const { getUserStatusesSync } = require('./db');
-              const referrerStatuses = getUserStatusesSync(referrerId);
+              const referrerStatuses = (await getUserStatusesSync(referrerId));
               const isReferrerPartner = referrerStatuses.some(s => s.toLowerCase() === 'партнёр' || s.toLowerCase() === 'partner');
               
               if (isReferrerPartner) {
@@ -3274,7 +3275,7 @@ bot.on('message', async (ctx) => {
               }
 
               const referrerBonus = Math.floor(rewardAmount * percent);
-              updateUserDFBalance(referrerId, referrerBonus);
+              (await updateUserDFBalance(referrerId, referrerBonus));
 
               const partnerNote = isReferrerPartner ? ' (Партнёрский бонус 15%)' : '';
               await ctx.telegram.sendMessage(
@@ -4180,15 +4181,6 @@ bot.action('back_to_main_menu', async (ctx) => {
   }
 });
 //=====================================
-// Обработчик кнопок информации о карте
-bot.action('card', async (ctx) => {
-  if (await checkUserStatus(ctx)) {
-    await handleCallbackWithErrorHandling(ctx, async () => {
-      await cardInfoHandler(ctx);
-    });
-  }
-});
-
 bot.action('finance_open_card', async (ctx) => {
   if (await checkUserStatus(ctx)) {
     await handleCallbackWithErrorHandling(ctx, async () => {
@@ -4353,7 +4345,7 @@ bot.action(/^start_dice_(\d+)$/, async (ctx) => {
           return ctx.answerCbQuery('Недостаточно средств для данной ставки.');
         }
 
-        const startResult = diceGame.startRound(chatId, bot, betAmount);
+        const startResult = (await diceGame.startRound(chatId, bot, betAmount));
         if (!startResult.success) {
           return ctx.answerCbQuery(startResult.message || 'Произошла ошибка при создании раунда.');
         }
@@ -4552,7 +4544,7 @@ bot.action('auction', async (ctx) => {
 bot.action(/help_page_(\d+)/, handleHelpNavigation);
 
 // Инициализация игры Double
-doubleGame.initGame(bot);
+startupTasks.add('restore-double',async()=>await doubleGame.initGame(bot));
 
 // Обработчик кнопки "Атака"
 bot.action('attack_boss', async (ctx) => {
@@ -4577,7 +4569,7 @@ bot.action(/attack_boss_(\d+)/, async (ctx) => {
       console.log(`[DEBUG] ctx.callbackQuery.message.message_id:`, ctx.callbackQuery?.message?.message_id);
 
       // Получаем состояние атаки для пользователя
-      let attackState = getAttackState(userId);
+      let attackState = (await getAttackState(userId));
       console.log(`[DEBUG] Состояние атаки пользователя ${userId}:`, JSON.stringify(attackState));
 
       if (!attackState) {
@@ -4608,7 +4600,7 @@ bot.action(/attack_boss_(\d+)/, async (ctx) => {
       console.log(`[DEBUG] Правильный ответ (из состояния): ${correctAnswer} (тип: ${typeof correctAnswer})`);
 
       // 2. Получаем текущего босса, чтобы сгенерировать ту же клавиатуру
-      const currentBoss = getCurrentBoss();
+      const currentBoss = (await getCurrentBoss());
       if (!currentBoss) {
          console.log(`[ERROR] Босс не найден при проверке ответа для пользователя ${userId}.`);
          return ctx.answerCbQuery('❌ Ошибка: Босс не найден.');
@@ -4726,13 +4718,13 @@ bot.action(/select_weapon_(\d+)/, async (ctx) => {
       const weaponId = ctx.match[1]; // Извлекаем ID оружия из callback_data
 
       // Получаем информацию об оружии
-      const weapon = getWeaponById(weaponId); // Используем импортированную функцию
+      const weapon = (await getWeaponById(weaponId)); // Используем импортированную функцию
       if (!weapon) {
         return await ctx.reply('❌ Ошибка: Оружие не найдено.');
       }
 
       // Устанавливаем активное оружие для пользователя
-      setActiveWeapon(ctx.from.id.toString(), weaponId); // Используем импортированную функцию
+      (await setActiveWeapon(ctx.from.id.toString(), weaponId)); // Используем импортированную функцию
 
       // Уведомляем пользователя
       await ctx.reply(`✔️ Вы выбрали оружие: <b>${weapon.name}</b>`, { parse_mode: 'HTML' });
@@ -4771,7 +4763,7 @@ bot.action(/buy_weapon_(\d+)/, async (ctx) => {
     const weaponId = parseInt(ctx.match[1], 10); // Извлекаем ID оружия из callback_data
 
     // Получаем информацию об оружии
-    const weapon = getWeaponById(weaponId);
+    const weapon = (await getWeaponById(weaponId));
     if (!weapon) {
       return await ctx.reply('❌ Ошибка: Оружие не найдено.');
     }
@@ -4790,16 +4782,16 @@ bot.action(/buy_weapon_(\d+)/, async (ctx) => {
     }
 
     // Проверяем, не куплено ли оружие
-    const ownedWeaponsIds = getOwnedWeapons(ctx.from.id.toString());
+    const ownedWeaponsIds = (await getOwnedWeapons(ctx.from.id.toString()));
     if (ownedWeaponsIds.includes(weapon.id)) {
       return await ctx.reply('❌ Это оружие уже куплено.');
     }
 
     // Уменьшаем баланс пользователя
-    updateUserBalance(ctx.from.id.toString(), -weapon.price);
+    (await updateUserBalance(ctx.from.id.toString(), -weapon.price));
 
     // Добавляем оружие в список купленных
-    addWeaponToUser(ctx.from.id.toString(), weapon.id);
+    (await addWeaponToUser(ctx.from.id.toString(), weapon.id));
 
     // Создаем клавиатуру с кнопками
     const keyboard = {
@@ -4833,14 +4825,14 @@ bot.action(/view_weapon_(\d+)/, async (ctx) => {
     const weaponId = parseInt(ctx.match[1], 10); // Извлекаем ID оружия из callback_data
 
     // Получаем информацию об оружии
-    const weapon = getWeaponById(weaponId);
+    const weapon = (await getWeaponById(weaponId));
     if (!weapon) {
       return await ctx.reply('❌ Ошибка: Оружие не найдено.');
     }
 
     // Получаем текущую прочность оружия пользователя (если оружие уже куплено)
     const userId = ctx.from.id.toString();
-    const currentDurability = getCurrentWeaponDurability(userId, weaponId);
+    const currentDurability = (await getCurrentWeaponDurability(userId, weaponId));
 
     // Формируем сообщение о прочности
     let durabilityMessage;
@@ -5119,12 +5111,12 @@ bot.action('withdraw_referrer_bank', async (ctx) => {
           // Импортируем функции прямо здесь или убедись, что они импортированы сверху
           const { withdrawReferrerBank, getReferrerBank } = require('./db');
 
-          const currentBank = getReferrerBank(userId);
+          const currentBank = (await getReferrerBank(userId));
           if (currentBank <= 0) {
               return ctx.answerCbQuery('❌ Банк реферовода пуст!', { show_alert: true });
           }
 
-          const result = withdrawReferrerBank(userId);
+          const result = (await withdrawReferrerBank(userId));
           if (result.success) {
               await ctx.answerCbQuery(`✅ Снято ${result.amount.toLocaleString('ru-RU')} PF из банка!`, { show_alert: true });
               
@@ -5272,6 +5264,8 @@ process.on('unhandledRejection', async (reason) => {
 // Запуск бота (без таймаута, без process.exit)
 // ─────────────────────────────────────────────────────────────
 
+async function startPreparedBot(){
+await startupTasks.run();
 console.log('[BOT] Начинаю запуск bot.launch()...');
 
 // bot.launch() запускает polling СРАЗУ.
@@ -5312,3 +5306,8 @@ setTimeout(async () => {
 
     console.log('[BOT] 🎉 Все системы запущены!');
 }, 3000);
+}
+startPreparedBot().catch(error=>{
+  console.error('[BOT] STARTUP FAILED',error.code||error.name);
+  process.exitCode=1;
+});

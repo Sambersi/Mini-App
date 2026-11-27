@@ -1,3 +1,5 @@
+
+const { asyncArray: __asyncDbArray } = require("../src/utils/asyncArray");
 //auction.js
 const { Markup } = require('telegraf');
 const {
@@ -10,11 +12,12 @@ const {
 
 const fs = require('fs');
 const path = require('path');
+const {startupTasks}=require('../src/runtime/startupTasks');
 
 // Функция для создания гиперссылки на пользователя
-function createUserLink(userId) {
+async function createUserLink(userId) {
   if (!userId) return 'Неизвестный';
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) return 'Неизвестный';
   const username = user.username || 'Без имени';
   const displayName = username.replace(/</g, '<').replace(/>/g, '>');
@@ -24,7 +27,7 @@ function createUserLink(userId) {
 // Функция для экспорта ставок последнего аукциона в файл
 async function exportAuctionBids(ctx) {
   try {
-    const currentAuction = getAuctionState();
+    const currentAuction = (await getAuctionState());
     if (!currentAuction) {
       return await ctx.reply('❌ Аукцион еще не запущен или данные отсутствуют.');
     }
@@ -35,12 +38,12 @@ async function exportAuctionBids(ctx) {
     }
 
     let fileContent = `Список ставок за последний аукцион:\n\n`;
-    bids.forEach((bid, index) => {
-      const user = getUserById(bid.userId);
+    (await __asyncDbArray("forEach", bids, async (bid, index) => {
+      const user = (await getUserById(bid.userId));
       const username = user?.username || 'Неизвестный';
       const numericId = user?.numeric_id || 'Неизвестно';
       fileContent += `${index + 1}. ${username} [ID: ${numericId}] - ${bid.amount} PF\n`;
-    });
+    }));
 
     const fileName = `auction_bids_${Date.now()}.txt`;
     const filePath = path.join(__dirname, fileName);
@@ -60,7 +63,7 @@ async function exportAuctionBids(ctx) {
 }
 
 // Инициализация состояния аукциона
-let currentAuction = getAuctionState() || {
+let currentAuction = {
   prize: 'секрет',
   minBet: 1000,
   minStep: 500,
@@ -72,14 +75,15 @@ let currentAuction = getAuctionState() || {
 };
 
 // Если аукцион не завершен, сохраняем его состояние при запуске
-if (!currentAuction.isFinished) {
-  saveAuctionState(currentAuction);
-}
+startupTasks.add('restore-auction',async()=>{
+  currentAuction=(await getAuctionState())||currentAuction;
+  if(!currentAuction.isFinished)await saveAuctionState(currentAuction);
+});
 
 // Функция завершения аукциона
 async function endAuction(ctx) {
   try {
-    currentAuction = getAuctionState() || {
+    currentAuction = (await getAuctionState()) || {
       prize: 'секрет',
       minBet: 1000,
       minStep: 500,
@@ -104,8 +108,8 @@ async function endAuction(ctx) {
 
     if (maxBidEntry) {
       const winnerId = maxBidEntry.userId;
-      const winnerLink = createUserLink(winnerId);
-      const winnerUser = getUserById(winnerId);
+      const winnerLink = (await createUserLink(winnerId));
+      const winnerUser = (await getUserById(winnerId));
       const numericId = winnerUser?.numeric_id || 'Неизвестно';
 
       const winnerTotalBets = currentAuction.bids
@@ -129,7 +133,7 @@ async function endAuction(ctx) {
             .filter(bid => bid.userId === participant.userId)
             .reduce((sum, bid) => sum + bid.amount, 0);
           if (totalBets > 0) {
-            updateUserBalance(participant.userId, totalBets);
+            (await updateUserBalance(participant.userId, totalBets));
             console.log(`[LOG] Возвращено ${totalBets} PF пользователю ID:${participant.userId}`);
           }
         }
@@ -145,14 +149,14 @@ async function endAuction(ctx) {
           .filter(bid => bid.userId === participant.userId)
           .reduce((sum, bid) => sum + bid.amount, 0);
         if (totalBets > 0) {
-          updateUserBalance(participant.userId, totalBets);
+          (await updateUserBalance(participant.userId, totalBets));
           console.log(`[LOG] Возвращено ${totalBets} PF пользователю ID:${participant.userId}`);
         }
       }
     }
 
     currentAuction.isFinished = true;
-    saveAuctionState(currentAuction);
+    (await saveAuctionState(currentAuction));
 
     await ctx.reply(message, { parse_mode: 'HTML' });
   } catch (error) {
@@ -174,7 +178,7 @@ async function startNewAuction(ctx, minBet = 1000, minStep = 500, prize = 'се�
       isFinished: false,
     };
 
-    saveAuctionState(currentAuction);
+    (await saveAuctionState(currentAuction));
     const message = `
 🎉 <b>Новый аукцион запущен!</b>
 🎁 Лот: ${prize}
@@ -189,8 +193,8 @@ async function startNewAuction(ctx, minBet = 1000, minStep = 500, prize = 'се�
 }
 
 // Функция для отображения текущего состояния аукциона
-function getAuctionStatus(ctx) {
-  currentAuction = getAuctionState() || {
+async function getAuctionStatus(ctx) {
+  currentAuction = (await getAuctionState()) || {
     prize: 'секрет',
     minBet: 1000,
     minStep: 500,
@@ -212,11 +216,11 @@ function getAuctionStatus(ctx) {
   if (safeBids.length > 0) {
       status += `\n👥 Последние ставки (3):\n`;
       const lastBids = [...safeBids].reverse().slice(0, 3);
-      lastBids.forEach((bid, index) => {
+      (await __asyncDbArray("forEach", lastBids, async (bid, index) => {
           const userId = bid?.userId;
           const isWinner = isFinished && index === 0;
-          status += `${index + 1}. ${userId ? createUserLink(userId) : 'Неизвестный'} - ${bid.amount} PF${isWinner ? ' 🏆' : ''}\n`;
-      });
+          status += `${index + 1}. ${userId ? (await createUserLink(userId)) : 'Неизвестный'} - ${bid.amount} PF${isWinner ? ' 🏆' : ''}\n`;
+      }));
   } else {
       status += `\n👥 Ставок пока нет.\n`;
   }
@@ -246,7 +250,7 @@ async function auctionHandler(ctx) {
     const userId = ctx.from.id.toString();
     const telegramId = ctx.from.id;
 
-    currentAuction = getAuctionState() || {
+    currentAuction = (await getAuctionState()) || {
       prize: 'секрет',
       minBet: 1000,
       minStep: 500,
@@ -258,7 +262,7 @@ async function auctionHandler(ctx) {
     };
 
     if (args.length === 0) {
-      const { status, keyboard } = getAuctionStatus(ctx);
+      const { status, keyboard } = (await getAuctionStatus(ctx));
       const imagePath = path.join(__dirname, '..', 'images', 'labubu.jpg');
 
       return await ctx.replyWithPhoto(
@@ -276,7 +280,7 @@ async function auctionHandler(ctx) {
       return await ctx.reply('❌ Укажите корректную сумму ставки.');
     }
 
-    const balances = getUserBalances(userId);
+    const balances = (await getUserBalances(userId));
     const userBalance = balances.pfBalance;
     if (userBalance < amount) {
       return await ctx.reply('❌ Недостаточно средств для размещения ставки.');
@@ -291,14 +295,14 @@ async function auctionHandler(ctx) {
     }
 
     try {
-      updateUserBalance(userId, -amount);
+      (await updateUserBalance(userId, -amount));
     } catch (error) {
       console.error(`[ERROR] Ошибка при списании средств для пользователя ${userId}:`, error);
       return await ctx.reply('❌ Произошла ошибка при списании средств.');
     }
 
-    const result = placeBid(userId, telegramId, amount, ctx);
-    saveAuctionState(currentAuction);
+    const result = (await placeBid(userId, telegramId, amount, ctx));
+    (await saveAuctionState(currentAuction));
 
     const keyboard = Markup.inlineKeyboard([
       Markup.button.callback('📊 Аукцион', 'auction'),
@@ -366,16 +370,16 @@ function validateBet(amount) {
 async function refundUser(userId, amount, newBidderId, newBidAmount, ctx) {
   try {
     // Возвращаем средства пользователю
-    updateUserBalance(userId, amount);
+    (await updateUserBalance(userId, amount));
     
     // Получаем данные пользователя для уведомления
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
     if (!user || user.isBlocked) {
       console.warn(`[WARN] Пользователь ID:${userId} заблокирован или недоступен для возврата.`);
       return;
     }
 
-    const newBidderLink = createUserLink(newBidderId);
+    const newBidderLink = (await createUserLink(newBidderId));
     const message = `💰 Вам возвращена ставка в размере ${amount} PF!\n\n🔺 Вашу ставку размером ${amount} PF перебил игрок: ${newBidderLink}`;
 
     // Создаем клавиатуру с кнопкой "Аукцион"
@@ -395,7 +399,7 @@ async function refundUser(userId, amount, newBidderId, newBidAmount, ctx) {
   }
 }
 
-function placeBid(userId, telegramId, amount, ctx) {
+async function placeBid(userId, telegramId, amount, ctx) {
   if (!userId || !telegramId) {
     console.error('[ERROR] Неверный userId или telegramId при размещении ставки.');
     return '❌ Произошла ошибка. Попробуйте позже.';
@@ -407,7 +411,7 @@ function placeBid(userId, telegramId, amount, ctx) {
 
   const logMessage = `
 [LOG] Размещение новой ставки:
-• Игрок: ${createUserLink(userId)}
+• Игрок: ${(await createUserLink(userId))}
 • Сумма: ${amount} PF
 • Telegram ID: ${telegramId}
 `.trim();
@@ -468,12 +472,12 @@ function placeBid(userId, telegramId, amount, ctx) {
 
   return `✅ Вы перебили ставку!
 💰 Текущая ставка: ${amount} PF
-👤 Последний участник: ${createUserLink(userId)}`;
+👤 Последний участник: ${(await createUserLink(userId))}`;
 }
 
 async function notifyPreviousBidder(telegramId, newBidAmount, ctx) {
   try {
-    const recipient = getUserById(telegramId);
+    const recipient = (await getUserById(telegramId));
     if (!recipient || recipient.isBlocked) {
       console.warn(`[WARN] Пользователь Telegram ID:${telegramId} заблокирован или недоступен.`);
       return;
@@ -506,7 +510,7 @@ async function handleMakeBid(ctx) {
 
     console.log(`[LOG] Получен запрос на размещение ставки от ID:${userId}, Telegram ID:${telegramId} на сумму ${amount}`);
 
-    currentAuction = getAuctionState() || {
+    currentAuction = (await getAuctionState()) || {
       prize: 'секрет',
       minBet: 1000,
       minStep: 500,
@@ -517,7 +521,7 @@ async function handleMakeBid(ctx) {
       isFinished: false,
     };
 
-    const balances = getUserBalances(userId);
+    const balances = (await getUserBalances(userId));
     const userBalance = balances.pfBalance;
 
     if (userBalance < amount) {
@@ -534,11 +538,11 @@ async function handleMakeBid(ctx) {
       });
     }
 
-    updateUserBalance(userId, -amount);
+    (await updateUserBalance(userId, -amount));
     console.log(`[LOG] Успешно списано ${amount} PF с баланса ID:${userId}`);
 
-    const result = placeBid(userId, telegramId, amount, ctx);
-    saveAuctionState(currentAuction);
+    const result = (await placeBid(userId, telegramId, amount, ctx));
+    (await saveAuctionState(currentAuction));
 
     const keyboard = Markup.inlineKeyboard([
       Markup.button.callback('📊 Аукцион', 'auction'),

@@ -11,14 +11,14 @@ const {
 
 } = require('../db');
 
-function getTimeUntilNextEnergyRestore(userId) {
-  const user = getUserById(userId);
+async function getTimeUntilNextEnergyRestore(userId) {
+  const user = (await getUserById(userId));
   if (!user || user.energy === null || user.last_energy_restore === null) {
     console.error(`[DEBUG] getTimeUntilNextEnergyRestore: Некорректные данные для userId=${userId}: energy=${user?.energy}, lastEnergyRestore=${user?.last_energy_restore}`);
     return null;
   }
 
-  const maxEnergy = getMaxEnergyByStatus(userId); // Получаем максимальное значение энергии
+  const maxEnergy = (await getMaxEnergyByStatus(userId)); // Получаем максимальное значение энергии
   const now = Math.floor(Date.now() / 1000); // Текущее время в секундах
   const timeSinceLastRestore = now - user.last_energy_restore; // Время с последнего восстановления
   const energyToRestore = Math.floor(timeSinceLastRestore / 300); // 300 секунд = 5 минут
@@ -63,18 +63,18 @@ async function showEnergyInfo(ctx) {
     const userId = ctx.from.id.toString();
 
     // Получаем данные пользователя из базы данных
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
     if (!user) {
       return await ctx.reply('❌ Пользователь не найден.');
     }
 
     // Получаем статус пользователя
-    const userStatus = getStatusById(user.status_id);
+    const userStatus = (await getStatusById(user.status_id));
     const maxEnergy = userStatus?.max_energy || 10; // Максимальная энергия по статусу (по умолчанию 10)
 
     // Формируем обращение к пользователю
     const usernameFromDB = user.username || 'Неизвестный';
-    const userLink = createUserLink(userId, usernameFromDB, isHyperlinkDisabled(userId));
+    const userLink = createUserLink(userId, usernameFromDB, (await isHyperlinkDisabled(userId)));
 
     // Создаем сообщение с информацией об энергии
     const message = `
@@ -122,7 +122,7 @@ async function energyHandler(ctx) {
 
     // Формируем обращение к пользователю
     const usernameFromDB = user.username || 'Неизвестный';
-    const userLink = createUserLink(userId, usernameFromDB, isHyperlinkDisabled(userId));
+    const userLink = createUserLink(userId, usernameFromDB, (await isHyperlinkDisabled(userId)));
 
     // Получаем информацию о времени восстановления энергии
     const energyInfo = await getTimeUntilNextEnergyRestore(userId);

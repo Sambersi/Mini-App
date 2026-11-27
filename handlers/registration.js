@@ -159,7 +159,7 @@ async function resumeRegistration(ctx, session) {
   try {
     // Активной сессии нет — подсказываем начать
     if (!session || !session.registrationInProgress) {
-      const user = getUserById(userId);
+      const user = (await getUserById(userId));
       if (user && user.is_registered) return; // зарегистрирован — делать нечего
       await ctx.replyWithHTML(
         '📝 Регистрация не начата или уже завершена.\n👉 Напишите <b>/start</b>, чтобы начать.'
@@ -169,7 +169,7 @@ async function resumeRegistration(ctx, session) {
 
     // Сессия протухла (>24ч) — сбрасываем
     if (isSessionExpired(session)) {
-      destroyRegistrationSession(userId);
+      (await destroyRegistrationSession(userId));
       await ctx.replyWithHTML(
         '⏳ Сессия регистрации истекла (прошло более 24 часов).\n👉 Напишите <b>/start</b>, чтобы начать заново.'
       );
@@ -192,7 +192,7 @@ async function resumeRegistration(ctx, session) {
     if (session.captchaPending) {
       const correctAnswer = await generateCaptcha(ctx, session);
       session.correctCaptchaAnswer = correctAnswer;
-      saveRegistrationSession(userId, session);
+      (await saveRegistrationSession(userId, session));
       await ctx.replyWithHTML('📚 Для завершения регистрации необходимо пройти капчу выше!');
       return;
     }
@@ -215,7 +215,7 @@ async function resumeRegistration(ctx, session) {
 async function handlePrivacyPolicyAcceptance(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    let session = getRegistrationSession(userId);
+    let session = (await getRegistrationSession(userId));
 
     // ЗАЩИТА: сессия отсутствует, политика уже принята или регистрация не идёт
     if (!session || session.policyAccepted || !session.registrationInProgress) {
@@ -226,7 +226,7 @@ async function handlePrivacyPolicyAcceptance(ctx) {
 
     // ЗАЩИТА: истёк срок сессии
     if (isSessionExpired(session)) {
-      destroyRegistrationSession(userId);
+      (await destroyRegistrationSession(userId));
       await ctx.answerCbQuery('Сессия истекла. Напишите /start заново.');
       return;
     }
@@ -235,7 +235,7 @@ async function handlePrivacyPolicyAcceptance(ctx) {
     const existingUser = await getUserById(userId);
     if (existingUser && existingUser.is_registered) {
       console.log(`[POLICY] Пользователь ${userId} уже зарегистрирован в БД. Пропускаем.`);
-      destroyRegistrationSession(userId);
+      (await destroyRegistrationSession(userId));
       await ctx.answerCbQuery('Вы уже зарегистрированы.');
       return;
     }
@@ -245,7 +245,7 @@ async function handlePrivacyPolicyAcceptance(ctx) {
     delete session.captchaPending;
 
     // Сохраняем обновленную сессию (registrationInProgress гасит completeRegistration)
-    saveRegistrationSession(userId, session);
+    (await saveRegistrationSession(userId, session));
 
     console.log(`[POLICY] Пользователь ${userId} принял политику конфиденциальности.`);
 
@@ -265,7 +265,7 @@ async function handlePrivacyPolicyAcceptance(ctx) {
 async function completeRegistration(ctx) {
   try {
     const { id: userId, first_name, username } = ctx.from;
-    const session = getRegistrationSession(userId) || {};
+    const session = (await getRegistrationSession(userId)) || {};
 
     let user = await getUserById(userId.toString());
     if (!user) {
@@ -275,7 +275,7 @@ async function completeRegistration(ctx) {
 
     if (user.is_registered) {
       console.log(`[REGISTRATION] Пользователь ${userId} уже зарегистрирован. Пропускаем.`);
-      destroyRegistrationSession(userId);
+      (await destroyRegistrationSession(userId));
       return ctx.reply('Вы уже завершили регистрацию.');
     }
 
@@ -307,7 +307,7 @@ async function completeRegistration(ctx) {
           const candyAmount = CONFIG.REGISTRATION_CANDY_AMOUNT;
 
           // ПРОВЕРКА НА ПАРТНЕРА (синхронная через db.js)
-          const referrerStatuses = getUserStatusesSync(referralCode);
+          const referrerStatuses = (await getUserStatusesSync(referralCode));
           const isReferrerPartner = referrerStatuses.some(
             (s) => s.toLowerCase() === 'партнёр' || s.toLowerCase() === 'partner'
           );
@@ -319,16 +319,16 @@ async function completeRegistration(ctx) {
           // Начисление бонусов НОВОМУ пользователю (рефералу)
           await updateUserBalance(userId.toString(), newUserBonus);
           if (newUserTickets > 0) {
-            giveFortuneTicket(userId.toString(), newUserTickets);
+            (await giveFortuneTicket(userId.toString(), newUserTickets));
           }
 
           // Начисление бонусов РЕФЕРОВОДУ (пригласившему)
           await updateUserBalance(referralCode, referrerBonus);
           if (referrerTickets > 0) {
-            giveFortuneTicket(referralCode, referrerTickets);
+            (await giveFortuneTicket(referralCode, referrerTickets));
           }
 
-          giveCandy(referralCode, candyAmount);
+          (await giveCandy(referralCode, candyAmount));
 
           const referrerLink = createUserLink(userId, username || first_name);
           const ticketsTextReferrer = referrerTickets > 0 ? `\n🎟 +${referrerTickets} билет(ов) на фортуну!` : '';
@@ -360,7 +360,7 @@ async function completeRegistration(ctx) {
     // ============ КОНЕЦ ОБРАБОТКИ РЕФЕРАЛЬНОГО БОНУСА ============
 
     // Корректная очистка состояний регистрации ПОСЛЕ всех операций
-    destroyRegistrationSession(userId);
+    (await destroyRegistrationSession(userId));
     console.log(`[REGISTRATION] Все шаги регистрации завершены. Сессия пользователя ${userId} удалена.`);
   } catch (error) {
     console.error('[REGISTRATION] Ошибка при завершении регистрации:', error);
@@ -386,7 +386,7 @@ async function registerHandler(ctx) {
 
     const { id, first_name } = ctx.from;
     const sessionId = id.toString();
-    let session = getRegistrationSession(sessionId);
+    let session = (await getRegistrationSession(sessionId));
 
     const isStartCommand =
       !!ctx.startPayload || (ctx.message?.text || '').trim().startsWith('/start');
@@ -394,7 +394,7 @@ async function registerHandler(ctx) {
     // Протухшая сессия — сбрасываем молча
     if (session && session.registrationInProgress && isSessionExpired(session)) {
       console.log(`[REG] Сессия пользователя ${userId} истекла — сброс.`);
-      destroyRegistrationSession(sessionId);
+      (await destroyRegistrationSession(sessionId));
       session = {};
     }
 
@@ -407,14 +407,14 @@ async function registerHandler(ctx) {
     // /start во время активной регистрации — сбрасываем и начинаем заново
     if (session && session.registrationInProgress && isStartCommand) {
       console.log(`[REG] /start во время активной регистрации — сброс сессии ${userId}.`);
-      destroyRegistrationSession(sessionId);
+      (await destroyRegistrationSession(sessionId));
       session = {};
     }
 
     // Пользователь уже зарегистрирован в БД
     const user = await getUserById(sessionId);
     if (user && user.is_registered) {
-      destroyRegistrationSession(sessionId);
+      (await destroyRegistrationSession(sessionId));
       console.log(`Пользователь ${id} уже зарегистрирован.`);
       return ctx.reply('❕Вы уже зарегистрированы. Напишите "/help", чтобы узнать доступные команды.');
     }
@@ -440,7 +440,7 @@ async function registerHandler(ctx) {
       captchaLockedUntil: 0,
       startedAt: Date.now(),
     };
-    saveRegistrationSession(sessionId, session);
+    (await saveRegistrationSession(sessionId, session));
 
     const welcomeMsg = `👋 WELKOM to F BOT!`;
     await ctx.reply(welcomeMsg, { parse_mode: 'HTML' });
@@ -493,11 +493,11 @@ async function registerHandler(ctx) {
 
     // Начинаем проверку капчи
     session.captchaPending = true;
-    saveRegistrationSession(sessionId, session);
+    (await saveRegistrationSession(sessionId, session));
 
     const correctAnswer = await generateCaptcha(ctx, session);
     session.correctCaptchaAnswer = correctAnswer;
-    saveRegistrationSession(sessionId, session);
+    (await saveRegistrationSession(sessionId, session));
   } catch (error) {
     console.error('Ошибка при регистрации:', error);
     try {
@@ -583,7 +583,7 @@ async function generateCaptcha(ctx, session) {
 async function handleCaptchaCorrect(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    let session = getRegistrationSession(userId);
+    let session = (await getRegistrationSession(userId));
 
     // ЗАЩИТА: проверяем, что капча действительно ожидается
     if (!session || !session.captchaPending) {
@@ -596,7 +596,7 @@ async function handleCaptchaCorrect(ctx) {
     const existingUser = await getUserById(userId);
     if (existingUser && existingUser.is_registered) {
       console.log(`[CAPTCHA] Пользователь ${userId} уже зарегистрирован. Пропускаем.`);
-      destroyRegistrationSession(userId);
+      (await destroyRegistrationSession(userId));
       await ctx.answerCbQuery('Вы уже зарегистрированы.');
       return;
     }
@@ -609,7 +609,7 @@ async function handleCaptchaCorrect(ctx) {
     delete session.captchaPending;
 
     // Сохраняем обновленную сессию
-    saveRegistrationSession(userId, session);
+    (await saveRegistrationSession(userId, session));
 
     console.log(`[CAPTCHA] Пользователь ${userId} успешно прошел капчу.`);
 
@@ -635,7 +635,7 @@ async function handleCaptchaCorrect(ctx) {
 async function handleCaptchaWrong(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    let session = getRegistrationSession(userId);
+    let session = (await getRegistrationSession(userId));
 
     // Проверяем, находится ли пользователь в состоянии ожидания капчи
     if (!session?.captchaPending) {
@@ -649,7 +649,7 @@ async function handleCaptchaWrong(ctx) {
     if (session.captchaAttempts >= CAPTCHA_MAX_ATTEMPTS) {
       session.captchaLockedUntil = Date.now() + CAPTCHA_LOCK_MS;
       session.captchaAttempts = 0;
-      saveRegistrationSession(userId, session);
+      (await saveRegistrationSession(userId, session));
       await ctx.answerCbQuery('❌ Слишком много неверных ответов. Капча заблокирована на 5 минут.', { show_alert: true });
       return;
     }
@@ -659,7 +659,7 @@ async function handleCaptchaWrong(ctx) {
 
     // Сохраняем правильный ответ в сессии
     session.correctCaptchaAnswer = correctAnswer;
-    saveRegistrationSession(userId, session);
+    (await saveRegistrationSession(userId, session));
 
     // Уведомляем пользователя об ошибке
     await ctx.answerCbQuery(`Неверный выбор. Попробуйте еще раз. (Попытка ${session.captchaAttempts}/${CAPTCHA_MAX_ATTEMPTS})`);

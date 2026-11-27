@@ -89,7 +89,7 @@ class DiceGame {
     async sendAutoSuggestion(chatId, bot) {
         if (!bot) return;
 
-        let recentAmounts = getLastDiceBetsInChat(chatId);
+        let recentAmounts = (await getLastDiceBetsInChat(chatId));
         if (recentAmounts.length === 0) {
             recentAmounts = [1000, 5000, 10000, 50000, 100000];
         }
@@ -137,7 +137,7 @@ class DiceGame {
 
             if (e.response && e.response.error_code === 400 && String(e.response.description).includes('chat not found')) {
                 try {
-                    deactivateDiceMode(chatId);
+                    (await deactivateDiceMode(chatId));
                     console.log(`[DiceGame] Чат ${chatId} не найден. Режим дайса автоматически деактивирован.`);
                 } catch (dbErr) {
                     console.error('[DiceGame] Ошибка при деактивации режима дайса:', dbErr.message);
@@ -176,7 +176,7 @@ class DiceGame {
         return result;
     }
 
-    startRound(chatId, bot, firstBetAmount) {
+    async startRound(chatId, bot, firstBetAmount) {
         const activeRounds = this.chatRounds[chatId] || [];
         if (activeRounds.length >= 3) {
             return { success: false, message: '❕ В этом чате уже запущено максимальное количество раундов [3].', parse_mode: 'HTML' };
@@ -189,8 +189,8 @@ class DiceGame {
         const startTime = Date.now();
         const endTime = startTime + 30 * 1000;
         const roundId = `round_${startTime}_${Math.random().toString(36).substr(2, 9)}`;
-        saveDiceRound(chatId, startTime, endTime, roundId);
-        logDiceRound(roundId, chatId, startTime, firstBetAmount);
+        (await saveDiceRound(chatId, startTime, endTime, roundId));
+        (await logDiceRound(roundId, chatId, startTime, firstBetAmount));
 
         const newRound = {
             roundId, startTime, endTime, participants: {}, maxParticipants: 5,
@@ -258,7 +258,7 @@ class DiceGame {
         let isExistingRound = !!matchingRound;
 
         if (!matchingRound) {
-            const startResult = this.startRound(chatId, bot, amount);
+            const startResult = (await this.startRound(chatId, bot, amount));
             if (!startResult.success) return { success: false, message: startResult.message || '❕ Произошла ошибка при регистрации раунда.' };
             const updatedActiveRounds = this.chatRounds[chatId] || [];
             matchingRound = updatedActiveRounds.find((round) => round.roundAmount === amount);
@@ -279,7 +279,7 @@ class DiceGame {
 
             if (currentRound.roundId) {
                 await saveDiceBet(currentRound.roundId, userId.toString(), username, amount);
-                const betLogId = logDiceBet(currentRound.roundId, chatId, userId.toString(), username, amount);
+                const betLogId = (await logDiceBet(currentRound.roundId, chatId, userId.toString(), username, amount));
                 currentRound.participants[userId.toString()].logId = betLogId;
             }
 
@@ -445,13 +445,13 @@ class DiceGame {
             const bets = await getDiceBetsByRoundId(roundId);
             const bet = bets.find((bet) => bet.user_id === userId);
             if (bet) await updateDiceResults(bet.id, dice1, dice2);
-            if (logId) updateDiceBetResult(logId, dice1, dice2, totalPoints, isWinner, winAmount);
+            if (logId) (await updateDiceBetResult(logId, dice1, dice2, totalPoints, isWinner, winAmount));
 
             if (isWinner) await updateUserBalance(userId, prizePerWinner);
         }
 
         const winnerId = realWinners.length > 0 ? realWinners[0] : null;
-        finishDiceRoundLog(roundId, winnerId, totalBank, Object.keys(participants).length);
+        (await finishDiceRoundLog(roundId, winnerId, totalBank, Object.keys(participants).length));
 
         let finalMessage = `<b>🎲 Итоги раунда дайса</b> (${round.roundAmount.toLocaleString('ru-RU')} PF):\n`;
         for (const userId in participants) {

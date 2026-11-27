@@ -61,7 +61,7 @@ async function buyContainerHandler(ctx) {
         const totalCost = containerInfo.price * quantity;
 
         // Начинаем транзакцию
-        beginTransaction();
+        (await beginTransaction());
         transactionStarted = true;
 
         try {
@@ -78,7 +78,7 @@ async function buyContainerHandler(ctx) {
 
             // Проверяем баланс пользователя
             if (currentBalance < totalCost) {
-                rollbackTransaction();
+                (await rollbackTransaction());
                 // Формируем сообщение с информацией о недостатке средств и текущем балансе
                 const balanceMessage = `
 ⚠️ <b>Ошибка:</b>
@@ -93,9 +93,9 @@ async function buyContainerHandler(ctx) {
             await updateBalanceFunction(userId, -totalCost);
 
             // Проверяем лимиты и добавляем контейнеры
-            const result = updateContainerCount(userId, containerNumber, quantity);
+            const result = (await updateContainerCount(userId, containerNumber, quantity));
             if (!result.success) {
-                rollbackTransaction();
+                (await rollbackTransaction());
                 
                 // Формируем сообщение о лимитах
                 const limitsMessage = `
@@ -109,12 +109,12 @@ async function buyContainerHandler(ctx) {
             }
 
             // Фиксируем транзакцию
-            commitTransaction();
+            (await commitTransaction());
             transactionStarted = false;
 
         } catch (error) {
             if (transactionStarted) {
-                rollbackTransaction();
+                (await rollbackTransaction());
             }
             console.error('[buyContainerHandler] Ошибка транзакции:', error);
             throw error;

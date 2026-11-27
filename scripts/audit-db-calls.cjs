@@ -8,7 +8,7 @@ function resolveModule(file,value){
   if(!value.startsWith('.'))return value;
   const base=path.resolve(root,path.dirname(file),value);
   for(const name of [base,base+'.js',path.join(base,'index.js')])if(fs.existsSync(name)&&fs.statSync(name).isFile())return normalize(path.relative(root,name));
-  return normalize(path.relative(root,base));
+  return normalize(path.relative(root,path.extname(base)?base:base+'.js'));
 }
 function audit(files,{readSource=file=>fs.readFileSync(path.join(root,file),'utf8')}={}){
   const modules=new Map(),calls=[];

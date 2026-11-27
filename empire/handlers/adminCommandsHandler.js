@@ -32,7 +32,7 @@ async function giveBusinessHandler(ctx) {
 
   // --- ИСПРАВЛЕНИЕ: Используем getUserByNumericId вместо getUserById ---
   // getUserByNumericId(numericId) возвращает объект пользователя, где id - это Telegram ID
-  const user = getUserByNumericId(numericId); // getUserByNumericId ожидает число или строку
+  const user = (await getUserByNumericId(numericId)); // getUserByNumericId ожидает число или строку
   if (!user) {
     return ctx.reply(`❌ Игрок с NUMERIC_ID ${numericId} не найден.`);
   }
@@ -40,7 +40,7 @@ async function giveBusinessHandler(ctx) {
   const telegramId = user.id; // Telegram ID из найденной записи
 
   // --- НОВОЕ: Проверка на наличие бизнеса этого типа у игрока ---
-  const userBusinesses = getUserBusinesses(telegramId);
+  const userBusinesses = (await getUserBusinesses(telegramId));
   const businessTypeName = getBusinessTypeNameById(typeId); // Получаем строковое имя типа (например, 'mine')
   if (!businessTypeName) {
       // Это маловероятно, если typeId прошёл проверку выше, но на всякий случай
@@ -56,7 +56,7 @@ async function giveBusinessHandler(ctx) {
   // --- КОНЕЦ НОВОГО ---
 
   // Пытаемся создать бизнес в базе империй
-  const success = createBusiness(telegramId, typeId); // Передаем Telegram ID и ID типа
+  const success = (await createBusiness(telegramId, typeId)); // Передаем Telegram ID и ID типа
 
   if (success) {
     const businessName = BUSINESS_TYPES_MAP[typeId].config.name;

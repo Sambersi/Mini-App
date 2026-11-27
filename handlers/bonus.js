@@ -192,7 +192,7 @@ async function bonusHandler(ctx) {
 
     // === НАЧИСЛЕНИЕ КОНФЕТ ===
     try {
-      giveCandy(userId, candyAmount); // Используем функцию из db.js
+      (await giveCandy(userId, candyAmount)); // Используем функцию из db.js
     } catch (error) {
       console.error(`[Бонус] Ошибка при начислении конфет пользователю ${userId}:`, error);
       // Не прерываем выполнение — бонус PF уже выдан

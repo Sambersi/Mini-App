@@ -97,7 +97,7 @@ async function profileHandler(ctx) {
     // Получаем активный префикс пользователя
     let activePrefix = '';
     if (user.active_prefix_id) {
-      const prefix = getPrefixById(user.active_prefix_id) || getSpecialPrefixById(user.active_prefix_id);
+      const prefix = (await getPrefixById(user.active_prefix_id)) || (await getSpecialPrefixById(user.active_prefix_id));
       if (prefix) {
         activePrefix = `${prefix.prefix}\n`; // Добавляем префикс в формате "(VIP)"
       }

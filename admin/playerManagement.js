@@ -274,7 +274,7 @@ async function handlePlayerManagementMessage(ctx) {
 
   // --- Ожидание ID игрока ---
   if (session.state === PM_STATE.WAITING_ID) {
-    const player = getPlayerByAnyIdPm(text);
+    const player = (await getPlayerByAnyIdPm(text));
     if (!player) {
       await ctx.reply('❌ Игрок не найден. Попробуйте другой ID или «Отмена».');
       return true;
@@ -289,7 +289,7 @@ async function handlePlayerManagementMessage(ctx) {
   // --- Ожидание нового значения поля ---
   if (session.state === PM_STATE.WAITING_EDIT_VALUE) {
     const { targetUserId, editField, editCategory } = session;
-    const player = getUserById(targetUserId);
+    const player = (await getUserById(targetUserId));
     if (!player) {
       clearSession(adminId);
       await ctx.reply('❌ Игрок не найден.');
@@ -320,7 +320,7 @@ async function handlePlayerManagementMessage(ctx) {
     }
 
     const oldValue = player[editField];
-    const result = setUserFieldPm(targetUserId, editField, newValue);
+    const result = (await setUserFieldPm(targetUserId, editField, newValue));
 
     if (result.success) {
       session.state = PM_STATE.IDLE;
@@ -374,13 +374,13 @@ async function handlePlayerManagementMessage(ctx) {
     const banData = session.banData || {};
     banData.reason = text || 'Не указана';
     const targetUserId = session.targetUserId;
-    const player = getUserById(targetUserId);
+    const player = (await getUserById(targetUserId));
 
     const banUntil = banData.duration === null
       ? null
       : Math.floor(Date.now() / 1000) + banData.duration * 3600;
 
-    addToBlacklist(targetUserId, banData.reason, banUntil);
+    (await addToBlacklist(targetUserId, banData.reason, banUntil));
 
     session.state = PM_STATE.IDLE;
     session.banData = null;
@@ -455,14 +455,14 @@ async function handlePlayerManagementMessage(ctx) {
     const muteData = session.muteData || {};
     muteData.reason = text || 'Не указана';
     const targetUserId = session.targetUserId;
-    const player = getUserById(targetUserId);
+    const player = (await getUserById(targetUserId));
     const chatId = muteData.chatId;
 
     const mutedUntil = muteData.duration === null
       ? null
       : Math.floor(Date.now() / 1000) + muteData.duration * 3600;
 
-    addMute(targetUserId, chatId, muteData.reason, mutedUntil);
+    (await addMute(targetUserId, chatId, muteData.reason, mutedUntil));
 
     // Ограничиваем права в чате
     try {
@@ -508,7 +508,7 @@ async function handlePlayerManagementMessage(ctx) {
 // ГЛАВНОЕ МЕНЮ ИГРОКА
 // =====================================================
 async function showMainMenu(ctx, targetUserId) {
-  const player = getUserById(targetUserId);
+  const player = (await getUserById(targetUserId));
   if (!player) {
     await ctx.reply('❌ Игрок не найден.');
     return;
@@ -516,8 +516,8 @@ async function showMainMenu(ctx, targetUserId) {
 
   const statuses = await getUserStatuses(targetUserId);
   const totalPF = (player.balance || 0) + (player.card_balance || 0);
-  const refCount = getReferralCountPm(targetUserId);
-  const banned = isUserBanned(targetUserId);
+  const refCount = (await getReferralCountPm(targetUserId));
+  const banned = (await isUserBanned(targetUserId));
 
   const text =
     `👤 <b>Управление игроком</b>\n\n` +
@@ -562,7 +562,7 @@ async function showViewCategories(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
   const rows = [];
@@ -590,7 +590,7 @@ async function showViewCategory(ctx, catKey) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
   const cat = CATEGORIES[catKey];
@@ -614,8 +614,8 @@ async function showViewCategory(ctx, catKey) {
     text += `\n📊 Общий PF (баланс + карта): <b>${fmtNum(totalPF)}</b>`;
   }
   if (catKey === 'referral') {
-    const refId = getReferrerId(player.id);
-    const refCount = getReferralCountPm(player.id);
+    const refId = (await getReferrerId(player.id));
+    const refCount = (await getReferralCountPm(player.id));
     text += `\n▫️ Реферер ID: <code>${refId || 'Нет'}</code>\n`;
     text += `▫️ Количество рефералов: <b>${refCount}</b>`;
   }
@@ -638,7 +638,7 @@ async function showEditCategories(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
   const rows = [];
@@ -663,7 +663,7 @@ async function showEditCategory(ctx, catKey) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
   const cat = CATEGORIES[catKey];
@@ -702,7 +702,7 @@ async function startFieldEdit(ctx, catKey, fieldKey) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
   const cat = CATEGORIES[catKey];
@@ -747,7 +747,7 @@ async function toggleBooleanField(ctx, catKey, fieldKey) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
   const cat = CATEGORIES[catKey];
@@ -757,7 +757,7 @@ async function toggleBooleanField(ctx, catKey, fieldKey) {
   const oldValue = !!player[fieldKey];
   const newValue = oldValue ? 0 : 1;
 
-  const result = setUserFieldPm(session.targetUserId, fieldKey, newValue);
+  const result = (await setUserFieldPm(session.targetUserId, fieldKey, newValue));
   if (result.success) {
     await safeAnswer(ctx, `✅ ${fieldCfg.label}: ${boolLabel(oldValue)} → ${boolLabel(!!newValue)}`);
     await showEditCategory(ctx, catKey);
@@ -774,7 +774,7 @@ async function confirmResetCategory(ctx, catKey) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
   const cat = CATEGORIES[catKey];
@@ -808,7 +808,7 @@ async function doResetCategory(ctx, catKey) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
   const cat = CATEGORIES[catKey];
@@ -817,7 +817,7 @@ async function doResetCategory(ctx, catKey) {
   let changed = 0;
   for (const [fieldKey, fieldCfg] of Object.entries(cat.fields)) {
     const def = fieldCfg.def != null ? fieldCfg.def : 0;
-    const result = setUserFieldPm(session.targetUserId, fieldKey, def);
+    const result = (await setUserFieldPm(session.targetUserId, fieldKey, def));
     if (result.success) changed++;
   }
 
@@ -845,10 +845,10 @@ async function showSkinsView(ctx, startIndex = 0) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
-  const skins = getUserSkinsWithSerials(player.id);
+  const skins = (await getUserSkinsWithSerials(player.id));
   if (!skins || skins.length === 0) {
     await safeEditOrReply(
       ctx,
@@ -927,7 +927,7 @@ async function skinsNavigate(ctx, direction) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const skins = getUserSkinsWithSerials(session.targetUserId);
+  const skins = (await getUserSkinsWithSerials(session.targetUserId));
   if (!skins || skins.length === 0) return safeAnswer(ctx, '❌ Скинов нет.');
 
   const current = session.skinsIndex || 0;
@@ -940,7 +940,7 @@ async function setSkinActive(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const skins = getUserSkinsWithSerials(session.targetUserId);
+  const skins = (await getUserSkinsWithSerials(session.targetUserId));
   if (!skins || skins.length === 0) return safeAnswer(ctx, '❌ Скинов нет.');
 
   const idx = session.skinsIndex || 0;
@@ -948,7 +948,7 @@ async function setSkinActive(ctx) {
   if (!skin) return safeAnswer(ctx, '❌ Скин не найден.');
 
   const { updateUserSelectedSkin } = require('../db');
-  updateUserSelectedSkin(session.targetUserId, skin.id);
+  (await updateUserSelectedSkin(session.targetUserId, skin.id));
   await safeAnswer(ctx, `✅ Скин "${skin.name}" сделан активным`);
   await showSkinsView(ctx, idx);
 }
@@ -958,8 +958,8 @@ async function removeCurrentSkin(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
-  const skins = getUserSkinsWithSerials(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
+  const skins = (await getUserSkinsWithSerials(session.targetUserId));
   if (!skins || skins.length === 0) return safeAnswer(ctx, '❌ Скинов нет.');
 
   const idx = session.skinsIndex || 0;
@@ -984,8 +984,8 @@ async function confirmRemoveSkin(ctx, skinId) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
-  const result = takeSkinFromUser(session.targetUserId, skinId);
+  const player = (await getUserById(session.targetUserId));
+  const result = (await takeSkinFromUser(session.targetUserId, skinId));
   if (result.success) {
     await safeAnswer(ctx, '✅ Скин забран');
     // После удаления показываем обновлённый список (с индекса 0)
@@ -1005,8 +1005,8 @@ async function showSkinAddMenu(ctx, page = 0) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
-  const allSkins = getAllSkinsWithOwnershipPm(player.id);
+  const player = (await getUserById(session.targetUserId));
+  const allSkins = (await getAllSkinsWithOwnershipPm(player.id));
   // Показываем только те, которых нет
   const available = allSkins.filter(s => !s.owned);
 
@@ -1069,11 +1069,11 @@ async function addSkinToPlayer(ctx, skinId) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
-  const skin = getSkinById(skinId);
+  const player = (await getUserById(session.targetUserId));
+  const skin = (await getSkinById(skinId));
   if (!skin) return safeAnswer(ctx, '❌ Скин не найден.');
 
-  const result = giveSkinToUser(session.targetUserId, skinId);
+  const result = (await giveSkinToUser(session.targetUserId, skinId));
   if (result.success) {
     await safeAnswer(ctx, `✅ Скин "${skin.name}" добавлен (SN: ${result.serial})`);
     // Возвращаемся к списку скинов игрока
@@ -1093,9 +1093,9 @@ async function showStatusesManage(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   const userStatuses = await getUserStatuses(player.id);
-  const allStatuses = getAllStatuses();
+  const allStatuses = (await getAllStatuses());
 
   let text = `🏷 <b>Статусы игрока</b> ${truncate(player.username)}\n\n`;
   text += `<b>Текущие статусы:</b>\n`;
@@ -1123,9 +1123,9 @@ async function showStatusAddMenu(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   const userStatuses = await getUserStatuses(player.id);
-  const allStatuses = getAllStatuses();
+  const allStatuses = (await getAllStatuses());
   const available = allStatuses.filter(s => !userStatuses.includes(s.name));
 
   let text = `🏷 <b>Добавить статус</b>\n👤 Игрок: <b>${truncate(player.username)}</b>\n\nВыберите статус:\n`;
@@ -1149,7 +1149,7 @@ async function addStatusToPlayer(ctx, statusId) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const result = updateUserStatus(session.targetUserId, statusId);
+  const result = (await updateUserStatus(session.targetUserId, statusId));
   if (result.success) {
     await safeAnswer(ctx, '✅ Статус добавлен');
   } else {
@@ -1163,7 +1163,7 @@ async function removeStatusFromPlayer(ctx, statusId) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const result = removeUserStatus(session.targetUserId, statusId);
+  const result = (await removeUserStatus(session.targetUserId, statusId));
   if (result.success) {
     await safeAnswer(ctx, '✅ Статус удалён');
   } else {
@@ -1180,8 +1180,8 @@ async function showPrefixesManage(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
-  const data = getUserPrefixesDetailedPm(player.id);
+  const player = (await getUserById(session.targetUserId));
+  const data = (await getUserPrefixesDetailedPm(player.id));
 
   let text = `🔤 <b>Префиксы игрока</b> ${truncate(player.username)}\n\n`;
   text += `<b>Обычные:</b>\n`;
@@ -1209,10 +1209,10 @@ async function showPrefixAddMenu(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
-  const data = getUserPrefixesDetailedPm(player.id);
+  const player = (await getUserById(session.targetUserId));
+  const data = (await getUserPrefixesDetailedPm(player.id));
   const ownedIds = new Set(data.regular.map(p => p.id));
-  const allPrefixes = getAllPrefixes();
+  const allPrefixes = (await getAllPrefixes());
   const available = allPrefixes.filter(p => !ownedIds.has(p.id));
 
   let text = `🔤 <b>Добавить префикс</b>\n👤 Игрок: <b>${truncate(player.username)}</b>\n\nВыберите префикс:\n`;
@@ -1236,7 +1236,7 @@ async function addPrefixToPlayer(ctx, prefixId) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const result = addPrefixToUser(session.targetUserId, prefixId);
+  const result = (await addPrefixToUser(session.targetUserId, prefixId));
   await safeAnswer(ctx, result ? '✅ Префикс добавлен' : '❌ Ошибка');
   await showPrefixesManage(ctx);
 }
@@ -1246,7 +1246,7 @@ async function removePrefixFromPlayer(ctx, prefixId) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const result = removePrefixFromUser(session.targetUserId, prefixId);
+  const result = (await removePrefixFromUser(session.targetUserId, prefixId));
   await safeAnswer(ctx, result ? '✅ Префикс удалён' : '❌ Ошибка');
   await showPrefixesManage(ctx);
 }
@@ -1259,14 +1259,14 @@ async function showModeration(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
-  const banned = isUserBanned(player.id);
+  const player = (await getUserById(session.targetUserId));
+  const banned = (await isUserBanned(player.id));
 
   let text = `🛡 <b>Модерация</b>\n👤 Игрок: <b>${truncate(player.username)}</b>\n\n`;
 
   // Бан
   if (banned) {
-    const banInfo = getBlacklistEntry(player.id);
+    const banInfo = (await getBlacklistEntry(player.id));
     const reason = banInfo?.reason || 'Не указана';
     let untilText = 'Навсегда';
     if (banInfo?.banned_until) {
@@ -1285,7 +1285,7 @@ async function showModeration(ctx) {
   }
 
   // Муты
-  const mutes = getUserMutesPm(player.id);
+  const mutes = (await getUserMutesPm(player.id));
   if (mutes.length > 0) {
     text += `🔇 <b>Муты (${mutes.length}):</b>\n`;
     for (const m of mutes) {
@@ -1339,8 +1339,8 @@ async function doUnban(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
-  removeFromBlacklist(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
+  (await removeFromBlacklist(session.targetUserId));
 
   try {
     await ctx.telegram.sendMessage(session.targetUserId,
@@ -1387,8 +1387,8 @@ async function showUnmuteMenu(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
-  const mutes = getUserMutesPm(player.id);
+  const player = (await getUserById(session.targetUserId));
+  const mutes = (await getUserMutesPm(player.id));
 
   if (mutes.length === 0) {
     await safeEditOrReply(
@@ -1420,8 +1420,8 @@ async function doUnmute(ctx, chatId) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
-  removeMute(session.targetUserId, chatId);
+  const player = (await getUserById(session.targetUserId));
+  (await removeMute(session.targetUserId, chatId));
 
   // Восстанавливаем права
   try {
@@ -1467,7 +1467,7 @@ async function showResetConfirm(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
   const keyboard = Markup.inlineKeyboard([
@@ -1494,10 +1494,10 @@ async function doReset(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
-  const result = resetAccount(player.id);
+  const result = (await resetAccount(player.id));
   if (result.success) {
     await safeEditOrReply(
       ctx,
@@ -1525,7 +1525,7 @@ async function showDeleteConfirm(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
   const keyboard = Markup.inlineKeyboard([
@@ -1553,10 +1553,10 @@ async function doDelete(ctx) {
   const session = getSession(adminId);
   if (!session?.targetUserId) return safeAnswer(ctx, '❌ Сначала найдите игрока.');
 
-  const player = getUserById(session.targetUserId);
+  const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
-  const result = deleteUserAccount(player.id);
+  const result = (await deleteUserAccount(player.id));
   if (result.success) {
     clearSession(adminId);
     await safeEditOrReply(

@@ -57,14 +57,14 @@ async function handleMySkins(ctx) {
       const userId = ctx.from.id.toString();
 
       // Получаем или создаем состояние сессии
-      let session = getSkinShopSession(userId);
+      let session = (await getSkinShopSession(userId));
 
       if (!session.mySkinsState) {
           session.mySkinsState = { initiator: userId, currentSkinIndex: 0 };
       }
 
       // Получаем все скины пользователя с их уникальными серийными номерами
-      const userSkins = getUserSkinsWithSerials(userId);
+      const userSkins = (await getUserSkinsWithSerials(userId));
 
       if (!userSkins || userSkins.length === 0) {
           ctx.answerCbQuery('У вас пока нет доступных скинов.', { show_alert: true });
@@ -72,7 +72,7 @@ async function handleMySkins(ctx) {
       }
 
       session.mySkinsState.currentSkinIndex = 0; // Сбрасываем индекс на начало
-      saveSkinShopSession(userId, session);
+      (await saveSkinShopSession(userId, session));
 
       const skin = userSkins[session.mySkinsState.currentSkinIndex];
       const selectedSkinId = await getSelectedSkin(userId); // Получаем ID выбранного скина
@@ -114,7 +114,7 @@ async function handleMySkinsNavigation(ctx) {
     const userId = ctx.from.id.toString();
 
     // Получаем сессию
-    let session = getSkinShopSession(userId);
+    let session = (await getSkinShopSession(userId));
 
     if (!session || !session.mySkinsState || session.mySkinsState.initiator !== userId) {
       return ctx.answerCbQuery('Это меню создано другим пользователем или устарело.', { show_alert: true });
@@ -126,7 +126,7 @@ async function handleMySkinsNavigation(ctx) {
       return ctx.answerCbQuery('Произошла ошибка при навигации.');
     }
 
-    const userSkins = getUserSkinsWithSerials(userId);
+    const userSkins = (await getUserSkinsWithSerials(userId));
 
     if (!userSkins || userSkins.length === 0) {
       return ctx.answerCbQuery('У вас пока нет доступных скинов.');
@@ -140,7 +140,7 @@ async function handleMySkinsNavigation(ctx) {
     }
 
     session.mySkinsState.currentSkinIndex = newIndex;
-    saveSkinShopSession(userId, session);
+    (await saveSkinShopSession(userId, session));
 
     const skin = userSkins[newIndex];
     const selectedSkinId = await getSelectedSkin(userId); // Получаем ID выбранного скина
@@ -179,7 +179,7 @@ async function handleApplySkin(ctx) {
     const userId = ctx.from.id.toString();
 
     // Получаем сессию
-    let session = getSkinShopSession(userId);
+    let session = (await getSkinShopSession(userId));
 
     if (!session || !session.mySkinsState || session.mySkinsState.initiator !== userId) {
       ctx.answerCbQuery('Это меню создано другим пользователем или устарело.', { show_alert: true });
@@ -193,7 +193,7 @@ async function handleApplySkin(ctx) {
       return ctx.reply('Произошла ошибка при применении.');
     }
 
-    const userSkins = getUserSkinsWithSerials(userId);
+    const userSkins = (await getUserSkinsWithSerials(userId));
 
     if (!userSkins || userSkins.length === 0) {
       return ctx.answerCbQuery('У вас пока нет доступных скинов.');

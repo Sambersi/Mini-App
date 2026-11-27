@@ -7,6 +7,7 @@ const {createImportSnapshot,validateRunId}=require('./stageTwo');
 const {legacyCeilings,projectFinance}=require('./projectFinance');
 const {projectPlayerState}=require('./projectPlayerState');
 const {projectDomains}=require('./projectDomains');
+const {projectPlayerCollections}=require('./projectPlayerCollections');
 async function runFinanceImport({rootDir,env=process.env,log=console.log}) {
   const runId=validateRunId(env.MYSQL_IMPORT_RUN_ID);
   const snapshot=await createImportSnapshot(rootDir,runId);
@@ -26,6 +27,7 @@ async function runFinanceImport({rootDir,env=process.env,log=console.log}) {
     const result=await projectFinance(connection,source.db,runId,ceilings);
     result.playerState=await projectPlayerState(connection,source.db,runId);
     result.domains=await projectDomains(connection,source.db,runId,event=>log('[DOMAIN IMPORT] '+JSON.stringify(event)));
+    result.collections=await projectPlayerCollections(connection,source.db,runId);
     fs.writeFileSync(path.join(snapshot.folder,'finance-report.json'),JSON.stringify(result,null,2));
     log('[FINANCE IMPORT] VERIFIED '+JSON.stringify({...result,domains:{tables:result.domains.tables,rows:result.domains.rows}}));
     return result;

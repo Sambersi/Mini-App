@@ -300,11 +300,11 @@ async function generatePromoTestImage(templateKey = 'default', sample = {}) {
 }
 
 // Удаление изображений промокодов, которых больше нет в БД
-function cleanupOrphanPromoImages() {
+async function cleanupOrphanPromoImages() {
   try {
     const { getAllPromos } = require('../db');
     if (!fs.existsSync(promoImagesDir)) return 0;
-    const aliveNames = new Set(getAllPromos().map(p => p.name));
+    const aliveNames = new Set((await getAllPromos()).map(p => p.name));
     let deleted = 0;
     for (const file of fs.readdirSync(promoImagesDir)) {
       if (!file.endsWith('_promo.png')) continue; // трогаем только файлы нашего формата

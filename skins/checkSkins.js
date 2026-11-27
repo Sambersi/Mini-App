@@ -29,7 +29,7 @@ async function checkSkins(ctx) {
 
     if (args.length === 1) {
       // Если команда вызвана без параметров, выводим список всех скинов
-      const allSkins = getAllSkins(); // Получаем все скины из базы данных
+      const allSkins = (await getAllSkins()); // Получаем все скины из базы данных
 
       if (allSkins.length === 0) {
         return ctx.reply('📦 В проекте нет доступных скинов.');
@@ -55,7 +55,7 @@ async function checkSkins(ctx) {
       }
 
       // Получаем список скинов пользователя
-      const skins = getUserSkinsByNumericId(numericId);
+      const skins = (await getUserSkinsByNumericId(numericId));
 
       if (skins.length === 0) {
         return ctx.reply(`📦 У пользователя с numeric_id ${numericId} нет скинов.`);
@@ -143,19 +143,19 @@ async function giveSkinHandler(ctx) {
   const skinId = parseInt(args[2], 10);
 
   // Проверяем существование пользователя
-  const user = getUserByAnyId(userId);
+  const user = (await getUserByAnyId(userId));
   if (!user) {
     return ctx.reply('Пользователь не найден.');
   }
 
   // Проверяем существование скина
-  const skin = getSkinById(skinId);
+  const skin = (await getSkinById(skinId));
   if (!skin) {
     return ctx.reply('Скин не найден.');
   }
 
   // Выдаем скин пользователю
-  const result = giveSkinToUser(userId, skinId);
+  const result = (await giveSkinToUser(userId, skinId));
   if (result.success) {
     return ctx.reply(`Скин "${escapeHtml(skin.name)}" успешно выдан пользователю ${user.username}.`);
   } else {
@@ -174,19 +174,19 @@ async function takeSkinHandler(ctx) {
   const skinId = parseInt(args[2], 10);
 
   // Проверяем существование пользователя
-  const user = getUserByAnyId(userId);
+  const user = (await getUserByAnyId(userId));
   if (!user) {
     return ctx.reply('Пользователь не найден.');
   }
 
   // Проверяем существование скина
-  const skin = getSkinById(skinId);
+  const skin = (await getSkinById(skinId));
   if (!skin) {
     return ctx.reply('Скин не найден.');
   }
 
   // Забираем скин у пользователя
-  const result = takeSkinFromUser(userId, skinId);
+  const result = (await takeSkinFromUser(userId, skinId));
   if (result.success) {
     return ctx.reply(`Скин "${escapeHtml(skin.name)}" успешно забран у пользователя ${user.username}.`);
   } else {

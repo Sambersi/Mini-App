@@ -18,12 +18,12 @@ async function showSecretGiftMenu(ctx) {
     return ctx.reply('❌ Произошла ошибка. Попробуйте позже.');
   }
 
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) {
     return ctx.reply('❌ Вы не зарегистрированы. Используйте /start.');
   }
 
-  const secretGiftsCount = getSecretGifts(userId);
+  const secretGiftsCount = (await getSecretGifts(userId));
 
   let caption = `🎁 <b>Секретные Пакетики</b>\n\n`;
   caption += `У вас есть: <b>${secretGiftsCount}</b> 🎁 пакетиков.\n\n`;
@@ -83,21 +83,21 @@ async function openSecretGift(ctx) {
     }
   
     // Проверяем наличие пакетика
-    const secretGiftsCount = getSecretGifts(userId);
+    const secretGiftsCount = (await getSecretGifts(userId));
     if (secretGiftsCount <= 0) {
       console.warn(`[SECRET GIFT] Попытка открытия пакетика у пользователя ${userId}, но пакетиков нет (${secretGiftsCount})`);
       return ctx.answerCbQuery('❌ У вас нет пакетиков для открытия.');
     }
   
     // Списываем пакетик
-    const takeResult = takeSecretGift(userId, 1);
+    const takeResult = (await takeSecretGift(userId, 1));
     if (!takeResult.success) {
       console.error(`[SECRET GIFT] Ошибка списания пакетика у ${userId}: ${takeResult.message}`);
       return ctx.answerCbQuery(`❌ Ошибка: ${takeResult.message}`);
     }
   
     // Генерируем случайный скин (пока выбираем из существующих)
-    const allSkins = getAllSkins(); // Предполагаем, что getAllSkins() возвращает массив объектов скинов
+    const allSkins = (await getAllSkins()); // Предполагаем, что getAllSkins() возвращает массив объектов скинов
     if (!allSkins || allSkins.length === 0) {
       console.error(`[SECRET GIFT] Не найдено ни одного скина в базе.`);
       // Возвращаемся в меню
@@ -108,7 +108,7 @@ async function openSecretGift(ctx) {
     const randomSkin = allSkins[Math.floor(Math.random() * allSkins.length)];
   
     // Выдаем скин пользователю
-    const skinResult = addSkinToUser(userId, randomSkin.id); // Предполагаем, что addSkinToUser() принимает userId и skinId
+    const skinResult = (await addSkinToUser(userId, randomSkin.id)); // Предполагаем, что addSkinToUser() принимает userId и skinId
     if (!skinResult.success) {
       console.error(`[SECRET GIFT] Ошибка выдачи скина "${randomSkin.title}" пользователю ${userId}: ${skinResult.message}`);
       // Возвращаемся в меню
@@ -117,7 +117,7 @@ async function openSecretGift(ctx) {
     }
   
     // Подготавливаем сообщение с результатом
-    const updatedSecretGiftsCount = getSecretGifts(userId);
+    const updatedSecretGiftsCount = (await getSecretGifts(userId));
     let resultCaption = `🎉 <b>ПОЗДРАВЛЯЕМ!</b>\n\n🎁 Вы открыли пакетик и получили:\n<b>${randomSkin.title}</b>\n\n`;
     resultCaption += `📦 У вас осталось: <b>${updatedSecretGiftsCount}</b> 🎁 пакетиков.`;
   

@@ -51,7 +51,7 @@ function parseAmountWithSuffix(amountInput, availableBalance) {
 async function performCardTopUp(ctx, userId, amountInput) {
   try {
       // Получаем текущий основной баланс пользователя
-      const userBalance = getUserBalance(userId, 'PF');
+      const userBalance = (await getUserBalance(userId, 'PF'));
 
       // Парсим сумму с учетом суффиксов "к" или ключевых слов "всё"/"все"
       const parsedAmount = parseAmountWithSuffix(amountInput, userBalance);
@@ -62,16 +62,16 @@ async function performCardTopUp(ctx, userId, amountInput) {
       }
 
       // Проверяем наличие карты у пользователя
-      if (!hasCard(userId)) {
+      if (!(await hasCard(userId))) {
           return ctx.reply('✖️ У вас нет зарегистрированной карты. Зарегистрируйте карту перед пополнением.');
       }
 
       // --- ИЗМЕНЕНИЕ: Получаем уровень и лимит карты пользователя ---
       const userAccountLevel = await getAccountLevel(userId);
-      const MAX_CARD_BALANCE_LIMIT = getCardLimitByAccountLevel(userAccountLevel); // Динамический лимит
+      const MAX_CARD_BALANCE_LIMIT = (await getCardLimitByAccountLevel(userAccountLevel)); // Динамический лимит
 
       // Проверяем лимит баланса карты
-      const currentCardBalance = getCardBalance(userId);
+      const currentCardBalance = (await getCardBalance(userId));
       const maxPossibleTopUp = MAX_CARD_BALANCE_LIMIT - currentCardBalance;
 
       if (maxPossibleTopUp <= 0) {
@@ -86,21 +86,21 @@ async function performCardTopUp(ctx, userId, amountInput) {
           // Снимаем средства с основного баланса
           // Предполагается, что deductCurrencyFromUser обновляет основной баланс напрямую
           // Если она использует updateMainBalance внутри, то лимит будет применен автоматически
-          const deductionResult = deductCurrencyFromUser(userId, 'PF', topUpAmount);
+          const deductionResult = (await deductCurrencyFromUser(userId, 'PF', topUpAmount));
           if (!deductionResult || deductionResult.success === false) { // Адаптируйте проверку возврата
                throw new Error(deductionResult?.message || 'Ошибка при списании средств с основного баланса.');
           }
 
           // Добавляем средства на баланс карты
-          const updateResult = updateCardBalance(userId, topUpAmount);
+          const updateResult = (await updateCardBalance(userId, topUpAmount));
           if (!updateResult) {
               throw new Error('Ошибка при зачислении средств на карту.');
           }
       });
 
       // Получаем обновленные балансы
-      const newCardBalance = getCardBalance(userId); // Новый баланс карты
-      const newMainBalance = getUserBalance(userId, 'PF'); // Новый основной баланс
+      const newCardBalance = (await getCardBalance(userId)); // Новый баланс карты
+      const newMainBalance = (await getUserBalance(userId, 'PF')); // Новый основной баланс
 
       // Формируем сообщение о результате операции
       const user = await getUserById(userId);
@@ -170,8 +170,8 @@ async function topUpHandler(ctx) {
   async function showTopUpInstruction(ctx) {
     try {
         const userId = ctx.from.id.toString();
-        const userBalance = getUserBalance(userId, 'PF'); // Получаем основной баланс
-        const cardBalance = getCardBalance(userId); // Получаем баланс карты
+        const userBalance = (await getUserBalance(userId, 'PF')); // Получаем основной баланс
+        const cardBalance = (await getCardBalance(userId)); // Получаем баланс карты
         
         // Формируем текст сообщения с балансом карты
         const messageText = `ℹ️ <b>Как использовать команду:</b>
@@ -199,7 +199,7 @@ async function topUpHandler(ctx) {
 async function showWithdrawInstruction(ctx) {
     try {
         const userId = ctx.from.id.toString();
-        const cardBalance = getCardBalance(userId); // Получаем баланс карты
+        const cardBalance = (await getCardBalance(userId)); // Получаем баланс карты
         
         // Формируем текст сообщения
         const messageText = `ℹ️ <b>Как использовать команду:</b>
@@ -226,7 +226,7 @@ async function showWithdrawInstruction(ctx) {
 async function handleTopUpAll(ctx) {
     try {
       const userId = ctx.from.id.toString();
-      const userBalance = getUserBalance(userId, 'PF'); // Получаем основной баланс
+      const userBalance = (await getUserBalance(userId, 'PF')); // Получаем основной баланс
   
       if (userBalance <= 0) {
         return ctx.reply('✖️ На вашем основном балансе недостаточно средств.');
@@ -245,7 +245,7 @@ async function handleTopUpAll(ctx) {
 async function performCardWithdrawal(ctx, userId, amountInput) {
   try {
       // Получаем текущие балансы
-      const cardBalance = getCardBalance(userId); // Баланс карты
+      const cardBalance = (await getCardBalance(userId)); // Баланс карты
 
       // Парсим сумму с учетом суффиксов "к" или ключевых слов "всё"/"все"
       const parsedAmount = parseAmountWithSuffix(amountInput, cardBalance);
@@ -264,7 +264,7 @@ async function performCardWithdrawal(ctx, userId, amountInput) {
       if (userAccountLevel >= 20) MAX_MAIN_BALANCE_LIMIT = 253000000; // Уровень 20
 
       // Получаем текущий основной баланс
-      const mainBalance = getUserBalance(userId, 'PF');
+      const mainBalance = (await getUserBalance(userId, 'PF'));
 
       // Проверяем лимит основного баланса
       const maxPossibleWithdrawal = MAX_MAIN_BALANCE_LIMIT - mainBalance;
@@ -279,21 +279,21 @@ async function performCardWithdrawal(ctx, userId, amountInput) {
       // Выполняем транзакцию
       await transaction(async () => {
           // Снимаем средства с баланса карты
-          const cardUpdateResult = updateCardBalance(userId, -withdrawalAmount);
+          const cardUpdateResult = (await updateCardBalance(userId, -withdrawalAmount));
           if (!cardUpdateResult) {
               throw new Error('Ошибка при списании средств с карты.');
           }
 
           // Добавляем средства на основной баланс
-          const mainUpdateResult = updateMainBalance(userId, withdrawalAmount);
+          const mainUpdateResult = (await updateMainBalance(userId, withdrawalAmount));
           if (!mainUpdateResult) {
               throw new Error('Ошибка при зачислении средств на основной баланс.');
           }
       });
 
       // Получаем обновленные балансы
-      const newCardBalance = getCardBalance(userId); // Новый баланс карты
-      const newMainBalance = getUserBalance(userId, 'PF'); // Новый основной баланс
+      const newCardBalance = (await getCardBalance(userId)); // Новый баланс карты
+      const newMainBalance = (await getUserBalance(userId, 'PF')); // Новый основной баланс
 
       // Формируем сообщение о результате операции
       const user = await getUserById(userId);
@@ -365,7 +365,7 @@ async function withdrawHandler(ctx) {
   async function handleWithdrawAll(ctx) {
     try {
       const userId = ctx.from.id.toString();
-      const cardBalance = getCardBalance(userId); // Получаем баланс карты
+      const cardBalance = (await getCardBalance(userId)); // Получаем баланс карты
   
       if (cardBalance <= 0) {
         return ctx.reply('✖️ На вашей карте недостаточно средств.');

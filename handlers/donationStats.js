@@ -1,3 +1,5 @@
+
+const { asyncArray: __asyncDbArray } = require("../src/utils/asyncArray");
 //donationStats.js
 const { getUserById, getTopDonatorsFromDatabase, isHyperlinkDisabled, getSelectedSkinFileName, getCardDetails } = require('../db');
 const { createCanvas, loadImage } = require('canvas');
@@ -362,7 +364,7 @@ async function getTopDonators(ctx) {
       const username = escapeMarkdown(user?.username || 'Неизвестный');
 
       // Проверяем состояние гиперссылки для текущего пользователя
-      const disableHyperlink = isHyperlinkDisabled(userId);
+      const disableHyperlink = (await isHyperlinkDisabled(userId));
       const userLink = createUserLink(userId, username, disableHyperlink);
 
       message += `⭐️ ${userLink}, топ донатеров:\n\n`;
@@ -371,14 +373,14 @@ async function getTopDonators(ctx) {
     }
 
     // Добавляем список топ-донатеров
-    topDonators.forEach((donator, index) => {
+    (await __asyncDbArray("forEach", topDonators, async (donator, index) => {
       const position = index === 9 ? '🔟' : `${index + 1}️⃣`; // 🔟 для 10-го места
       const userId = donator.id;
       const username = escapeMarkdown(donator.username || `User${userId}`);
       const stars = donator.total_donated_stars;
 
       // Проверяем состояние гиперссылки для каждого донатера
-      const disableHyperlink = isHyperlinkDisabled(userId);
+      const disableHyperlink = (await isHyperlinkDisabled(userId));
       const userLink = createUserLink(userId, username, disableHyperlink);
 
       // Если это пользователь, вызвавший команду, запоминаем его позицию и количество звезд
@@ -392,7 +394,7 @@ async function getTopDonators(ctx) {
 
       // Добавляем строку в сообщение
       message += `${position} ${userLink} — ${formattedStars}\n`;
-    });
+    }));
 
     // Если пользователь не входит в топ-10, добавляем его место в конце
     if (userPosition === null) {
@@ -408,7 +410,7 @@ async function getTopDonators(ctx) {
         const positionEmoji = numberToEmoji(userPosition);
 
         // Проверяем состояние гиперссылки для текущего пользователя
-        const disableHyperlink = isHyperlinkDisabled(callingUserId);
+        const disableHyperlink = (await isHyperlinkDisabled(callingUserId));
         const username = escapeMarkdown(ctx.from.username || ctx.from.first_name);
         const userLink = createUserLink(callingUserId, username, disableHyperlink);
 

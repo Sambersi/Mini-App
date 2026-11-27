@@ -1,3 +1,5 @@
+
+const { asyncArray: __asyncDbArray } = require("../../src/utils/asyncArray");
 //candy.js
 
 const { getUserById, giveCandy, takeCandy } = require('../../db');
@@ -52,7 +54,7 @@ async function candyHandler(ctx) {
 async function candyTopHandler(ctx) {
   try {
     const { getAllUsers, isHyperlinkDisabled } = require('../../db');
-    const users = getAllUsers();
+    const users = (await getAllUsers());
 
     const topUsers = users
       .filter(u => (u.candy || 0) > 0)
@@ -64,15 +66,15 @@ async function candyTopHandler(ctx) {
     }
 
     let topText = '🏆 <b>Топ-10 по конфетам:</b>\n\n';
-    topUsers.forEach((u, i) => {
+    (await __asyncDbArray("forEach", topUsers, async (u, i) => {
       const username = u.username || 'Неизвестный';
       const candy = u.candy || 0;
-      const disableHyperlink = isHyperlinkDisabled(u.id);
+      const disableHyperlink = (await isHyperlinkDisabled(u.id));
       const userLink = disableHyperlink
         ? username
         : `<a href="tg://user?id=${u.id}">${username}</a>`;
       topText += `${i + 1}. ${userLink} — ${candy} 🍬\n`;
-    });
+    }));
 
     // === ЕДИНАЯ КЛАВИАТУРА С ТРЕМЯ КНОПКАМИ ===
     const keyboard = {

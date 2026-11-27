@@ -73,11 +73,11 @@ async function performTransfer(ctx, sender, recipient, amountInput) {
       const isAdminSender = await isAdmin(ctx); // Используем ctx для проверки прав
 
       // Парсим сумму с учётом суффиксов "к" или ключевых слов "всё"/"все"
-      const parsedAmount = parseAmountWithSuffix(amountInput, getCardBalance(sender.id));
+      const parsedAmount = parseAmountWithSuffix(amountInput, (await getCardBalance(sender.id)));
 
       // Проверяем суммарный баланс отправителя (пропускаем для администраторов)
       if (!isAdminSender) {
-          const senderTotalBalance = getTotalBalance(sender.id);
+          const senderTotalBalance = (await getTotalBalance(sender.id));
 
           // Устанавливаем лимит в зависимости от категории пользователя
           const SPECIAL_USER_IDS = ['1703993971']; // Пользователи с лимитом 60M
@@ -107,12 +107,12 @@ async function performTransfer(ctx, sender, recipient, amountInput) {
       }
 
       // Проверка наличия карты у отправителя
-      if (!hasCard(sender.id)) {
+      if (!(await hasCard(sender.id))) {
           return ctx.reply('✖️ У вас нет зарегистрированной карты. Зарегистрируйте карту перед переводом.');
       }
 
       // Проверка наличия средств на карте отправителя
-      const senderCardBalance = getCardBalance(sender.id);
+      const senderCardBalance = (await getCardBalance(sender.id));
       if (senderCardBalance < parsedAmount) {
           const message = `✖️ На вашей карте недостаточно средств для перевода.
 💰 Требуется: ${parsedAmount.toLocaleString('ru-RU')} PF
@@ -139,16 +139,16 @@ async function performTransfer(ctx, sender, recipient, amountInput) {
       }
 
       // Проверка наличия карты у получателя
-      if (!hasCard(recipient.id)) {
+      if (!(await hasCard(recipient.id))) {
           return ctx.reply('✖️ Перевод прерван. У получателя нет зарегистрированной карты.');
       }
 
       // --- ИЗМЕНЕНИЕ: Получаем уровень и лимит карты получателя ---
       const recipientCardLevel = await getAccountLevel(recipient.id);
-      const MAX_CARD_BALANCE_LIMIT = getCardLimitByAccountLevel(recipientCardLevel); // Динамический лимит
+      const MAX_CARD_BALANCE_LIMIT = (await getCardLimitByAccountLevel(recipientCardLevel)); // Динамический лимит
 
       // Проверка наличия места на карте получателя (пропускаем для администраторов)
-      const recipientCardBalance = getCardBalance(recipient.id);
+      const recipientCardBalance = (await getCardBalance(recipient.id));
       let maxPossibleTransfer = MAX_CARD_BALANCE_LIMIT - recipientCardBalance;
 
       if (!isAdminSender && maxPossibleTransfer <= 0) {
@@ -167,20 +167,20 @@ async function performTransfer(ctx, sender, recipient, amountInput) {
       // Выполняем перевод
       await transaction(async () => {
           // Снимаем средства с карты отправителя
-          const senderUpdateResult = updateCardBalance(sender.id, -transferAmount);
+          const senderUpdateResult = (await updateCardBalance(sender.id, -transferAmount));
           if (!senderUpdateResult) {
               throw new Error('Не удалось списать средства с карты отправителя.');
           }
 
           // Добавляем средства на карту получателя
-          const recipientUpdateResult = updateCardBalance(recipient.id, transferAmount);
+          const recipientUpdateResult = (await updateCardBalance(recipient.id, transferAmount));
           if (!recipientUpdateResult) {
               throw new Error('Не удалось зачислить средства на карту получателя.');
           }
       });
 
       // === НОВОЕ: Логирование в finance_log ===
-      logFinance({
+      (await logFinance({
         type: 'transfer',
         actorUserId: sender.id,           // Telegram ID отправителя
         targetUserId: recipient.id,       // Telegram ID получателя
@@ -193,7 +193,7 @@ async function performTransfer(ctx, sender, recipient, amountInput) {
             senderUsername: sender.username,
             recipientUsername: recipient.username
         }
-    });
+    }));
       // =======================================
 
       // Создаем гиперссылки для отправителя и получателя
@@ -214,7 +214,7 @@ async function performTransfer(ctx, sender, recipient, amountInput) {
 
       // Уведомляем получателя
       // --- ИЗМЕНЕНИЕ: Получаем обновленный баланс получателя ---
-      const updatedRecipientCardBalance = getCardBalance(recipient.id);
+      const updatedRecipientCardBalance = (await getCardBalance(recipient.id));
       const userMessage = `
 <b>📮 Новый перевод на карту!</b>
 \n📨 Вам было переведено <b>${transferAmount.toLocaleString('ru-RU')} PF</b>, игроком ${senderLink}!
@@ -294,13 +294,13 @@ async function sendHandler(ctx) {
       }
   
       // Получаем отправителя
-      const sender = getUserById(ctx.from.id.toString());
+      const sender = (await getUserById(ctx.from.id.toString()));
       if (!sender) {
         return ctx.reply('✖️ Не удалось найти ваш профиль.');
       }
   
       // Проверяем наличие карты у отправителя
-      if (!hasCard(sender.id)) {
+      if (!(await hasCard(sender.id))) {
         return ctx.reply('✖️ У вас нет зарегистрированной карты. Зарегистрируйте карту перед переводом.');
       }
 
@@ -312,7 +312,7 @@ async function sendHandler(ctx) {
       // Проверяем, если указано "все" или "всё"
       let amount;
       if (amountInput === 'все' || amountInput === 'всё') {
-        const senderCardBalance = getCardBalance(sender.id);
+        const senderCardBalance = (await getCardBalance(sender.id));
         if (senderCardBalance <= 0) {
           return ctx.reply('✖️ На вашей карте недостаточно средств для перевода.');
         }
@@ -332,12 +332,12 @@ async function sendHandler(ctx) {
       if (isReply) {
         // Поиск по ответу на сообщение
         const repliedUserId = ctx.message.reply_to_message.from.id.toString();
-        recipient = getUserById(repliedUserId);
+        recipient = (await getUserById(repliedUserId));
       } else {
         // Поиск по numeric_id или card_number
         if (/^\d+$/.test(identifier)) {
           // Поиск по numeric_id
-          recipient = getUserByNumericId(parseInt(identifier, 10));
+          recipient = (await getUserByNumericId(parseInt(identifier, 10)));
         } else if (/^\d{16}$/.test(identifier)) {
           // Поиск по card_number
           recipient = getUserByCardNumber(identifier);

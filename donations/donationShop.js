@@ -11,8 +11,8 @@ const path = require('path');
 const fs = require('fs');
 
 // Функция для получения текущего баланса DF пользователя
-function getUserDFBalance(userId) {
-  const user = db.getUserById(userId);
+async function getUserDFBalance(userId) {
+  const user = (await db.getUserById(userId));
   return user ? user.df_balance || 0 : 0;
 }
 
@@ -46,7 +46,7 @@ async function handleDonationCommand(ctx) {
 async function showDonationMenu(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    const dfBalance = getUserDFBalance(userId);
+    const dfBalance = (await getUserDFBalance(userId));
 
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('💸 Пополнить баланс', 'donate_balance')],
@@ -74,7 +74,7 @@ const menuStates = {};
 async function showDonationShopMenu(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    const dfBalance = getUserDFBalance(userId);
+    const dfBalance = (await getUserDFBalance(userId));
 
 
     const keyboard = Markup.inlineKeyboard([
@@ -92,7 +92,7 @@ async function showDonationShopMenu(ctx) {
       `🛒 <b>DONATE SHOP</b>\n\n❕ Все покупки производятся через ДОНАТ валюту!\n\n<b>Баланс DF:</b> ${dfBalance.toLocaleString('ru-RU')}`,
       keyboard
     );
-    
+
     // Сохраняем состояние меню
     menuStates[userId] = {
       messageId: message.message_id,
@@ -108,24 +108,24 @@ async function showDonationShopMenu(ctx) {
 async function handleBuyPF(ctx, amount, costInDF) {
   try {
     const userId = ctx.from.id.toString();
-    const user = db.getUserById(userId);
+    const user = (await db.getUserById(userId));
 
     if (!user) {
       return ctx.reply('❌ Не удалось найти ваш профиль.');
     }
 
-    const balances = getUserBalances(userId);
+    const balances = (await getUserBalances(userId));
 
     if (balances.dfBalance < costInDF) {
       return ctx.reply(`❌ У вас недостаточно DF для покупки ${amount} PF.`);
     }
 
     // Обновляем балансы пользователя
-    db.updateUserField(userId, 'balance', amount); 
-    db.updateUserField(userId, 'df_balance', -costInDF); 
+    (await db.updateUserField(userId, 'balance', amount));
+    (await db.updateUserField(userId, 'df_balance', -costInDF));
 
     // Получаем новые балансы
-    const newBalances = getUserBalances(userId);
+    const newBalances = (await getUserBalances(userId));
 
     // Редактируем меню с обновленными балансами
     if (menuStates[userId]) {
@@ -171,7 +171,7 @@ async function handleBuyPF(ctx, amount, costInDF) {
 async function showCurrencyPFMenu(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    const balances = getUserBalances(userId); // Получаем все балансы
+    const balances = (await getUserBalances(userId)); // Получаем все балансы
 
 
     const keyboard = Markup.inlineKeyboard([
@@ -184,7 +184,7 @@ async function showCurrencyPFMenu(ctx) {
       [Markup.button.callback('❔ Зачем нужны PF?', 'pf_info')],
       [Markup.button.callback('⬅️ Назад', 'donate_currency_pf_back')], // Кнопка "Назад"]
     ]);
-    
+
     const message = `🪙 <b>Покупка валюты (PF)</b>\n` +
       `Выберите сумму для покупки:\n` +
       `<b>Баланс DF:</b> ${balances.dfBalance.toLocaleString('ru-RU')}\n` +
@@ -230,7 +230,7 @@ const statusMessages = {
 
 • Доступ к админ-чату
 • Доступ к админ командам
-• Эксклюзивные бонусы 
+• Эксклюзивные бонусы
 • Уникальный скин на карточку
 • Возможность просмотра ID и профиль игроков
 • Возможность зарабатывать DF, отвечая на репорты
@@ -239,7 +239,7 @@ const statusMessages = {
 • Лимит контейнеров повышен до 5ОО
 • Безлимит на открытие контейнеров за раз
 
-💬 За получением ссылки на ADMIN чат - ${process.env.ADMIN_CHAT_LINK || 'Ссылка временно недоступна'} 
+💬 За получением ссылки на ADMIN чат - ${process.env.ADMIN_CHAT_LINK || 'Ссылка временно недоступна'}
 `.trim(),
 
   "DIAMOND": `
@@ -250,9 +250,9 @@ const statusMessages = {
 • Скидка 50% на активацию DOUBLE PLUS и DICE
 • Эксклюзивный скин на карточку
 • Возможность активации эксклюзивных промо-кодов
-• Приоритет в репорте 
+• Приоритет в репорте
 • Повышенный бонус до 1500 PF
-• Лимит контейнеров повышен до 3ОО 
+• Лимит контейнеров повышен до 3ОО
 • Возможность открывать до 5О контейнеров за раз!
 `.trim(),
 
@@ -264,7 +264,7 @@ const statusMessages = {
 • Скидка 25% на активацию DOUBLE PLUS и DICE
 • Эксклюзивный скин на карточку
 • Возможность активации эксклюзивных промо-кодов
-• Приоритет в репорте 
+• Приоритет в репорте
 • Повышенный бонус до 750 PF
 • Лимит контейнеров повышен до 250
 `.trim(),
@@ -276,7 +276,7 @@ const statusMessages = {
 • Скидка 10% на активацию DOUBLE PLUS + DICE
 • Эксклюзивный скин на карточку
 • Возможность активации эксклюзивных промо-кодов
-• Приоритет в репорте 
+• Приоритет в репорте
 • Повышенный бонус до 500 PF
 • Лимит контейнеров повышен до 2ОО
 `.trim(),
@@ -286,7 +286,7 @@ const statusMessages = {
 async function showStatusesMenu(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    const dfBalance = getUserDFBalance(userId);
+    const dfBalance = (await getUserDFBalance(userId));
 
     // Получаем текущие статусы пользователя из БД
     const userStatusNames = await getUserStatuses(userId); // Возвращает массив названий статусов
@@ -411,12 +411,12 @@ async function handleStatusInfo(ctx, statusName) {
 async function handleBuyStatus(ctx, statusName, costInDF, statusId) {
   try {
     const userId = ctx.from.id.toString();
-    const user = db.getUserById(userId);
-    
+    const user = (await db.getUserById(userId));
+
     if (!user) {
       return ctx.reply('❌ Не удалось найти ваш профиль.');
     }
-    
+
     const userDFBalance = user.df_balance || 0;
     const userStatusNames = await getUserStatuses(userId);
 
@@ -437,7 +437,7 @@ async function handleBuyStatus(ctx, statusName, costInDF, statusId) {
     }
 
     // Обновляем баланс DF пользователя
-    db.updateUserField(userId, 'df_balance', -costInDF);
+    (await db.updateUserField(userId, 'df_balance', -costInDF));
 
     // Начисление скина
     const skinNameMap = {
@@ -446,28 +446,28 @@ async function handleBuyStatus(ctx, statusName, costInDF, statusId) {
       'PLATINUM': 'PLATINUM CARD',
       'GOLD': 'GOLD CARD'
     };
-    
+
     const skinName = skinNameMap[statusName];
     let skinMessageSent = false; // Флаг отправки сообщения о скине
-    
+
     if (skinName) {
-      const skinId = getSkinIdByName(skinName);
+      const skinId = (await getSkinIdByName(skinName));
       if (skinId) {
-        const userSkins = getUserAvailableSkins(userId);
+        const userSkins = (await getUserAvailableSkins(userId));
         if (!userSkins.includes(skinId)) {
           const addResult = await addSkinToUser(userId, skinId);
           if (addResult.success) {
-            const skin = getCardTemplateById(skinId);
+            const skin = (await getCardTemplateById(skinId));
             if (skin && skin.file_name) {
               const imagePath = path.resolve(__dirname, './images', skin.file_name);
-              
+
               const skinMessage = `
                 🎉 <b>Вы получили новый скин!</b>
                 🎁 За получение статуса "<b>${statusName}</b>" вам был выдан уникальный скин:
                 🎨 "${skin.name}"
                 Этот скин не доступен в магазине и принадлежит только пользователям с вашим статусом!
               `.trim();
-              
+
               if (fs.existsSync(imagePath)) {
                 try {
                   await ctx.telegram.sendPhoto(userId, { source: imagePath }, {
@@ -502,12 +502,12 @@ async function handleBuyStatus(ctx, statusName, costInDF, statusId) {
     const statusMessages = {
       "Администратор": `
   🚨 Вы получили статус: 👮‍♂️ Администратор 🚨
-          
+
   🎉 Поздравляем! Теперь у вас есть особые привилегии:
-  
+
   • Доступ к админ-чату
   • Доступ к админ командам
-  • Эксклюзивные бонусы 
+  • Эксклюзивные бонусы
   • Уникальный скин на карточку
   • Возможность просмотра ID и профиль игроков - /id и /prof
   • Возможность зарабатывать DF, отвечая на репорты
@@ -516,52 +516,52 @@ async function handleBuyStatus(ctx, statusName, costInDF, statusId) {
   • Повышенный бонус до 2000 PF
   • Лимит контейнеров повышен до 5ОО
   • Безлимит на открытие контейнеров за раз
-  
-  💬 За получением ссылки на ADMIN чат - ${process.env.ADMIN_CHAT_LINK || 'Ссылка временно недоступна'} 
-  
+
+  💬 За получением ссылки на ADMIN чат - ${process.env.ADMIN_CHAT_LINK || 'Ссылка временно недоступна'}
+
       `.trim(),
-      
+
       "DIAMOND": `
   💎 Вы получили статус: DIAMOND 💎
-  
+
   🎉 Поздравляем! Теперь у вас есть особые привилегии:
-  
+
   • Возможность просмотра профилей игроков - /prof
   • Возможность просмотра ID игроков - /id
   • Скидка 35% на активацию DOUBLE PLUS и DICE
   • Эксклюзивный скин на карточку
   • Возможность активации эксклюзивных промо-кодов
-  • Приоритет в репорте 
+  • Приоритет в репорте
   • Повышенный бонус до 1500 PF
-  • Лимит контейнеров повышен до 3ОО 
+  • Лимит контейнеров повышен до 3ОО
   • Возможность открывать до 5О контейнеров за раз!
       `.trim(),
-      
+
       "PLATINUM": `
-  ✨ Вы получили статус: PLATINUM 
-  
+  ✨ Вы получили статус: PLATINUM
+
   🎉 Поздравляем! Теперь у вас есть особые привилегии:
-  
+
   • Возможность просмотра профилей игроков - /prof
   • Возможность просмотра ID игроков - /id
   • Скидка 25% на активацию DOUBLE PLUS и DICE
   • Эксклюзивный скин на карточку
   • Возможность активации эксклюзивных промо-кодов
-  • Приоритет в репорте 
+  • Приоритет в репорте
   • Повышенный бонус до 750 PF
   • Лимит контейнеров повышен до 250
       `.trim(),
-      
+
       "GOLD": `
-  💫 Вы получили статус: GOLD 
-  
+  💫 Вы получили статус: GOLD
+
   🎉 Поздравляем! Теперь у вас есть особые привилегии:
-  
+
   • Возможность просмотра ID игроков - /id
   • Скидка 10% на активацию DOUBLE PLUS + DICE
   • Эксклюзивный скин на карточку
   • Возможность активации эксклюзивных промо-кодов
-  • Приоритет в репорте 
+  • Приоритет в репорте
   • Повышенный бонус до 500 PF
   • Лимит контейнеров повышен до 2ОО
       `.trim()
@@ -569,14 +569,14 @@ async function handleBuyStatus(ctx, statusName, costInDF, statusId) {
 
     // Отправка сообщения о привилегиях
     await ctx.replyWithHTML(
-      `✅ Вы успешно купили статус: <b>${statusName}</b> за ${costInDF} DF.\n\n` + 
-      (statusMessages[statusName] || 
+      `✅ Вы успешно купили статус: <b>${statusName}</b> за ${costInDF} DF.\n\n` +
+      (statusMessages[statusName] ||
        `🌟 Вам был выдан новый статус: ${statusName}\n❗️ Поздравляем! Теперь у вас есть особые привилегии.`),
       { parse_mode: 'HTML' }
     );
 
     // Обновление меню покупки статусов
-    const newBalances = getUserBalances(userId);
+    const newBalances = (await getUserBalances(userId));
     const newUserStatusNames = await getUserStatuses(userId);
     const availableStatuses = [
       { name: 'GOLD', cost: 899, id: 6 },
@@ -587,7 +587,7 @@ async function handleBuyStatus(ctx, statusName, costInDF, statusId) {
 
     let updatedMessage = `🌟 <b>Покупка статусов</b>\n` +
                          `<b>Баланс DF:</b> ${newBalances.dfBalance.toLocaleString('ru-RU')}\n`;
-                         
+
     if (newUserStatusNames.length > 0) {
       updatedMessage += `<b>Уже купленные статусы:</b>\n`;
       newUserStatusNames.forEach(statusName => {
@@ -629,8 +629,8 @@ async function handleBuyStatus(ctx, statusName, costInDF, statusId) {
 async function showContainersMenu(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    const balances = getUserBalances(userId); // Получаем все балансы
-    const user = db.getUserById(userId);
+    const balances = (await getUserBalances(userId)); // Получаем все балансы
+    const user = (await db.getUserById(userId));
     const containerCount = user.container_type_3 || 0; // Используем третий тип контейнеров
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('1 GOLD-контейнер (200 DF)', 'buy_container_1')],
@@ -681,13 +681,13 @@ async function showContainerInfo(ctx) {
 async function handleBuyContainer(ctx, count, costInDF) {
   try {
       const userId = ctx.from.id.toString();
-      const user = db.getUserById(userId);
+      const user = (await db.getUserById(userId));
       if (!user) {
           return ctx.reply('❌ Не удалось найти ваш профиль.');
       }
 
       // Проверяем баланс DF
-      const balances = getUserBalances(userId);
+      const balances = (await getUserBalances(userId));
       if (balances.dfBalance < costInDF) {
           return ctx.reply(`❌ У вас недостаточно DF для покупки ${count} контейнеров.`);
       }
@@ -695,18 +695,18 @@ async function handleBuyContainer(ctx, count, costInDF) {
       // Проверяем лимиты контейнеров
       const containerType = 3; // GOLD контейнер (тип 3)
       const currentCounts = user.container_type_3 || 0;
-      const result = updateContainerCount(userId, containerType, count);
+      const result = (await updateContainerCount(userId, containerType, count));
 
       if (!result.success) {
           return ctx.reply(result.message, { parse_mode: 'HTML' });
       }
 
       // Если лимит не превышен, обновляем баланс DF
-      db.updateUserField(userId, 'df_balance', -costInDF);
+      (await db.updateUserField(userId, 'df_balance', -costInDF));
 
       // Получаем новые балансы
-      const newBalances = getUserBalances(userId);
-      const newContainerCount = (db.getUserById(userId).container_type_3 || 0);
+      const newBalances = (await getUserBalances(userId));
+      const newContainerCount = ((await db.getUserById(userId)).container_type_3 || 0);
 
       // Формируем обновленное сообщение
       if (menuStates[userId] && menuStates[userId].type === 'containers') {
@@ -746,8 +746,8 @@ async function handleBuyContainer(ctx, count, costInDF) {
 async function showUniqueOffersMenu(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    const dfBalance = getUserDFBalance(userId);
-    const user = db.getUserById(userId);
+    const dfBalance = (await getUserDFBalance(userId));
+    const user = (await db.getUserById(userId));
 
     // Получаем текущий numeric_id пользователя
     const currentNumericId = user?.numeric_id || null;
@@ -757,11 +757,11 @@ async function showUniqueOffersMenu(ctx) {
 
     const keyboard = Markup.inlineKeyboard([
       // [Markup.button.callback(
-      //   `🎮 Игровой ID 5 ${currentNumericId === 5 ? '(✅ Куплено)' : `(${price} DF)`}`, 
+      //   `🎮 Игровой ID 5 ${currentNumericId === 5 ? '(✅ Куплено)' : `(${price} DF)`}`,
       //   `buy_id_5`
       // )],
       // [Markup.button.callback(
-      //   `🎮 Игровой ID 6 ${currentNumericId === 6 ? '(✅ Куплено)' : `(${price} DF)`}`, 
+      //   `🎮 Игровой ID 6 ${currentNumericId === 6 ? '(✅ Куплено)' : `(${price} DF)`}`,
       //   `buy_id_6`
       // )],
 
@@ -800,43 +800,43 @@ async function showUniqueOffersMenu(ctx) {
 async function handleBuyId(ctx, id, costInDF) {
   try {
     const userId = ctx.from.id.toString();
-    const user = db.getUserById(userId);
+    const user = (await db.getUserById(userId));
     if (!user) {
       return ctx.reply('❌ Не удалось найти ваш профиль.');
     }
-    
+
     const userDFBalance = user.df_balance || 0;
-    
+
     // Проверяем баланс DF
     if (userDFBalance < costInDF) {
       return ctx.reply(`❌ У вас недостаточно DF для покупки игрового ID ${id}.`);
     }
-    
+
     // Проверяем, свободен ли указанный ID
-    const isIdTaken = db.getUserByNumericId(id);
+    const isIdTaken = (await db.getUserByNumericId(id));
     if (isIdTaken) {
       return ctx.reply(`❌ Игровой ID ${id} уже занят.`);
     }
-    
+
     // Обновляем баланс DF пользователя
-    db.updateUserField(userId, 'df_balance', -costInDF);
-    
+    (await db.updateUserField(userId, 'df_balance', -costInDF));
+
     // Обновляем numeric_id пользователя
-    const updateResult = db.updateNumericId(user.numeric_id, id);
+    const updateResult = (await db.updateNumericId(user.numeric_id, id));
     if (!updateResult.success) {
       return ctx.reply(updateResult.message || '❌ Не удалось выдать игровой ID.');
     }
-    
+
     // Получаем новые данные
-    const newDFBalance = getUserDFBalance(userId);
+    const newDFBalance = (await getUserDFBalance(userId));
     const userLink = createUserLink(userId, user.username);
-    
+
     // Формируем сообщение о покупке
     const purchaseMessage = `🎩 Вы успешно приобрели игровой ID ${id} за ${costInDF} DF.`;
-    
+
     // Отправляем сообщение пользователю
     await ctx.replyWithHTML(purchaseMessage);
-    
+
     // Отправляем уведомление главному администратору
     const mainAdminId = process.env.MAIN_ADMIN;
     if (mainAdminId) {
@@ -847,28 +847,28 @@ async function handleBuyId(ctx, id, costInDF) {
     } else {
       console.error('Главный администратор не указан в переменных окружения.');
     }
-    
+
     // Редактируем меню с обновленными балансами
     if (menuStates[userId] && menuStates[userId].type === 'unique_offers') {
       const { messageId } = menuStates[userId];
-      
+
       // Создаем обновленную клавиатуру с проверкой купленных ID
       const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback(
-          `🎮 Игровой ID 5 ${user.numeric_id === 5 ? '(✅ Куплено)' : ''}`, 
+          `🎮 Игровой ID 5 ${user.numeric_id === 5 ? '(✅ Куплено)' : ''}`,
           `buy_id_5`
         )],
         [Markup.button.callback(
-          `🎮 Игровой ID 6 ${user.numeric_id === 6 ? '(✅ Куплено)' : ''}`, 
+          `🎮 Игровой ID 6 ${user.numeric_id === 6 ? '(✅ Куплено)' : ''}`,
           `buy_id_6`
         )],
         [Markup.button.callback('⬅️ Назад', 'donate_back')],
       ]);
-      
+
       const updatedMessage = `💠 <b>Уникальные предложения</b>\n\n` +
         `Выберите игровой ID для покупки:\n` +
         `<b>Баланс DF:</b> ${newDFBalance.toLocaleString('ru-RU')}`;
-      
+
       // Редактируем существующее сообщение
       await ctx.telegram.editMessageText(
         ctx.chat.id,
@@ -888,9 +888,9 @@ async function handleBuyId(ctx, id, costInDF) {
 async function showSharesMenu(ctx) {
   try {
     const userId = ctx.from.id.toString();
-    const dfBalance = getUserDFBalance(userId);
+    const dfBalance = (await getUserDFBalance(userId));
     const userStatusNames = await getUserStatuses(userId);
-    
+
     let message = `🚀 <b>Акции - Статусы со скидкой 25%</b>\n`;
     message += `<b>Баланс DF:</b> ${dfBalance.toLocaleString('ru-RU')}\n\n`;
 
@@ -950,7 +950,7 @@ async function showSharesMenu(ctx) {
 async function handleBuyDiscountedStatus(ctx, statusName, cost, statusId) {
   try {
     const userId = ctx.from.id.toString();
-    const user = db.getUserById(userId);
+    const user = (await db.getUserById(userId));
 
     if (!user) {
       return ctx.reply('❌ Не удалось найти ваш профиль.');
@@ -977,7 +977,7 @@ async function handleBuyDiscountedStatus(ctx, statusName, cost, statusId) {
     }
 
     // Снимаем средства с баланса
-    db.updateUserField(userId, 'df_balance', -cost);
+    (await db.updateUserField(userId, 'df_balance', -cost));
 
     // Логика начисления скина
     const skinNameMap = {
@@ -991,16 +991,16 @@ async function handleBuyDiscountedStatus(ctx, statusName, cost, statusId) {
     let skinMessageSent = false;
 
     if (skinName) {
-      const skinId = getSkinIdByName(skinName);
+      const skinId = (await getSkinIdByName(skinName));
 
       if (skinId) {
-        const userSkins = getUserAvailableSkins(userId);
+        const userSkins = (await getUserAvailableSkins(userId));
 
         if (!userSkins.includes(skinId)) {
           const addResult = await addSkinToUser(userId, skinId);
 
           if (addResult.success) {
-            const skin = getCardTemplateById(skinId);
+            const skin = (await getCardTemplateById(skinId));
 
             if (skin && skin.file_name) {
               const imagePath = path.resolve(__dirname, './images', skin.file_name);
@@ -1051,7 +1051,7 @@ async function handleBuyDiscountedStatus(ctx, statusName, cost, statusId) {
     );
 
     // Обновление меню акций
-    const newBalances = getUserBalances(userId);
+    const newBalances = (await getUserBalances(userId));
     const newUserStatusNames = await getUserStatuses(userId);
 
     const availableStatuses = [

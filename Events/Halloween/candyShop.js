@@ -35,7 +35,7 @@ async function candyShopMenu(ctx) {
   const userId = ctx.from?.id?.toString();
   if (!userId) return;
 
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) {
     return ctx.reply('❌ Вы не зарегистрированы. Используйте /start.');
   }
@@ -83,7 +83,7 @@ async function buyPfWithCandy(ctx) {
   const userId = ctx.from?.id?.toString();
   if (!userId) return;
 
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) return ctx.answerCbQuery('❌ Вы не зарегистрированы.');
 
   const candy = user.candy || 0;
@@ -91,15 +91,15 @@ async function buyPfWithCandy(ctx) {
     return ctx.answerCbQuery(`❌ Недостаточно конфет. Нужно ${PRICES.pf} 🍬.`);
   }
 
-  const takeResult = takeCandy(userId, PRICES.pf);
+  const takeResult = (await takeCandy(userId, PRICES.pf));
   if (!takeResult.success) {
     return ctx.answerCbQuery(`❌ Ошибка: ${takeResult.message}`);
   }
 
   try {
-    updateUserBalance(userId, 1000000);
+    (await updateUserBalance(userId, 1000000));
   } catch (e) {
-    giveCandy(userId, PRICES.pf);
+    (await giveCandy(userId, PRICES.pf));
     return ctx.answerCbQuery('❌ Не удалось выдать PF.');
   }
 
@@ -112,7 +112,7 @@ async function buyFortuneTicket(ctx) {
   const userId = ctx.from?.id?.toString();
   if (!userId) return;
 
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) return ctx.answerCbQuery('❌ Вы не зарегистрированы.');
 
   const candy = user.candy || 0;
@@ -120,7 +120,7 @@ async function buyFortuneTicket(ctx) {
     return ctx.answerCbQuery(`❌ Нужно ${PRICES.fortuneTicket} 🍬 для покупки билета.`);
   }
 
-  const takeResult = takeCandy(userId, PRICES.fortuneTicket);
+  const takeResult = (await takeCandy(userId, PRICES.fortuneTicket));
   if (!takeResult.success) {
     return ctx.answerCbQuery(`❌ Ошибка: ${takeResult.message}`);
   }
@@ -134,7 +134,7 @@ async function buyNewYearCard(ctx) {
   const userId = ctx.from?.id?.toString();
   if (!userId) return;
 
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) return ctx.answerCbQuery('❌ Вы не зарегистрированы.');
 
   const candy = user.candy || 0;
@@ -142,15 +142,15 @@ async function buyNewYearCard(ctx) {
     return ctx.answerCbQuery(`❌ Нужно ${PRICES.card} 🍬 для покупки карты.`);
   }
 
-  const takeResult = takeCandy(userId, PRICES.card);
+  const takeResult = (await takeCandy(userId, PRICES.card));
   if (!takeResult.success) {
     return ctx.answerCbQuery(`❌ Ошибка: ${takeResult.message}`);
   }
 
   try {
-    updateUserSelectedSkin(userId, 1001); // ← замените на реальный ID скина
+    (await updateUserSelectedSkin(userId, 1001)); // ← замените на реальный ID скина
   } catch (e) {
-    giveCandy(userId, PRICES.card);
+    (await giveCandy(userId, PRICES.card));
     return ctx.answerCbQuery('❌ Не удалось выдать НОВОГОДНЮЮ карту.');
   }
 
@@ -163,7 +163,7 @@ async function buySnowmanPrefix(ctx) {
   const userId = ctx.from?.id?.toString();
   if (!userId) return;
 
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) return ctx.answerCbQuery('❌ Вы не зарегистрированы.');
 
   const candy = user.candy || 0;
@@ -182,7 +182,7 @@ async function buySnowmanPrefix(ctx) {
   }
 
   // --- Получаем ID префикса по названию ---
-  const allPrefixes = getAllPrefixes();
+  const allPrefixes = (await getAllPrefixes());
   const prefixObj = allPrefixes.find(p => p.prefix === PREFIX_NAME);
   if (!prefixObj) {
     return ctx.answerCbQuery('❌ Префикс недоступен для покупки.');
@@ -195,15 +195,15 @@ async function buySnowmanPrefix(ctx) {
   }
 
   // --- Списание конфет ---
-  const takeResult = takeCandy(userId, PRICES.prefix);
+  const takeResult = (await takeCandy(userId, PRICES.prefix));
   if (!takeResult.success) {
     return ctx.answerCbQuery(`❌ Ошибка: ${takeResult.message}`);
   }
 
   // --- Выдача префикса ---
-  const added = addPrefixToUser(userId, PREFIX_ID);
+  const added = (await addPrefixToUser(userId, PREFIX_ID));
   if (!added) {
-    giveCandy(userId, PRICES.prefix);
+    (await giveCandy(userId, PRICES.prefix));
     return ctx.answerCbQuery('❌ Не удалось выдать префикс.');
   }
 
@@ -225,7 +225,7 @@ async function buyGoldContainers(ctx) {
   const userId = ctx.from?.id?.toString();
   if (!userId) return;
 
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) return ctx.answerCbQuery('❌ Вы не зарегистрированы.');
 
   const candy = user.candy || 0;
@@ -233,14 +233,14 @@ async function buyGoldContainers(ctx) {
     return ctx.answerCbQuery(`❌ Нужно ${PRICES.containers} 🍬 для покупки 2 GOLD контейнеров.`);
   }
 
-  const takeResult = takeCandy(userId, PRICES.containers);
+  const takeResult = (await takeCandy(userId, PRICES.containers));
   if (!takeResult.success) {
     return ctx.answerCbQuery(`❌ Ошибка: ${takeResult.message}`);
   }
 
-  const result = decreaseContainerCount(userId, 3, -2);
+  const result = (await decreaseContainerCount(userId, 3, -2));
   if (!result.success) {
-    giveCandy(userId, PRICES.containers);
+    (await giveCandy(userId, PRICES.containers));
     return ctx.answerCbQuery(`❌ Ошибка при выдаче контейнеров: ${result.message}`);
   }
 

@@ -51,14 +51,14 @@ function getTopStatusName(userId) {
 router.get('/user/:id', async (req, res) => {
   const userId = req.params.id.toString();
   try {
-    const user = getUserById(userId);
+    const user = (await getUserById(userId));
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     // Получаем имена статусов (async функция из db.js)
     const statusNames = await getUserStatuses(userId);
 
     // Получаем все статусы с приоритетами (синхронная функция из db.js)
-    const allStatuses = getAllStatuses(); // Возвращает [{id, name, priority}, ...]
+    const allStatuses = (await getAllStatuses()); // Возвращает [{id, name, priority}, ...]
 
     // Находим пересечение и выбираем с макс приоритетом
     let topStatusName = null;
@@ -91,8 +91,8 @@ router.get('/user/:id', async (req, res) => {
 
 // --- Остальные роуты бонуса остаются без изменений ---
 
-router.get('/bonus/status/:userId', (req, res) => {
-  const user = getUserById(req.params.userId.toString());
+router.get('/bonus/status/:userId', async (req, res) => {
+  const user = (await getUserById(req.params.userId.toString()));
   if (!user) return res.status(404).json({ error: 'User not found' });
   const now = Math.floor(Date.now() / 1000);
   const last = user.last_private_bonus_time || 0;
@@ -103,10 +103,10 @@ router.get('/bonus/status/:userId', (req, res) => {
   });
 });
 
-router.post('/bonus/spin', (req, res) => {
+router.post('/bonus/spin', async (req, res) => {
   const userId = req.body?.userId?.toString();
   if (!userId) return res.status(400).json({ error: 'userId required' });
-  const user = getUserById(userId);
+  const user = (await getUserById(userId));
   if (!user) return res.status(404).json({ error: 'User not found' });
   const now = Math.floor(Date.now() / 1000);
   const last = user.last_private_bonus_time || 0;
@@ -118,13 +118,13 @@ router.post('/bonus/spin', (req, res) => {
   let amount = WEB_BONUS_PF_MIN + Math.floor(Math.random() * (WEB_BONUS_PF_MAX - WEB_BONUS_PF_MIN + 1));
   if (isMega) amount *= MEGA_MULTIPLIER;
   try {
-    updateUserBalance(userId, amount);
+    (await updateUserBalance(userId, amount));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
-  updateLastBonusTime(userId, now, true);
-  updateUserData(userId, { web_bonus_spins: spins });
-  logFinance({
+  (await updateLastBonusTime(userId, now, true));
+  (await updateUserData(userId, { web_bonus_spins: spins }));
+  (await logFinance({
     type: 'web_bonus',
     actorUserId: userId,
     targetUserId: null,
@@ -138,7 +138,7 @@ router.post('/bonus/spin', (req, res) => {
     action: `${user.username} забрал веб-бонус → +${amount.toLocaleString('ru-RU')} PF${isMega ? ' (MEGA)' : ''}`,
     payload: { spins, isMega },
     success: 1,
-  });
+  }));
   res.json({ amount, isMega, progress: spins % MEGA_EVERY, availableIn: BONUS_COOLDOWN_SEC });
 });
 
