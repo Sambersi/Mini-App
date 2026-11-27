@@ -35,7 +35,7 @@ function createLegacyReads(runtime){
     async getUserBalance(id,currency){const row=await runtime.one('SELECT balance FROM wallets WHERE player_id=? AND asset=? AND bucket=?',[String(id),currency==='PF'?'PF':'DF','main']);return row?compatibleNumber(row.balance):0;},
     async getTotalBalance(id){const row=await runtime.one('SELECT SUM(balance) AS balance FROM wallets WHERE player_id=? AND asset=?',[String(id),'PF']);return compatibleNumber(row?.balance??0);},
     async getAccountLevel(id){return compatibleNumber((await runtime.one('SELECT account_level FROM player_cards WHERE player_id=?',[String(id)]))?.account_level??1);},
-    async getAllSkins(visible=false){return (await runtime.many('SELECT * FROM skins'+(visible?' WHERE is_visible_in_shop=1':''))).map(catalogAdapter);},
+    async getAllSkins(visible=false){return (await runtime.many('SELECT * FROM skins'+(visible?' WHERE is_visible_in_shop=1':'')+' ORDER BY CASE WHEN stock>0 THEN 0 ELSE 1 END,id')).map(catalogAdapter);},
     async getSkinById(id){return catalogAdapter(await runtime.one('SELECT * FROM skins WHERE id=?',[id]));},
     async getSkinStock(id){return catalogAdapter(await runtime.one('SELECT stock,max_stock FROM skins WHERE id=?',[id]))||{stock:0,max_stock:0};},
     async getAllSkinIds(){return (await runtime.many('SELECT id FROM skins ORDER BY id')).map(row=>compatibleNumber(row.id));},

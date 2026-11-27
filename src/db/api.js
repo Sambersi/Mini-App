@@ -2,8 +2,12 @@
 const contract=require('./legacyContract.json');
 const {createLegacyReads}=require('../repositories/legacyReads');
 const {createPlayerSettings}=require('../repositories/playerSettings');
+const {createPlayerStateWrites}=require('../repositories/playerStateWrites');
+const {createCatalogs}=require('../repositories/catalogs');
+const {createGameRecords}=require('../repositories/gameRecords');
+const {createChatModes}=require('../repositories/chatModes');
 function createMysqlApi(runtime){
-  return {...createLegacyReads(runtime),...createPlayerSettings(runtime),transaction:work=>runtime.transaction(work)};
+  return {...createLegacyReads(runtime),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...createCatalogs(runtime),...createGameRecords(runtime),...createChatModes(runtime),transaction:work=>runtime.transaction(work)};
 }
 function getApiCoverage(api){
   return {implemented:contract.functions.filter(key=>typeof api[key]==='function'),missing:contract.functions.filter(key=>typeof api[key]!=='function'),missingConstants:contract.constants.filter(key=>!Object.hasOwn(api,key))};

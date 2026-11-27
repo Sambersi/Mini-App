@@ -1,6 +1,11 @@
 'use strict';
 const {groups}=require('../db/playerFields');
 const {withTransaction}=require('../db/transaction');
+function numericIdentifier(value){
+  if(typeof value==='number'&&!Number.isSafeInteger(value))return null;
+  if(!['number','bigint','string'].includes(typeof value)||! /^-?\d+$/.test(String(value)))return null;
+  const id=BigInt(value);return id< -9223372036854775808n||id>9223372036854775807n?null:String(id);
+}
 // The legacy-shaped result is an adapter contract. Data ownership stays in
 // separate domain tables; balances are read only from canonical wallets.
 function createPlayersRepository(pool,{readTransaction=work=>withTransaction(pool,work)}={}) {
@@ -19,6 +24,7 @@ function createPlayersRepository(pool,{readTransaction=work=>withTransaction(poo
       const [[player]]=await connection.execute('SELECT '+fields.join(',')+' FROM players p '+joins.join(' ')+' WHERE p.telegram_id=?',[id]);
       if(!player)return null;
       const [wallets]=await connection.execute('SELECT asset,bucket,balance FROM wallets WHERE player_id=?',[id]);
+      Object.assign(player,{balance:null,card_balance:null,df_balance:null});
       const names={'PF:main':'balance','PF:card':'card_balance','DF:main':'df_balance'};
       for(const w of wallets)player[names[w.asset+':'+w.bucket]]=String(w.balance);
       const [inventory]=await connection.execute('SELECT item_code,quantity FROM inventory_balances WHERE player_id=?',[id]);
@@ -41,7 +47,8 @@ function createPlayersRepository(pool,{readTransaction=work=>withTransaction(poo
       });
     },
     async findByNumericId(numericId) {
-      const [[row]]=await pool.execute('SELECT telegram_id FROM players WHERE numeric_id=?',[numericId]);
+      const identifier=numericIdentifier(numericId);if(identifier===null)return null;
+      const [[row]]=await pool.execute('SELECT telegram_id FROM players WHERE numeric_id=?',[identifier]);
       return row?repository.getById(row.telegram_id):null;
     },
     async findByCardNumber(cardNumber) {
@@ -51,4 +58,4 @@ function createPlayersRepository(pool,{readTransaction=work=>withTransaction(poo
   };
   return repository;
 }
-module.exports={createPlayersRepository};
+module.exports={createPlayersRepository,numericIdentifier};

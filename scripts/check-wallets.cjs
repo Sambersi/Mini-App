@@ -7,6 +7,7 @@ const { moveWalletFunds } = require('../src/services/walletMovement');
 const { createCardFinance } = require('../src/services/cardFinance');
 const { createSessionsRepository } = require('../src/repositories/sessions');
 const { createTelegramPayments } = require('../src/services/telegramPayments');
+const { createSkinPurchase } = require('../src/services/skinPurchase');
 
 function testConfig(env) {
   if (!env.MYSQL_TEST_DATABASE || env.MYSQL_TEST_DATABASE === env.MYSQL_DATABASE || !/^[a-zA-Z0-9_]+_checks$/.test(env.MYSQL_TEST_DATABASE)) {
@@ -134,10 +135,23 @@ async function runWalletChecks(env = process.env) {
     await pool.execute('INSERT INTO role_catalog(id,name,priority) VALUES (?,?,0)',[999991,'Partner']);
     await pool.execute('INSERT INTO player_roles(player_id,role_id) VALUES (?,?)',[referrer,999991]);
     assert.equal((await payments({...payment,chargeId:'fixture_partner'})).referrerBonus,'15');checks++;
+    for(const skinId of [900001,900002])await pool.execute('INSERT INTO skins(id,name,file_name,price,currency_type,rarity,stock,total_serials) VALUES (?,?,?,10,?,?,1,0)',[skinId,'Fixture','fixture.png','DF','fixture']);
+    const buySkin=createSkinPurchase(pool);
+    const purchase={operationKey:'fixture_buy_skin',playerId:payer,skinId:900001};
+    const purchased=await buySkin(purchase);assert.equal(purchased.serial,'900001-00000001');checks++;
+    assert.deepEqual(await buySkin(purchase),purchased);
+    const [[stockAfter]]=await pool.execute('SELECT stock,total_serials FROM skins WHERE id=?',[900001]);
+    assert.equal(String(stockAfter.stock),'0');assert.equal(String(stockAfter.total_serials),'1');checks++;
+    await assert.rejects(buySkin({...purchase,operationKey:'fixture_buy_owned'}),{code:'SKIN_ALREADY_OWNED'});checks++;
+    const race=await Promise.allSettled([payer,referrer].map((playerId,i)=>buySkin({operationKey:'fixture_last_skin_'+i,playerId,skinId:900002})));
+    assert.equal(race.filter(r=>r.status==='fulfilled').length,1);assert.equal(race.filter(r=>r.status==='rejected')[0].reason.code,'SKIN_OUT_OF_STOCK');
+    const [[ownedLast]]=await pool.execute('SELECT COUNT(*) AS n FROM user_skins WHERE skin_id=?',[900002]);assert.equal(Number(ownedLast.n),1);checks++;
     return { checks, concurrentRequests: 20, activeStorage: 'sqlite', isolatedDatabase: true };
   } finally {
     try {
       if (seeded) {
+        await pool.query('DELETE FROM user_skins WHERE skin_id IN (900001,900002)');
+        await pool.query('DELETE FROM skins WHERE id IN (900001,900002)');
         await pool.execute('DELETE FROM registration_sessions WHERE user_id=?',['900000001']);
         await pool.execute('DELETE FROM skin_shop_sessions WHERE user_id=?',['900000001']);
         await pool.query('DELETE FROM telegram_payments');
