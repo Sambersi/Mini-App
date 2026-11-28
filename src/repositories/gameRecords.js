@@ -16,6 +16,35 @@ function createGameRecords(runtime,{now=()=>Date.now()}={}){
     async getDiceBetsByRoundId(roundId){return (await runtime.many('SELECT * FROM dice_bets WHERE round_id=?',[roundId])).map(gameRow);},
     async updateDiceResults(id,first,second){await runtime.execute('UPDATE dice_bets SET dice1=?,dice2=? WHERE id=?',[first,second,id]);},
     async resetDiceRoundParticipants(chatId){await runtime.execute('DELETE b FROM dice_bets b JOIN dice_rounds r ON r.round_id=b.round_id WHERE r.chat_id=?',[String(chatId)]);},
+    async logDiceRound(roundId, chatId, startTs, roundAmount){
+      await runtime.execute(
+        "INSERT INTO dice_rounds_log (round_id,chat_id,start_ts,round_amount,status) VALUES (?,?,?,?,'active') "+
+        'ON DUPLICATE KEY UPDATE round_id=VALUES(round_id)',
+        [roundId,String(chatId),startTs,roundAmount]);
+    },
+    async logDiceBet(roundId, chatId, userId, username, amount){
+      const result=await runtime.execute(
+        'INSERT INTO dice_bets_log (ts,round_id,chat_id,user_id,username,amount) VALUES (?,?,?,?,?,?)',
+        [now(),roundId,String(chatId),String(userId),username,amount]);
+      return compatibleNumber(result.lastInsertRowid);
+    },
+    async finishDiceRoundLog(roundId, winnerId, totalBank, participantsCount){
+      await runtime.execute(
+        "UPDATE dice_rounds_log SET end_ts=?,winner_id=?,total_bank=?,participants_count=?,status='finished' WHERE round_id=?",
+        [now(),winnerId,totalBank,participantsCount,roundId]);
+    },
+    async updateDiceBetResult(betId, dice1, dice2, totalPoints, isWinner, winAmount){
+      await runtime.execute(
+        'UPDATE dice_bets_log SET dice1=?,dice2=?,total_points=?,is_winner=?,win_amount=? WHERE id=?',
+        [dice1,dice2,totalPoints,isWinner?1:0,winAmount,betId]);
+    },
+    async getLastDiceBetsInChat(chatId){
+      const bets=await runtime.many(
+        'SELECT amount FROM dice_bets_log WHERE chat_id=? ORDER BY ts DESC,id DESC LIMIT 20',
+        [String(chatId)]);
+      const amounts=bets.map(row=>compatibleNumber(row.amount));
+      return [...new Set(amounts)].filter(amount=>amount>=100&&amount<=4000000).slice(0,5);
+    },
     async saveBet(roundId,id,name,multiplier,amount,chatId,choice=null){
       const value=integer(amount);
       if(!roundId||!id||!name||!multiplier||value<=0n||!chatId)throw Object.assign(new Error('Invalid bet'),{code:'BET_INVALID'});

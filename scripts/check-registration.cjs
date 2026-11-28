@@ -216,6 +216,29 @@ async function runRegistrationChecks(env=process.env){
     checks+=await require('./check-referrer-bank.cjs').runReferrerBankChecks({pool,runtime,now:timestamp});
     checks+=await require('./check-double-statistics.cjs').runDoubleStatisticsChecks({pool,runtime,now:timestamp});
     checks+=await require('./check-double-settlement.cjs').runDoubleSettlementChecks({pool,runtime,now:timestamp});
+    const diceRound='fixture_runtime_dice',diceChat='-9305';
+    try{
+      await Promise.all(Array.from({length:20},()=>service.logDiceRound(diceRound,diceChat,timestamp,100)));
+      const betIds=[];
+      for(const amount of [100,200,300,400,500,600,600,99,4000001]){
+        betIds.push(await service.logDiceBet(diceRound,diceChat,ids[0],'Fixture',amount));
+      }
+      assert.deepEqual(await service.getLastDiceBetsInChat(diceChat),[600,500,400,300,200]);
+      assert.deepEqual(await service.getLastDiceBetsInChat('-9306'),[]);
+      checks++;
+      await service.updateDiceBetResult(betIds[0],6,5,11,true,1000);
+      await service.finishDiceRoundLog(diceRound,ids[0],1000,9);
+      await service.logDiceRound(diceRound,diceChat,timestamp+1,200);
+      const closed=await one('SELECT status,round_amount,total_bank,participants_count,winner_id FROM dice_rounds_log WHERE round_id=?',[diceRound]);
+      assert.deepEqual({...closed,round_amount:Number(closed.round_amount),total_bank:Number(closed.total_bank)},
+        {status:'finished',round_amount:100,total_bank:1000,participants_count:'9',winner_id:ids[0]});
+      const bet=await one('SELECT dice1,dice2,total_points,is_winner,win_amount FROM dice_bets_log WHERE id=?',[betIds[0]]);
+      assert.deepEqual({...bet,win_amount:Number(bet.win_amount)},{dice1:'6',dice2:'5',total_points:'11',is_winner:'1',win_amount:1000});
+      checks++;
+    }finally{
+      await pool.execute('DELETE FROM dice_bets_log WHERE round_id=?',[diceRound]);
+      await pool.execute('DELETE FROM dice_rounds_log WHERE round_id=?',[diceRound]);
+    }
     return {checks,concurrentRequests:20,isolatedDatabase:true};
   }finally{
     try{if(seeded){
