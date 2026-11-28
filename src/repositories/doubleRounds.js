@@ -2,7 +2,7 @@
 const {compatibleNumber}=require('./legacyReads');
 function createDoubleRounds(runtime,{now=()=>Date.now()}={}){
   const adapt=row=>{if(row)for(const key of ['id','ts','amount','is_win','win_amount','start_ts','end_ts','total_bank','bets_count','chats_count','participants_count'])if(Object.hasOwn(row,key))row[key]=compatibleNumber(row[key]);return row;};
-  async function createDoubleRound(id,start=now()){await runtime.execute("INSERT IGNORE INTO double_rounds(round_id,start_ts,status) VALUES (?,?,'active')",[id,start]);return {success:true};}
+  async function createDoubleRound(id,start=now()){return runtime.transaction(async()=>{const created=await runtime.execute("INSERT IGNORE INTO double_rounds(round_id,start_ts,status) VALUES (?,?,'active')",[id,start]);if(created.changes)await runtime.execute('INSERT INTO double_runtime_rounds(round_id) VALUES (?)',[id]);return {success:true};});}
   async function getDoubleRoundByHash(id){return adapt(await runtime.one('SELECT * FROM double_rounds WHERE round_id=?',[id]));}
   async function getDoubleBetsByRound(id){return (await runtime.many('SELECT * FROM double_bets_log WHERE round_id=? ORDER BY ts,id',[id])).map(adapt);}
   async function logDoubleBet(entry){const result=await runtime.execute('INSERT INTO double_bets_log(ts,round_id,user_id,username,chat_id,chat_title,multiplier,amount,status,reject_reason,game_choice) VALUES (?,?,?,?,?,?,?,?,?,?,?)',[entry.ts||now(),entry.roundId,String(entry.userId),entry.username||'Неизвестный',entry.chatId==null?null:String(entry.chatId),entry.chatTitle||null,entry.multiplier,entry.amount,entry.status||'accepted',entry.rejectReason||null,entry.gameChoice||null]);return {success:true,id:compatibleNumber(result.lastInsertRowid)};}

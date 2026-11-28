@@ -8,6 +8,8 @@ async function assertInactiveProjection(connection,runId){
   if(BigInt(inventory.n)>0n)throw Object.assign(new Error('Projection contains inventory operations'),{code:'MIGRATION_RUNTIME_WRITES_EXIST'});
   const [[promos]]=await connection.execute('SELECT COUNT(*) AS n FROM promo_redemptions');
   if(BigInt(promos.n)>0n)throw Object.assign(new Error('Projection contains promo redemptions'),{code:'MIGRATION_RUNTIME_WRITES_EXIST'});
+  const [[doubleRounds]]=await connection.execute('SELECT COUNT(*) AS n FROM double_runtime_rounds');
+  if(BigInt(doubleRounds.n)>0n)throw Object.assign(new Error('Projection contains runtime Double rounds'),{code:'MIGRATION_RUNTIME_WRITES_EXIST'});
   const [[bossEvents]]=await connection.execute('SELECT COUNT(*) AS n FROM boss_event_receipts');
   if(BigInt(bossEvents.n)>0n)throw Object.assign(new Error('Projection contains boss events'),{code:'MIGRATION_RUNTIME_WRITES_EXIST'});
   const [[bossRewards]]=await connection.execute('SELECT COUNT(*) AS n FROM boss_reward_batches');
