@@ -109,6 +109,12 @@ async function runRegistrationChecks(env=process.env){
     await assert.rejects(service.processTelegramPayment({...invoice,playerId:'900000040',chargeId:'fixture_missing_player'}));
     await create('900000040');assert.deepEqual(await service.recoverTelegramPayments(),{processed:1,failed:0});assert.equal((await profile('900000040')).df_balance,100);checks++;
     await assert.rejects(runtime.transaction(()=>service.processTelegramPayment({...invoice,chargeId:'fixture_outer_transaction'})),{code:'PAYMENT_RECEIVE_REQUIRES_OUTER_COMMIT'});checks++;
+    await service.updateWinStreak(referrer,true);await service.updateWinStreak(referrer,true);
+    let stats=await one('SELECT current_win_streak,best_win_streak FROM player_statistics WHERE player_id=?',[referrer]);
+    assert.equal(Number(stats.current_win_streak),2);assert.equal(Number(stats.best_win_streak),2);checks++;
+    await service.updateWinStreak(referrer,false);stats=await one('SELECT current_win_streak,best_win_streak FROM player_statistics WHERE player_id=?',[referrer]);assert.equal(Number(stats.current_win_streak),0);assert.equal(Number(stats.best_win_streak),2);checks++;
+    await Promise.all(Array.from({length:20},()=>service.incrementMultiplierCount(referrer,'x2')));assert.equal((await service.getMultiplierStats(referrer)).x2,20);checks++;
+    await service.updateMaxWinIfGreater(referrer,10);await service.updateMaxWinIfGreater(referrer,5);assert.equal(Number((await one('SELECT max_win_amount FROM player_statistics WHERE player_id=?',[referrer])).max_win_amount),10);checks++;
     return {checks,concurrentRequests:20,isolatedDatabase:true};
   }finally{
     try{if(seeded){

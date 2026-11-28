@@ -49,6 +49,11 @@ async function verifyProfileViews(db,api,{now=Date.now()}={}){
   await check('getMaxNumericId','SELECT MAX(numeric_id) AS n FROM users',{transform:rows=>rows[0].n||0});
   const ids=db.prepare('SELECT id FROM users ORDER BY rowid LIMIT 3').all().map(row=>String(row.id));
   for(const id of ids){
+    for(const [method,field,fallback]of [['getFortuneTickets','fortune_tickets',0],['getTickets','tickets',0],['getSecretGifts','secret_gifts',0],['getUserNpfShares','npf_shares',0],['getTotalDonatedStars','total_donated_stars',0],['getUserAttackPower','attack_power',1]])await check(method,'SELECT '+field+' AS value FROM users WHERE id=?',{args:[id],transform:rows=>rows[0]?.value||fallback});
+    await check('getDoubleStats','SELECT double_wins,double_losses,double_total_bets,double_total_winnings,double_total_losses FROM users WHERE id=?',{args:[id],transform:rows=>rows[0]});
+    await check('getDonationHistory','SELECT donations_history FROM users WHERE id=?',{args:[id],transform:rows=>JSON.parse(rows[0]?.donations_history||'[]')});
+    await check('getMultiplierStats','SELECT multiplier_stats FROM users WHERE id=?',{args:[id],transform:rows=>JSON.parse(rows[0]?.multiplier_stats||'{}')});
+    await check('getUserEnergyData','SELECT energy,last_energy_restore FROM users WHERE id=? OR numeric_id=?',{args:[id],params:[id,id],transform:rows=>rows[0]});
     await check('getReferralsByReferrerId','SELECT id,username,is_registered,registration_date FROM users WHERE referrer_id=? AND (is_registered=1 OR registration_date<?)',{args:[id],params:[id,CUTOFF]});
     await check('getSeasonalReferralsByReferrerId','SELECT id,username,is_registered,registration_date FROM users WHERE referrer_id=? AND is_registered=1 AND registration_date>=?',{args:[id],params:[id,CUTOFF]});
     await check('getReferralCount','SELECT COUNT(*) AS n FROM users WHERE referrer_id=?',{args:[id],transform:rows=>rows[0].n});
