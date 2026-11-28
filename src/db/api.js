@@ -22,6 +22,7 @@ const {createCandyPurchase}=require('../services/candyPurchase');
 const {createPartnerPromos}=require('../repositories/partnerPromos');
 const {createPromoRedemption}=require('../services/promoRedemption');
 const {createPartnerDecision}=require('../services/partnerDecision');
+const {createFinanceLogs}=require('../repositories/financeLogs');
 function createMysqlApi(runtime,{now=()=>Date.now(),random=Math.random}={}){
   const executor={execute:(sql,params)=>runtime.currentExecutor().execute(sql,params)};
   const runTransaction=work=>{
@@ -34,8 +35,9 @@ function createMysqlApi(runtime,{now=()=>Date.now(),random=Math.random}={}){
   const catalogs=createCatalogs(runtime);
   const inventory=createInventoryAdjustment(runtime,{reads,runTransaction});
   const equipment=createPlayerEquipment(runtime,reads,catalogs);
+  const operational=createOperationalState(runtime,{now});
   const promoRedemption=createPromoRedemption(runtime,inventory,{runTransaction,now,random});
-  return {...reads,...inventory,...createPartnerPromos(runtime,{now}),...promoRedemption,...createAccessControl(runtime,reads,{now}),...createOperationalState(runtime,{now}),...equipment,...createProfileViews(runtime,reads,{now}),...createPlayerStatistics(runtime,reads),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...catalogs,...createGameRecords(runtime),...createChatModes(runtime),...registration,...payments,decidePartnerRequest:createPartnerDecision(runtime,{runTransaction,now}),purchaseCandy:createCandyPurchase(runtime,{inventory,equipment,runTransaction}),purchaseContainers:createContainerPurchase(runtime,inventory,{runTransaction}),performCardFinance:createCardFinance(executor,{runTransaction,now,mainAdmin:process.env.MAIN_ADMIN||''}),purchaseSkin:createSkinPurchase(executor,{runTransaction}),transaction:work=>runtime.transaction(work)};
+  return {...reads,...inventory,...createPartnerPromos(runtime,{now}),...promoRedemption,...createAccessControl(runtime,reads,{now}),...operational,...createFinanceLogs(runtime,{now,cleanupOldMessageLogs:operational.cleanupOldMessageLogs}),...equipment,...createProfileViews(runtime,reads,{now}),...createPlayerStatistics(runtime,reads),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...catalogs,...createGameRecords(runtime),...createChatModes(runtime),...registration,...payments,decidePartnerRequest:createPartnerDecision(runtime,{runTransaction,now}),purchaseCandy:createCandyPurchase(runtime,{inventory,equipment,runTransaction}),purchaseContainers:createContainerPurchase(runtime,inventory,{runTransaction}),performCardFinance:createCardFinance(executor,{runTransaction,now,mainAdmin:process.env.MAIN_ADMIN||''}),purchaseSkin:createSkinPurchase(executor,{runTransaction}),transaction:work=>runtime.transaction(work)};
 }
 function getApiCoverage(api){
   return {implemented:contract.functions.filter(key=>typeof api[key]==='function'),missing:contract.functions.filter(key=>typeof api[key]!=='function'),missingConstants:contract.constants.filter(key=>!Object.hasOwn(api,key))};

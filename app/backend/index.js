@@ -15,7 +15,7 @@ const {
   takeTickets,
   getUserById,
   awardPrizeToUser,
-  getAdminLogsFinance,
+  getFinanceLogPage,
   resolveLogSearchIds,
   getAdminDoubleRoundsView,
   getAdminDoubleBetsView,
@@ -179,31 +179,7 @@ function clampOffset(offset, total, limit) {
   return Math.max(0, Math.min(offset, Math.max(0, total - limit)));
 }
 
-function getFinancePage({ targetTs = null, types = null, searchIds = null, limit = 50, offset = 0 }) {
-  const where = [];
-  const params = [];
-  where.push(`((f.action IS NOT NULL AND f.action != '') OR f.amount IS NOT NULL OR f.target_user_id IS NOT NULL OR f.actor_user_id IS NOT NULL)`);
-  if (types && types.length) {
-    where.push(`f.type IN (${types.map(() => '?').join(',')})`);
-    params.push(...types);
-  }
-  if (searchIds && searchIds.length) {
-    const ph = searchIds.map(() => '?').join(',');
-    where.push(`(CAST(f.actor_user_id AS TEXT) IN (${ph}) OR CAST(f.target_user_id AS TEXT) IN (${ph}))`);
-    params.push(...searchIds, ...searchIds);
-  }
-  const whereSql = 'WHERE ' + where.join(' AND ');
-  const total = db.prepare(`SELECT COUNT(*) AS c FROM finance_log f ${whereSql}`).get(...params).c;
-  let off = offset;
-  if (targetTs != null) {
-    const newer = db.prepare(`SELECT COUNT(*) AS c FROM finance_log f ${whereSql} AND f.ts > ?`).get(...params, targetTs).c;
-    off = clampOffset(Math.floor(newer / limit) * limit, total, limit);
-  }
-  const selectCols = `f.id, f.ts, f.type, f.actor_user_id, f.target_user_id, f.amount, f.currency, f.ref, f.reason, f.action, f.payload, f.success, f.chat_id, f.chat_title, f.chat_type, a.username AS actor_name, a.numeric_id AS actor_num, t.username AS target_name, t.numeric_id AS target_num`;
-  const joins = `FROM finance_log f LEFT JOIN users a ON CAST(a.id AS TEXT) = CAST(f.actor_user_id AS TEXT) LEFT JOIN users t ON CAST(t.id AS TEXT) = CAST(f.target_user_id AS TEXT)`;
-  const rows = db.prepare(`SELECT ${selectCols} ${joins} ${whereSql} ORDER BY f.ts DESC LIMIT ? OFFSET ?`).all(...params, limit, off);
-  return { rows, total, offset: off };
-}
+
 
 function getRoundsPage({ targetTs = null, hash = null, limit = 50, offset = 0 }) {
   const where = [];
@@ -262,7 +238,7 @@ app.get('/api/admin/logs/finance', async (req, res) => {
   try {
     const { targetTs, searchIds, page } = (await parseLogsQuery(req));
     const types = req.query.types ? String(req.query.types).split(',').filter(Boolean) : null;
-    const result = getFinancePage({
+    const result = await getFinanceLogPage({
       targetTs,
       types,
       searchIds,

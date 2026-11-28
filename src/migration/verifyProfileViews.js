@@ -48,6 +48,14 @@ async function verifyProfileViews(db,api,{now=Date.now()}={}){
   await check('getActivePlayersCount','SELECT COUNT(DISTINCT user_id) AS c FROM message_log WHERE ts>=?',{params:[now-300000],transform:rows=>rows[0].c});
   await check('getMaxNumericId','SELECT MAX(numeric_id) AS n FROM users',{transform:rows=>rows[0].n||0});
   const ids=db.prepare('SELECT id FROM users ORDER BY rowid LIMIT 3').all().map(row=>String(row.id));
+  const financeColumns='f.id,f.ts,f.type,f.actor_user_id,f.target_user_id,f.amount,f.currency,f.ref,f.reason,f.action,f.payload,f.success,f.chat_id,f.chat_title,f.chat_type,a.username AS actor_name,a.numeric_id AS actor_num,t.username AS target_name,t.numeric_id AS target_num';
+  const financeFrom=" FROM finance_log f LEFT JOIN users a ON CAST(a.id AS TEXT)=CAST(f.actor_user_id AS TEXT) LEFT JOIN users t ON CAST(t.id AS TEXT)=CAST(f.target_user_id AS TEXT) WHERE ((f.action IS NOT NULL AND f.action!='') OR f.amount IS NOT NULL OR f.target_user_id IS NOT NULL OR f.actor_user_id IS NOT NULL)";
+  const financeResult=rows=>({rows,total:rows.length,page:1,pages:1});
+  await check('getAdminLogsFinance','SELECT '+financeColumns+financeFrom+' ORDER BY f.ts DESC,f.id DESC LIMIT 50',{transform:financeResult});
+  await check('getAdminLogsFinance','SELECT '+financeColumns+financeFrom+" AND f.type IN ('transfer','promo') ORDER BY f.ts DESC,f.id DESC LIMIT 20",{args:[{types:['transfer','promo'],limit:20}],params:[],transform:financeResult});
+  await check('getAdminLogsFinance','SELECT '+financeColumns+financeFrom+' AND (f.actor_user_id=? OR f.target_user_id=?) ORDER BY f.ts DESC,f.id DESC LIMIT 20',{args:[{searchIds:[ids[0]],limit:20}],params:[ids[0],ids[0]],transform:financeResult});
+  const financeTotal=db.prepare('SELECT COUNT(*) AS n FROM finance_log f WHERE ((f.action IS NOT NULL AND f.action!=\'\') OR f.amount IS NOT NULL OR f.target_user_id IS NOT NULL OR f.actor_user_id IS NOT NULL)').get().n;
+  await check('getFinanceLogPage','SELECT '+financeColumns+financeFrom+' ORDER BY f.ts DESC,f.id DESC LIMIT 10 OFFSET 5',{args:[{limit:10,offset:5}],params:[],transform:rows=>({rows,total:financeTotal,offset:5})});
   for(const id of ids){
     for(const [method,field,fallback]of [['getFortuneTickets','fortune_tickets',0],['getTickets','tickets',0],['getSecretGifts','secret_gifts',0],['getUserNpfShares','npf_shares',0],['getTotalDonatedStars','total_donated_stars',0],['getUserAttackPower','attack_power',1]])await check(method,'SELECT '+field+' AS value FROM users WHERE id=?',{args:[id],transform:rows=>rows[0]?.value||fallback});
     await check('getDoubleStats','SELECT double_wins,double_losses,double_total_bets,double_total_winnings,double_total_losses FROM users WHERE id=?',{args:[id],transform:rows=>rows[0]});
