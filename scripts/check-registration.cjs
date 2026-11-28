@@ -132,10 +132,20 @@ async function runRegistrationChecks(env=process.env){
     await service.saveAuctionState(auction);let savedAuction=await service.getAuctionState();assert.equal(savedAuction.isFinished,false);assert.equal(savedAuction.highestBid,20);assert.deepEqual(savedAuction.bids,auction.bids);await service.saveAuctionState({...auction,isFinished:true});assert.equal((await service.getAuctionState()).isFinished,true);checks++;
     assert.equal(await service.hasUnansweredReports(referrer),false);checks++;
     assert.equal((await service.cleanupExpiredAdminActions()).deletedCount,0);assert.equal((await service.cleanupExpiredAdminKickActions()).deletedCount,0);assert.equal((await service.cleanupOldMessageLogs()).deletedCount,0);checks++;
+    await pool.execute('INSERT INTO prefixes(id,prefix) VALUES (900001,?)',['Fixture']);
+    const grants=await Promise.all(Array.from({length:20},()=>service.addPrefixToUser(referrer,900001)));assert.equal(grants.filter(Boolean).length,1);assert.deepEqual(await service.listUserPrefixes(referrer),[{id:900001,name:'Fixture'}]);checks++;
+    assert.equal((await service.getUserPrefixesDetailedPm(referrer)).regular[0].name,'Fixture');assert.equal(await service.removePrefixFromUser(referrer,900001),true);assert.equal(await service.removePrefixFromUser(referrer,900001),false);checks++;
+    await pool.execute('INSERT INTO special_prefixes(id,prefix,created_by) VALUES (900001,?,?)',['Fixture',referrer]);const numeric=(await profile(referrer)).numeric_id;
+    assert.equal((await service.assignSpecialPrefixToUser(numeric,900001)).success,true);assert.equal((await service.assignSpecialPrefixToUser(numeric,900001)).success,false);assert.equal((await service.removeSpecialPrefixFromUser(numeric,900001)).success,true);checks++;
+    await pool.execute('INSERT INTO weapons(id,name,image_file,base_damage,price,price_type,width,height,x_position,y_position,durability) VALUES (900001,?,?,1,1,?,1,1,0,0,2)',['Fixture','fixture.png','PF']);
+    await Promise.all(Array.from({length:20},()=>service.addWeaponToUser(referrer,900001)));assert.deepEqual(await service.getOwnedWeapons(referrer),[900001]);await service.setActiveWeapon(referrer,900001);assert.equal((await service.getActiveWeapon(referrer)).id,900001);checks++;
+    assert.equal(await service.reduceWeaponDurability(referrer,900001),false);assert.equal(await service.getCurrentWeaponDurability(referrer,900001),2);assert.equal(await service.reduceWeaponDurability(referrer,900001),false);assert.equal(await service.reduceWeaponDurability(referrer,900001),true);checks++;
+    await service.removeBrokenWeapon(referrer,900001);assert.deepEqual(await service.getOwnedWeapons(referrer),[]);checks++;
     return {checks,concurrentRequests:20,isolatedDatabase:true};
   }finally{
     try{if(seeded){
-      for(const table of ['payment_inbox','telegram_payments','player_donation_events','finance_log','registration_completions','inventory_entries','wallet_entries','player_referral_intents','player_referrals','player_roles',...Object.keys(groups),'inventory_balances','wallets','player_cards'])await pool.query('DELETE FROM '+table);
+      for(const table of ['player_prefix_ownership','player_weapon_ownership','user_weapon_durability','payment_inbox','telegram_payments','player_donation_events','finance_log','registration_completions','inventory_entries','wallet_entries','player_referral_intents','player_referrals','player_roles',...Object.keys(groups),'inventory_balances','wallets','player_cards'])await pool.query('DELETE FROM '+table);
+      await pool.execute('DELETE FROM prefixes WHERE id=900001');await pool.execute('DELETE FROM special_prefixes WHERE id=900001');await pool.execute('DELETE FROM weapons WHERE id=900001');
       await pool.execute('DELETE FROM role_catalog WHERE id=999992');
       await pool.execute('DELETE FROM role_catalog WHERE name=?',['FixtureRole']);
       await pool.query('DELETE FROM player_bans');await pool.query('DELETE FROM mutes');

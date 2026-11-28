@@ -15,6 +15,7 @@ const {createPlayerStatistics}=require('../repositories/playerStatistics');
 const {createCardFinance}=require('../services/cardFinance');
 const {createAccessControl}=require('../repositories/accessControl');
 const {createOperationalState}=require('../repositories/operationalState');
+const {createPlayerEquipment}=require('../repositories/playerEquipment');
 function createMysqlApi(runtime,{now=()=>Date.now()}={}){
   const executor={execute:(sql,params)=>runtime.currentExecutor().execute(sql,params)};
   const runTransaction=work=>{
@@ -24,7 +25,8 @@ function createMysqlApi(runtime,{now=()=>Date.now()}={}){
   const registration=createPlayerRegistration(executor,{now,runTransaction});
   const payments=createPaymentInbox(executor,{now,runTransaction,inTransaction:()=>Boolean(runtime.inTransaction?.()),referralPercent:require('../../config').REFERRAL_DONATION_PERCENT_DF});
   const reads=createLegacyReads(runtime);
-  return {...reads,...createAccessControl(runtime,reads,{now}),...createOperationalState(runtime,{now}),...createProfileViews(runtime,reads,{now}),...createPlayerStatistics(runtime,reads),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...createCatalogs(runtime),...createGameRecords(runtime),...createChatModes(runtime),...registration,...payments,performCardFinance:createCardFinance(executor,{runTransaction,now,mainAdmin:process.env.MAIN_ADMIN||''}),purchaseSkin:createSkinPurchase(executor,{runTransaction}),transaction:work=>runtime.transaction(work)};
+  const catalogs=createCatalogs(runtime);
+  return {...reads,...createAccessControl(runtime,reads,{now}),...createOperationalState(runtime,{now}),...createPlayerEquipment(runtime,reads,catalogs),...createProfileViews(runtime,reads,{now}),...createPlayerStatistics(runtime,reads),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...catalogs,...createGameRecords(runtime),...createChatModes(runtime),...registration,...payments,performCardFinance:createCardFinance(executor,{runTransaction,now,mainAdmin:process.env.MAIN_ADMIN||''}),purchaseSkin:createSkinPurchase(executor,{runTransaction}),transaction:work=>runtime.transaction(work)};
 }
 function getApiCoverage(api){
   return {implemented:contract.functions.filter(key=>typeof api[key]==='function'),missing:contract.functions.filter(key=>typeof api[key]!=='function'),missingConstants:contract.constants.filter(key=>!Object.hasOwn(api,key))};
