@@ -239,6 +239,7 @@ app.get('/api/admin/logs/finance', async (req, res) => {
     const { targetTs, searchIds, page } = (await parseLogsQuery(req));
     const types = req.query.types ? String(req.query.types).split(',').filter(Boolean) : null;
     const result = await getFinanceLogPage({
+      ...require('../../src/api/logsQuery').parseFinanceFilters(req.query),
       targetTs,
       types,
       searchIds,

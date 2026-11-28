@@ -21,7 +21,7 @@ function createDoubleBet(runtime,{runTransaction,now=()=>Date.now()}){return asy
     await connection.execute('UPDATE player_statistics SET max_bet_amount=GREATEST(COALESCE(max_bet_amount,0),?) WHERE player_id=?',[String(requested),playerId]);
     await connection.execute('INSERT INTO double_bet_cooldowns(player_id,multiplier,last_accepted_ms) VALUES (?,?,?) ON DUPLICATE KEY UPDATE last_accepted_ms=VALUES(last_accepted_ms)',[playerId,multiplier,now()]);
     const result={success:true,id:String(inserted.insertId),roundId,multiplier,amount:String(requested),currency:'PF',replayed:false};
-    await connection.execute('INSERT INTO finance_log(ts,type,actor_user_id,amount,currency,ref,chat_id,chat_title,action,payload,success) VALUES (?,?,?,?,?,?,?,?,?,?,1)',[now(),'double_bet',playerId,String(requested),'PF',roundId,chatId,chatTitle,'double_bet',JSON.stringify({betId:result.id,multiplier})]);
+    await connection.execute('INSERT INTO finance_log(ts,type,actor_user_id,amount,currency,ref,chat_id,chat_title,action,payload,success,operation_key,entity_type,entity_id,actor_name_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)',[now(),'double_bet',playerId,String(requested),'PF',roundId,chatId,chatTitle,'double_bet',JSON.stringify({betId:result.id,multiplier}),key,'double_round',roundId,player.display_name]);
     await connection.execute('UPDATE wallet_operations SET result_json=? WHERE operation_key=?',[JSON.stringify(result),key]);return result;
   });
 };}
