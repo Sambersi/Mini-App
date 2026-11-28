@@ -24,6 +24,8 @@
 
 Общий logFinance пишет новые метаданные и снимки, новая Double-ставка связывает журнал с operation_key своего wallet receipt и entity=double_round. Остальные прямые INSERT finance_log ещё нужно последовательно дополнить. Новые колонки не означают их заполненность во всех событиях.
 
+Лабораторный settlement Double добавляет событие `double_payout` с system:double, игроком, чатом, раундом, ключом проводки, снимками имён и gross/credited/burned. Миграция 026 связывает принятую ставку с receipt списания. До активации нужно согласовать горячий retention Double с FK 024/026 и архивным чтением. Сценарий интерфейса ожидает подключения engine и фильтров.
+
 getFinanceLogPage и защищённый admin endpoint принимают fromTs/toTs (UTC epoch ms), actorId, targetId, chatId, currencies, success, minAmount/maxAmount, operationKey, entityType/entityId; старые types/search/targetTs/page сохранены. Суммы фильтров передаются строкой, ID не преобразуются в Number. Входы проверяются, SQL-параметры связаны. limit максимум 200. Неверный фильтр возвращает 400 без SQL, ошибки БД — общий 500.
 
 Для непрерывного списка: pagination=cursor, затем cursorTs/cursorId из nextCursor. Порядок ts DESC,id DESC; новые вставки не сдвигают уже пролистываемую историю. Старый offset режим оставлен для существующей UI-пагинации и перехода к дате. includeAuditMetadata=true добавляет метаданные в строки; без него прежняя форма ответа сохранена. Курсор не является фиксированным снимком всей базы: старые удаления/архивация или вставки задним числом требуют отдельной политики.

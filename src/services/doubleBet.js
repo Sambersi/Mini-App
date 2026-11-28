@@ -18,6 +18,7 @@ function createDoubleBet(runtime,{runTransaction,now=()=>Date.now()}){return asy
     const [[last]]=await connection.execute('SELECT last_accepted_ms FROM double_bet_cooldowns WHERE player_id=? AND multiplier=? FOR UPDATE',[playerId,multiplier]);if(last&&now()-Number(last.last_accepted_ms)<1000)fail('DOUBLE_BET_COOLDOWN');
     const wallet={playerId,asset:'PF',bucket:'main'},before=await lockWallet(connection,wallet);if(before<requested)fail('INSUFFICIENT_FUNDS');await saveWallet(connection,wallet,before-requested,-requested,key+':debit','double_bet');
     const [inserted]=await connection.execute("INSERT INTO double_bets_log(ts,round_id,user_id,username,chat_id,chat_title,multiplier,amount,status) VALUES (?,?,?,?,?,?,?,?,'accepted')",[now(),roundId,playerId,player.display_name||'Неизвестный',chatId,chatTitle,multiplier,String(requested)]);
+    await connection.execute('INSERT INTO double_bet_operations(bet_id,operation_key) VALUES (?,?)',[String(inserted.insertId),key]);
     await connection.execute('UPDATE player_statistics SET max_bet_amount=GREATEST(COALESCE(max_bet_amount,0),?) WHERE player_id=?',[String(requested),playerId]);
     await connection.execute('INSERT INTO double_bet_cooldowns(player_id,multiplier,last_accepted_ms) VALUES (?,?,?) ON DUPLICATE KEY UPDATE last_accepted_ms=VALUES(last_accepted_ms)',[playerId,multiplier,now()]);
     const result={success:true,id:String(inserted.insertId),roundId,multiplier,amount:String(requested),currency:'PF',replayed:false};

@@ -215,6 +215,7 @@ async function runRegistrationChecks(env=process.env){
     checks+=await require('./check-double-bets.cjs').runDoubleBetChecks({pool,runtime,now:timestamp});
     checks+=await require('./check-referrer-bank.cjs').runReferrerBankChecks({pool,runtime,now:timestamp});
     checks+=await require('./check-double-statistics.cjs').runDoubleStatisticsChecks({pool,runtime,now:timestamp});
+    checks+=await require('./check-double-settlement.cjs').runDoubleSettlementChecks({pool,runtime,now:timestamp});
     return {checks,concurrentRequests:20,isolatedDatabase:true};
   }finally{
     try{if(seeded){
