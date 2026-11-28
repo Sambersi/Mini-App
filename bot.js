@@ -4696,65 +4696,7 @@ function formatNumber(number) {
   return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
-bot.action(/buy_weapon_(\d+)/, async (ctx) => {
-  try {
-    const weaponId = parseInt(ctx.match[1], 10); // Извлекаем ID оружия из callback_data
-
-    // Получаем информацию об оружии
-    const weapon = (await getWeaponById(weaponId));
-    if (!weapon) {
-      return await ctx.reply('❌ Ошибка: Оружие не найдено.');
-    }
-
-    // Проверяем, доступно ли оружие для покупки
-    const user = (await getUserById(ctx.from.id.toString()));
-    if (!user) {
-      return await ctx.reply('❌ Ошибка: Пользователь не найден.');
-    }
-
-    const currentBalance = user.balance || 0;
-    if (currentBalance < weapon.price) {
-      return await ctx.reply(
-        `❌ Недостаточно PF для покупки оружия. Требуется ${formatNumber(weapon.price)} PF.`
-      );
-    }
-
-    // Проверяем, не куплено ли оружие
-    const ownedWeaponsIds = (await getOwnedWeapons(ctx.from.id.toString()));
-    if (ownedWeaponsIds.includes(weapon.id)) {
-      return await ctx.reply('❌ Это оружие уже куплено.');
-    }
-
-    // Уменьшаем баланс пользователя
-    (await updateUserBalance(ctx.from.id.toString(), -weapon.price));
-
-    // Добавляем оружие в список купленных
-    (await addWeaponToUser(ctx.from.id.toString(), weapon.id));
-
-    // Создаем клавиатуру с кнопками
-    const keyboard = {
-      inline_keyboard: [
-        [{ text: '🔫 Применить оружие', callback_data: 'change_weapon' }], // Смена оружия
-        [{ text: 'Закрыть', callback_data: 'close_energy_info' }], // Закрыть сообщение
-      ],
-    };
-
-    // Уведомляем пользователя
-    await ctx.replyWithHTML(
-      `🛒 <b>Покупка завершена!</b>\n\n` +
-      `🔫 Вы купили: <b>${weapon.name}</b>\n` +
-      `➖ Списано с баланса: -<b>${formatNumber(weapon.price)} PF</b>\n` +
-      `💰 Оставшийся баланс PF: <b>${formatNumber(currentBalance - weapon.price)}</b>`,
-      { reply_markup: keyboard }
-    );
-
-    // Возвращаемся в магазин оружия
-    await weaponShop(ctx);
-  } catch (error) {
-    console.error('[buyWeapon] Ошибка:', error);
-    await ctx.reply('Произошла ошибка при покупке оружия.');
-  }
-});
+bot.action(/buy_weapon_(\d+)/, async ctx => buyWeapon(ctx));
 
 
 // Обработчик для просмотра информации об оружии
