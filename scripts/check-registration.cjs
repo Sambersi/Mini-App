@@ -208,6 +208,7 @@ async function runRegistrationChecks(env=process.env){
     const raceDecision=await service.createPartnerCurrencyRequest(referrer,'FixtureDecisionRace','df_balance',3);const raceBalance=(await profile(referrer)).df_balance;const decisionRace=await Promise.allSettled(['approve','reject'].map(decision=>service.decidePartnerRequest({requestId:raceDecision,adminId:decisionAdmin,decision})));assert.equal(decisionRace.filter(row=>row.status==='fulfilled').length,1);const raceStatus=(await service.getPartnerRequestById(raceDecision)).status;assert.equal((await profile(referrer)).df_balance,raceBalance+(raceStatus==='approved'?3:0));checks++;
     checks+=await require('./check-finance-logs.cjs').runFinanceLogChecks({pool,runtime,service,playerId:referrer,now:timestamp});
     checks+=await require('./check-boss-state.cjs').runBossStateChecks({pool,runtime,service,playerId:'900000100',now:timestamp});
+    checks+=await require('./check-attack-upgrade.cjs').runAttackUpgradeChecks({pool,service,playerId:'900000100',now:timestamp});
     return {checks,concurrentRequests:20,isolatedDatabase:true};
   }finally{
     try{if(seeded){
