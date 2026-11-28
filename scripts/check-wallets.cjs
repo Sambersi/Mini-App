@@ -159,7 +159,7 @@ async function runWalletChecks(env = process.env) {
         await pool.query('DELETE FROM player_donation_events');
         await pool.query('DELETE FROM player_donation_state');
         await pool.query('DELETE FROM player_referrals');
-        await pool.execute('DELETE FROM finance_log WHERE actor_user_id=?',['900000011']);
+        await pool.execute('DELETE FROM finance_log WHERE actor_user_id IN (?,?,?)',['900000011',a.playerId,b.playerId]);
         await pool.query('DELETE FROM wallet_entries');
         await pool.query('DELETE FROM wallet_operations');
         await pool.query('DELETE FROM player_roles');

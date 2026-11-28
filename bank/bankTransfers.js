@@ -1,8 +1,11 @@
+const {createCardOperations}=require('../src/telegram/cardOperations');
+const {performCardFinance}=require('../db');
 //bankTransfers.js
 const { Markup } = require('telegraf');
 const { 
     getUserById,
     getUserByNumericId,
+    getUserByCardNumber,
     isUserBanned,
     hasCard,
     getCardBalance,
@@ -63,204 +66,7 @@ const {
 
 
 // Функция для выполнения перевода
-async function performTransfer(ctx, sender, recipient, amountInput) {
-  try {
-      const BASE_TRANSFER_LIMIT = 50000000; // Базовый лимит отправителя
-      const SPECIAL_TRANSFER_LIMIT = 60000000; // Лимит для особых пользователей
-      const PREMIUM_TRANSFER_LIMIT = 120000000; // Лимит для премиум пользователей
-
-      // Проверяем права администратора у отправителя
-      const isAdminSender = await isAdmin(ctx); // Используем ctx для проверки прав
-
-      // Парсим сумму с учётом суффиксов "к" или ключевых слов "всё"/"все"
-      const parsedAmount = parseAmountWithSuffix(amountInput, (await getCardBalance(sender.id)));
-
-      // Проверяем суммарный баланс отправителя (пропускаем для администраторов)
-      if (!isAdminSender) {
-          const senderTotalBalance = (await getTotalBalance(sender.id));
-
-          // Устанавливаем лимит в зависимости от категории пользователя
-          const SPECIAL_USER_IDS = ['1703993971']; // Пользователи с лимитом 60M
-          const PREMIUM_USER_IDS = ['1751938104']; // Пользователи с лимитом 120M
-
-          let effectiveLimit = BASE_TRANSFER_LIMIT; // Базовый лимит по умолчанию
-
-          if (PREMIUM_USER_IDS.includes(sender.id)) {
-              effectiveLimit = PREMIUM_TRANSFER_LIMIT; // 120M для премиум пользователей
-          } else if (SPECIAL_USER_IDS.includes(sender.id)) {
-              effectiveLimit = SPECIAL_TRANSFER_LIMIT; // 60M для особых пользователей
-          }
-
-          if (senderTotalBalance >= effectiveLimit) {
-              return ctx.reply(`✖️ Вам недоступны переводы, так как ваш баланс достиг лимита в ${effectiveLimit.toLocaleString('ru-RU')} PF.`);
-          }
-      }
-
-      // Проверка нахождения отправителя в ЧС
-      if (await isUserBanned(sender.id)) {
-          return ctx.reply('💢 Перевод невозможен, так как ваш аккаунт заблокирован.');
-      }
-
-      // Проверка нахождения получателя в ЧС
-      if (await isUserBanned(recipient.id)) {
-          return ctx.reply('📛 Перевод был прерван, данный игрок заблокирован!');
-      }
-
-      // Проверка наличия карты у отправителя
-      if (!(await hasCard(sender.id))) {
-          return ctx.reply('✖️ У вас нет зарегистрированной карты. Зарегистрируйте карту перед переводом.');
-      }
-
-      // Проверка наличия средств на карте отправителя
-      const senderCardBalance = (await getCardBalance(sender.id));
-      if (senderCardBalance < parsedAmount) {
-          const message = `✖️ На вашей карте недостаточно средств для перевода.
-💰 Требуется: ${parsedAmount.toLocaleString('ru-RU')} PF
-💳 Доступно: ${senderCardBalance.toLocaleString('ru-RU')} PF`;
-          // Добавляем кнопку "Пополнить"
-          return ctx.replyWithHTML(message, Markup.inlineKeyboard([
-              Markup.button.callback('💳 Пополнить карту', 'topup_card')
-          ]));
-      }
-
-      // Проверка блокировки переводов отправителя (пропускаем для администраторов)
-      if (!isAdminSender && await areTransfersBlockedByNumericId(sender.numeric_id)) {
-          return ctx.reply('✖️ Вы не можете совершать переводы, так как они для Вас заблокированы.');
-      }
-
-      // Проверка блокировки переводов получателя
-      if (await areTransfersBlockedByNumericId(recipient.numeric_id)) {
-          return ctx.reply('✖️ Перевод невозможен, так как у получателя заблокированы переводы.');
-      }
-
-      // Проверка блокировки получателя
-      if (recipient.is_blocked) {
-          return ctx.reply('📛 Перевод был прерван, данный игрок заблокирован!');
-      }
-
-      // Проверка наличия карты у получателя
-      if (!(await hasCard(recipient.id))) {
-          return ctx.reply('✖️ Перевод прерван. У получателя нет зарегистрированной карты.');
-      }
-
-      // --- ИЗМЕНЕНИЕ: Получаем уровень и лимит карты получателя ---
-      const recipientCardLevel = await getAccountLevel(recipient.id);
-      const MAX_CARD_BALANCE_LIMIT = (await getCardLimitByAccountLevel(recipientCardLevel)); // Динамический лимит
-
-      // Проверка наличия места на карте получателя (пропускаем для администраторов)
-      const recipientCardBalance = (await getCardBalance(recipient.id));
-      let maxPossibleTransfer = MAX_CARD_BALANCE_LIMIT - recipientCardBalance;
-
-      if (!isAdminSender && maxPossibleTransfer <= 0) {
-          // Если лимит уже достигнут, отменяем операцию
-          return ctx.reply(`⚠️ Баланс карты получателя достиг максимального лимита (${MAX_CARD_BALANCE_LIMIT.toLocaleString('ru-RU')} PF). Перевод невозможен.`);
-      }
-
-      // Корректируем сумму перевода до максимально возможной
-      const transferAmount = isAdminSender ? parsedAmount : Math.min(parsedAmount, maxPossibleTransfer);
-
-      if (!isAdminSender && transferAmount < parsedAmount) {
-          // Предупреждаем отправителя о частичном переводе
-          await ctx.reply(`ℹ️ Баланс карты получателя ограничен. \n• Максимально возможная сумма для перевода: ${transferAmount.toLocaleString('ru-RU')} PF.`);
-      }
-
-      // Выполняем перевод
-      await transaction(async () => {
-          // Снимаем средства с карты отправителя
-          const senderUpdateResult = (await updateCardBalance(sender.id, -transferAmount));
-          if (!senderUpdateResult) {
-              throw new Error('Не удалось списать средства с карты отправителя.');
-          }
-
-          // Добавляем средства на карту получателя
-          const recipientUpdateResult = (await updateCardBalance(recipient.id, transferAmount));
-          if (!recipientUpdateResult) {
-              throw new Error('Не удалось зачислить средства на карту получателя.');
-          }
-      });
-
-      // === НОВОЕ: Логирование в finance_log ===
-      (await logFinance({
-        type: 'transfer',
-        actorUserId: sender.id,           // Telegram ID отправителя
-        targetUserId: recipient.id,       // Telegram ID получателя
-        amount: transferAmount,
-        currency: 'PF_CARD',              // Перевод с карты
-        action: `Перевод ${transferAmount.toLocaleString('ru-RU')} PF игроку ${recipient.username || 'Неизвестный'}`,
-        payload: {
-            senderNumericId: sender.numeric_id,
-            recipientNumericId: recipient.numeric_id,
-            senderUsername: sender.username,
-            recipientUsername: recipient.username
-        }
-    }));
-      // =======================================
-
-      // Создаем гиперссылки для отправителя и получателя
-      const senderLink = await createUserLink(sender.id);
-      const recipientLink = await createUserLink(recipient.id);
-
-      // Отправляем подтверждение отправителю
-      if (transferAmount < parsedAmount) {
-          // Если переведена только часть суммы
-          await ctx.replyWithHTML(
-              `☑️ Вы успешно перевели <b>${transferAmount.toLocaleString('ru-RU')} PF</b> игроку ${recipientLink}.\n` +
-              `⚠️ Оставшаяся сумма (${(parsedAmount - transferAmount).toLocaleString('ru-RU')} PF) не была отправлена из-за ограничения лимита баланса карты.`
-          );
-      } else {
-          // Если вся сумма переведена успешно
-          await ctx.replyWithHTML(`☑️ Вы успешно перевели <b>${transferAmount.toLocaleString('ru-RU')} PF</b> игроку ${recipientLink}.`);
-      }
-
-      // Уведомляем получателя
-      // --- ИЗМЕНЕНИЕ: Получаем обновленный баланс получателя ---
-      const updatedRecipientCardBalance = (await getCardBalance(recipient.id));
-      const userMessage = `
-<b>📮 Новый перевод на карту!</b>
-\n📨 Вам было переведено <b>${transferAmount.toLocaleString('ru-RU')} PF</b>, игроком ${senderLink}!
-💳 Ваш текущий баланс карты: ${updatedRecipientCardBalance.toLocaleString('ru-RU')} PF.
-\n🔕 Нажмите кнопку ниже, если не хотите получать уведомления.`.trim();
-
-      await sendUserNotification(ctx, recipient.id, userMessage);
-
-      // Логирование транзакций в Telegram-чат (если сумма >= 50k), оставляем как есть для оперативности
-      if (transferAmount >= 50000 && LOG_CHAT_T_ID) {
-          const logMessage = `
-🔔 Новая транзакция:
-• Отправитель: ${senderLink} (Tg ID: <code>${sender.id}</code>, ID: <code>${sender.numeric_id}</code>)
-• Получатель: ${recipientLink} (Tg ID: <code>${recipient.id}</code>, ID: <code>${recipient.numeric_id}</code>)
-• Сумма: <b>${transferAmount.toLocaleString('ru-RU')} PF</b>
-`.trim();
-
-          // Отправляем лог в чат для логов
-          ctx.telegram.sendMessage(LOG_CHAT_T_ID, logMessage, { parse_mode: 'HTML' }).catch((error) => {
-              console.error('Ошибка при отправке лога транзакции:', error);
-          });
-      }
-  } catch (error) {
-      console.error('Ошибка при выполнении перевода:', error);
-      
-      // Логируем ошибку в finance_log (опционально, можно убрать если не нужно)
-      /*
-      logFinance({
-          type: 'transfer',
-          actorUserId: sender.id,
-          targetUserId: recipient.id,
-          amount: 0,
-          currency: 'PF_CARD',
-          action: `Ошибка перевода: ${error.message}`,
-          success: 0
-      });
-      */
-
-      // Отправляем более конкретное сообщение об ошибке, если она произошла внутри транзакции
-      if (error.message.includes('средств')) {
-           ctx.reply(`❌ ${error.message}`);
-      } else {
-           ctx.reply('Произошла ошибка при выполнении перевода. Попробуйте позже.');
-      }
-  }
-}
+async function performTransfer(ctx,sender,recipient,amountInput){return cardOperation(ctx,{kind:'transfer',recipientId:String(recipient.id),amountText:amountInput});}
 
 // Обработчик команды "передать"
 async function sendHandler(ctx) {
@@ -316,7 +122,7 @@ async function sendHandler(ctx) {
         if (senderCardBalance <= 0) {
           return ctx.reply('✖️ На вашей карте недостаточно средств для перевода.');
         }
-        amount = senderCardBalance; // Переводим всю сумму с баланса карты
+        amount = '???'; // Переводим всю сумму с баланса карты
       } else {
         // Парсим сумму с учетом суффикса "к"
         try {
@@ -337,10 +143,11 @@ async function sendHandler(ctx) {
         // Поиск по numeric_id или card_number
         if (/^\d+$/.test(identifier)) {
           // Поиск по numeric_id
-          recipient = (await getUserByNumericId(parseInt(identifier, 10)));
+          recipient = (await getUserByNumericId(identifier));
+          if(!recipient&&/^\d{16}$/.test(identifier))recipient=await getUserByCardNumber(identifier);
         } else if (/^\d{16}$/.test(identifier)) {
           // Поиск по card_number
-          recipient = getUserByCardNumber(identifier);
+          recipient = await getUserByCardNumber(identifier);
         }
       }
   
@@ -365,7 +172,7 @@ async function sendHandler(ctx) {
         // Добавляем cooldown (1 секунда)
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        await performTransfer(ctx, sender, recipient, amount); // Убираем лишний аргумент 'баланс'
+        await performTransfer(ctx, sender, recipient, amountInput); // Убираем лишний аргумент 'баланс'
     } catch (error) {
         console.error('Ошибка при обработке команды "передать":', error);
         ctx.reply('Неверный формат.');
@@ -376,3 +183,9 @@ async function sendHandler(ctx) {
     sendHandler,
     createUserLink
   };
+const BASE_TRANSFER_LIMIT = 50000000;
+const SPECIAL_TRANSFER_LIMIT = 60000000;
+const PREMIUM_TRANSFER_LIMIT = 120000000;
+const SPECIAL_USER_IDS = ['1703993971'];
+const PREMIUM_USER_IDS = ['1751938104'];
+const cardOperation=createCardOperations({perform:performCardFinance,notify:sendUserNotification});

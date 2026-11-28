@@ -1,3 +1,5 @@
+const {createCardOperations}=require('../src/telegram/cardOperations');
+const {performCardFinance}=require('../db');
 //cardTopUp.js
 const { Markup } = require('telegraf');
 const { 
@@ -48,92 +50,7 @@ function parseAmountWithSuffix(amountInput, availableBalance) {
   }
   
 // Функция для выполнения пополнения баланса карты
-async function performCardTopUp(ctx, userId, amountInput) {
-  try {
-      // Получаем текущий основной баланс пользователя
-      const userBalance = (await getUserBalance(userId, 'PF'));
-
-      // Парсим сумму с учетом суффиксов "к" или ключевых слов "всё"/"все"
-      const parsedAmount = parseAmountWithSuffix(amountInput, userBalance);
-
-      // Проверка, если сумма больше, чем доступный баланс
-      if (parsedAmount > userBalance) {
-          return ctx.reply(`✖️ На вашем основном балансе недостаточно средств. Текущий баланс: ${userBalance.toLocaleString('ru-RU')} PF.`);
-      }
-
-      // Проверяем наличие карты у пользователя
-      if (!(await hasCard(userId))) {
-          return ctx.reply('✖️ У вас нет зарегистрированной карты. Зарегистрируйте карту перед пополнением.');
-      }
-
-      // --- ИЗМЕНЕНИЕ: Получаем уровень и лимит карты пользователя ---
-      const userAccountLevel = await getAccountLevel(userId);
-      const MAX_CARD_BALANCE_LIMIT = (await getCardLimitByAccountLevel(userAccountLevel)); // Динамический лимит
-
-      // Проверяем лимит баланса карты
-      const currentCardBalance = (await getCardBalance(userId));
-      const maxPossibleTopUp = MAX_CARD_BALANCE_LIMIT - currentCardBalance;
-
-      if (maxPossibleTopUp <= 0) {
-          return ctx.reply(`⚠️ Достигнут максимальный лимит баланса карты (${MAX_CARD_BALANCE_LIMIT.toLocaleString('ru-RU')} PF). Пополнение невозможно.`);
-      }
-
-      // Корректируем сумму пополнения до максимально возможной
-      const topUpAmount = Math.min(parsedAmount, maxPossibleTopUp);
-
-      // Выполняем транзакцию
-      await transaction(async () => {
-          // Снимаем средства с основного баланса
-          // Предполагается, что deductCurrencyFromUser обновляет основной баланс напрямую
-          // Если она использует updateMainBalance внутри, то лимит будет применен автоматически
-          const deductionResult = (await deductCurrencyFromUser(userId, 'PF', topUpAmount));
-          if (!deductionResult || deductionResult.success === false) { // Адаптируйте проверку возврата
-               throw new Error(deductionResult?.message || 'Ошибка при списании средств с основного баланса.');
-          }
-
-          // Добавляем средства на баланс карты
-          const updateResult = (await updateCardBalance(userId, topUpAmount));
-          if (!updateResult) {
-              throw new Error('Ошибка при зачислении средств на карту.');
-          }
-      });
-
-      // Получаем обновленные балансы
-      const newCardBalance = (await getCardBalance(userId)); // Новый баланс карты
-      const newMainBalance = (await getUserBalance(userId, 'PF')); // Новый основной баланс
-
-      // Формируем сообщение о результате операции
-      const user = await getUserById(userId);
-      const username = user?.username || ctx.from.first_name || 'Неизвестный';
-      const isPrivateChat = ctx.chat.type === 'private';
-
-      const message = `
-☑️ Вы успешно пополнили карту на ${topUpAmount.toLocaleString('ru-RU')} PF.
-💳 Баланс карты: <b>${newCardBalance.toLocaleString('ru-RU')} PF</b> (+${topUpAmount.toLocaleString('ru-RU')})
-💰 Основной баланс: <b>${newMainBalance.toLocaleString('ru-RU')} PF</b> (-${topUpAmount.toLocaleString('ru-RU')})
-`.trim();
-
-      if (isPrivateChat) {
-          ctx.replyWithHTML(message);
-      } else {
-          const userLink = createUserLink(userId, username);
-          ctx.replyWithHTML(`👤 ${userLink},\n ${message}`);
-      }
-
-      // Если была попытка пополнить больше, чем возможно
-      if (parsedAmount > topUpAmount) {
-          ctx.reply(`ℹ️ Вы пытаетесь пополнить сумму, превышающую лимит баланса карты. Пополнено максимально возможное количество.`);
-      }
-  } catch (error) {
-      console.error('Ошибка при пополнении баланса карты:', error);
-      // Отправляем более конкретное сообщение об ошибке, если она произошла внутри транзакции
-      if (error.message.includes('средств') || error.message.includes('лимит')) {
-           ctx.reply(`❌ ${error.message}`);
-      } else {
-           ctx.reply('Произошла ошибка при выполнении операции.');
-      }
-  }
-}
+async function performCardTopUp(ctx,userId,amountInput){return cardOperation(ctx,{kind:'topup',amountText:amountInput});}
 
 // Обработчик команды "пополнить"
 async function topUpHandler(ctx) {
@@ -242,91 +159,7 @@ async function handleTopUpAll(ctx) {
 
 
 // Функция для выполнения снятия средств с карты на основной баланс
-async function performCardWithdrawal(ctx, userId, amountInput) {
-  try {
-      // Получаем текущие балансы
-      const cardBalance = (await getCardBalance(userId)); // Баланс карты
-
-      // Парсим сумму с учетом суффиксов "к" или ключевых слов "всё"/"все"
-      const parsedAmount = parseAmountWithSuffix(amountInput, cardBalance);
-
-      // Проверка, если сумма больше, чем доступный баланс карты
-      if (parsedAmount > cardBalance) {
-          return ctx.reply(`✖️ На вашей карте недостаточно средств. Текущий баланс: ${cardBalance.toLocaleString('ru-RU')} PF.`);
-      }
-
-      // --- ИЗМЕНЕНИЕ: Получаем уровень карты пользователя для определения лимита основного баланса ---
-      const userAccountLevel = await getAccountLevel(userId);
-      // Определяем лимит основного баланса на основе уровня карты
-      let MAX_MAIN_BALANCE_LIMIT = 250000000; // Базовый лимит
-      if (userAccountLevel >= 10) MAX_MAIN_BALANCE_LIMIT = 251000000; // Уровень 10
-      if (userAccountLevel >= 15) MAX_MAIN_BALANCE_LIMIT = 252000000; // Уровень 15
-      if (userAccountLevel >= 20) MAX_MAIN_BALANCE_LIMIT = 253000000; // Уровень 20
-
-      // Получаем текущий основной баланс
-      const mainBalance = (await getUserBalance(userId, 'PF'));
-
-      // Проверяем лимит основного баланса
-      const maxPossibleWithdrawal = MAX_MAIN_BALANCE_LIMIT - mainBalance;
-
-      if (maxPossibleWithdrawal <= 0) {
-          return ctx.reply(`⚠️ Достигнут максимальный лимит основного баланса (${MAX_MAIN_BALANCE_LIMIT.toLocaleString('ru-RU')} PF). Снятие невозможно.`);
-      }
-
-      // Корректируем сумму снятия до максимально возможной
-      const withdrawalAmount = Math.min(parsedAmount, maxPossibleWithdrawal);
-
-      // Выполняем транзакцию
-      await transaction(async () => {
-          // Снимаем средства с баланса карты
-          const cardUpdateResult = (await updateCardBalance(userId, -withdrawalAmount));
-          if (!cardUpdateResult) {
-              throw new Error('Ошибка при списании средств с карты.');
-          }
-
-          // Добавляем средства на основной баланс
-          const mainUpdateResult = (await updateMainBalance(userId, withdrawalAmount));
-          if (!mainUpdateResult) {
-              throw new Error('Ошибка при зачислении средств на основной баланс.');
-          }
-      });
-
-      // Получаем обновленные балансы
-      const newCardBalance = (await getCardBalance(userId)); // Новый баланс карты
-      const newMainBalance = (await getUserBalance(userId, 'PF')); // Новый основной баланс
-
-      // Формируем сообщение о результате операции
-      const user = await getUserById(userId);
-      const username = user?.username || ctx.from.first_name || 'Неизвестный';
-      const isPrivateChat = ctx.chat.type === 'private';
-
-      const message = `
-☑️ Вы успешно сняли ${withdrawalAmount.toLocaleString('ru-RU')} PF с карты.
-💳 Баланс карты: <b>${newCardBalance.toLocaleString('ru-RU')} PF</b> (-${withdrawalAmount.toLocaleString('ru-RU')})
-💰 Основной баланс: <b>${newMainBalance.toLocaleString('ru-RU')} PF</b> (+${withdrawalAmount.toLocaleString('ru-RU')})
-`.trim();
-
-      if (isPrivateChat) {
-          ctx.replyWithHTML(message);
-      } else {
-          const userLink = createUserLink(userId, username);
-          ctx.replyWithHTML(`👤 ${userLink},\n ${message}`);
-      }
-
-      // Если была попытка перевести больше, чем возможно
-      if (parsedAmount > withdrawalAmount) {
-          ctx.reply(`ℹ️ Вы пытаетесь перевести сумму, превышающую лимит основного баланса. Переведено максимально возможное количество.`);
-      }
-  } catch (error) {
-      console.error('Ошибка при снятии средств с карты:', error);
-      // Отправляем более конкретное сообщение об ошибке, если она произошла внутри транзакции
-      if (error.message.includes('средств') || error.message.includes('лимит')) {
-           ctx.reply(`❌ ${error.message}`);
-      } else {
-           ctx.reply('Произошла ошибка при выполнении операции.');
-      }
-  }
-}
+async function performCardWithdrawal(ctx,userId,amountInput){return cardOperation(ctx,{kind:'withdraw',amountText:amountInput});}
 
 // Обработчик команды "снять"
 async function withdrawHandler(ctx) {
@@ -388,3 +221,5 @@ async function withdrawHandler(ctx) {
     showTopUpInstruction,
     showWithdrawInstruction,
   };
+
+const cardOperation=createCardOperations({perform:performCardFinance});

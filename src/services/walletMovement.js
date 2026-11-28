@@ -29,11 +29,12 @@ function normalize(input) {
 
 // Accounting primitive only. Command adapters must enforce registration, bans,
 // card ownership, account limits and permissions before invoking it in runtime.
-async function moveOnce(pool, input, authorize) {
+async function moveOnce(pool, input, authorize, options={}) {
   const request = normalize(input);
   const key = input.operationKey;
   const hash = createHash('sha256').update(JSON.stringify(request)).digest('hex');
-  return withTransaction(pool, async connection => {
+  const run=options.runTransaction|| (work=>withTransaction(pool,work));
+  return run(async connection => {
     // Duplicate INSERT errors acquire shared locks in InnoDB; upgrading many
     // identical retries to FOR UPDATE can deadlock. Reserve with an X lock.
     await connection.execute('INSERT INTO wallet_operations(operation_key,request_hash) VALUES (?,?) ON DUPLICATE KEY UPDATE operation_key=VALUES(operation_key)', [key, hash]);
@@ -57,14 +58,16 @@ async function moveOnce(pool, input, authorize) {
     await saveWallet(connection, request.from, from - amount, -amount, 'move:' + key + ':debit');
     await saveWallet(connection, request.to, to + amount, amount, 'move:' + key + ':credit');
     const result = { amount: String(amount), fromBalance: String(from - amount), toBalance: String(to + amount), limited: amount < requested };
+    if(options.afterMove)await options.afterMove(connection,result);
     await connection.execute('UPDATE wallet_operations SET result_json=? WHERE operation_key=?', [JSON.stringify(result), key]);
     return result;
   });
 }
 
-async function moveWalletFunds(pool, input, authorize) {
+async function moveWalletFunds(pool, input, authorize, options={}) {
+  if(options.runTransaction)return moveOnce(pool,input,authorize,options);
   for (let attempt = 0; ; attempt++) {
-    try { return await moveOnce(pool, input, authorize); }
+    try { return await moveOnce(pool, input, authorize, options); }
     catch (error) {
       // InnoDB explicitly rolled back this transaction. Never retry a timeout,
       // connection failure or an ambiguous commit automatically.
