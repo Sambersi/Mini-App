@@ -35,6 +35,9 @@ async function runWalletChecks(env = process.env) {
     const c = await pool.getConnection();
     try { await applyFoundation(c); } finally { c.release(); }
     assert.equal(await count('players'), 0, 'Checks database must have no players');
+    // Remove only the two receipts left by the pre-cleanup container fixture.
+    // The database and empty-player guards run before this compatibility repair.
+    await pool.execute('DELETE FROM wallet_operations WHERE operation_key IN (?,?)',['container:fixture_container_purchase','container:fixture_gold_container']);
     assert.equal(await count('wallet_operations'), 0);
     await pool.execute('INSERT INTO migration_runs(run_id,snapshot_sha256,metadata_json,status) VALUES (?,?,?,?)', ['wallet_fixture', '0'.repeat(64), '{}', 'test']);
     seeded = true;
