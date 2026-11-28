@@ -909,6 +909,7 @@ bot.start(async (ctx) => {
           // Имитируем контекст для usePromoHandler, так как он парсит ctx.message.text
           const fakeCtx = {
             ...ctx,
+            update: ctx.update,
             message: {
               text: `промо ${promoName}`,
               from: ctx.from,
