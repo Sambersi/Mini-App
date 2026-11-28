@@ -68,6 +68,11 @@ async function projectDomains(connection,db,runId,log=()=>{}) {
       }
       const actual=await fingerprintTarget(connection,spec);
       if(actual.count!==expected.count||actual.hash!==expected.hash)throw Object.assign(new Error('Domain table verification failed'),{code:'DOMAIN_CHECKSUM_MISMATCH',details:{table:spec.name}});
+      if(spec.name==='bosses'){
+        await connection.execute('INSERT IGNORE INTO boss_import_states(boss_id,source_run_id,was_defeated) SELECT id,?,COALESCE(phase1_hp=0 AND phase2_hp=0,0) FROM bosses',[runId]);
+        const [[mismatch]]=await connection.execute('SELECT COUNT(*) AS n FROM bosses b LEFT JOIN boss_import_states i ON i.boss_id=b.id WHERE i.boss_id IS NULL OR i.source_run_id<>? OR i.was_defeated<>COALESCE(b.phase1_hp=0 AND b.phase2_hp=0,0)',[runId]);
+        if(BigInt(mismatch.n))throw Object.assign(new Error('Imported boss history differs'),{code:'BOSS_IMPORT_STATE_MISMATCH'});
+      }
       if(!previous)await connection.query('INSERT INTO domain_import_tables(run_id,table_name,source_count,source_hash,target_hash,status) VALUES (?,?,?,?,?,?)',[runId,spec.name,expected.count,expected.hash,actual.hash,'verified']);
       else if(previous.source_hash!==expected.hash) {
         // A reviewed type migration can change canonical formatting. Refresh

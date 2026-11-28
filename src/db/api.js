@@ -26,6 +26,8 @@ const {createFinanceLogs}=require('../repositories/financeLogs');
 const {createBossState}=require('../repositories/bossState');
 const {createAttackUpgrade}=require('../services/attackUpgrade');
 const {createWeaponPurchase}=require('../services/weaponPurchase');
+const {createBossRewards}=require('../services/bossRewards');
+const {createBossRewardDistribution}=require('../telegram/bossRewards');
 function createMysqlApi(runtime,{now=()=>Date.now(),random=Math.random}={}){
   const executor={execute:(sql,params)=>runtime.currentExecutor().execute(sql,params)};
   const runTransaction=work=>{
@@ -40,8 +42,9 @@ function createMysqlApi(runtime,{now=()=>Date.now(),random=Math.random}={}){
   const equipment=createPlayerEquipment(runtime,reads,catalogs);
   const bossState=createBossState(runtime,{now});
   const operational=createOperationalState(runtime,{now});
+  const settleBossRewards=createBossRewards(runtime,inventory,{runTransaction,now});
   const promoRedemption=createPromoRedemption(runtime,inventory,{runTransaction,now,random});
-  return {...reads,...bossState,purchaseWeapon:createWeaponPurchase(runtime,equipment,{runTransaction,now}),purchaseAttackUpgrade:createAttackUpgrade(runtime,bossState,{runTransaction,now}),...inventory,...createPartnerPromos(runtime,{now}),...promoRedemption,...createAccessControl(runtime,reads,{now}),...operational,...createFinanceLogs(runtime,{now,cleanupOldMessageLogs:operational.cleanupOldMessageLogs}),...equipment,...createProfileViews(runtime,reads,{now}),...createPlayerStatistics(runtime,reads),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...catalogs,...createGameRecords(runtime),...createChatModes(runtime),...registration,...payments,decidePartnerRequest:createPartnerDecision(runtime,{runTransaction,now}),purchaseCandy:createCandyPurchase(runtime,{inventory,equipment,runTransaction}),purchaseContainers:createContainerPurchase(runtime,inventory,{runTransaction}),performCardFinance:createCardFinance(executor,{runTransaction,now,mainAdmin:process.env.MAIN_ADMIN||''}),purchaseSkin:createSkinPurchase(executor,{runTransaction}),transaction:work=>runtime.transaction(work)};
+  return {...reads,...bossState,settleBossRewards,distributePrizesToTopPlayers:createBossRewardDistribution({settle:settleBossRewards}),purchaseWeapon:createWeaponPurchase(runtime,equipment,{runTransaction,now}),purchaseAttackUpgrade:createAttackUpgrade(runtime,bossState,{runTransaction,now}),...inventory,...createPartnerPromos(runtime,{now}),...promoRedemption,...createAccessControl(runtime,reads,{now}),...operational,...createFinanceLogs(runtime,{now,cleanupOldMessageLogs:operational.cleanupOldMessageLogs}),...equipment,...createProfileViews(runtime,reads,{now}),...createPlayerStatistics(runtime,reads),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...catalogs,...createGameRecords(runtime),...createChatModes(runtime),...registration,...payments,decidePartnerRequest:createPartnerDecision(runtime,{runTransaction,now}),purchaseCandy:createCandyPurchase(runtime,{inventory,equipment,runTransaction}),purchaseContainers:createContainerPurchase(runtime,inventory,{runTransaction}),performCardFinance:createCardFinance(executor,{runTransaction,now,mainAdmin:process.env.MAIN_ADMIN||''}),purchaseSkin:createSkinPurchase(executor,{runTransaction}),transaction:work=>runtime.transaction(work)};
 }
 function getApiCoverage(api){
   return {implemented:contract.functions.filter(key=>typeof api[key]==='function'),missing:contract.functions.filter(key=>typeof api[key]!=='function'),missingConstants:contract.constants.filter(key=>!Object.hasOwn(api,key))};
