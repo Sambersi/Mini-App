@@ -30,6 +30,7 @@ const {createBossRewards}=require('../services/bossRewards');
 const {createBossCombat}=require('../services/bossCombat');
 const {createDoubleRounds}=require('../repositories/doubleRounds');
 const {createDoubleBet}=require('../services/doubleBet');
+const {createReferrerBank}=require('../services/referrerBank');
 const {createBossRewardDistribution}=require('../telegram/bossRewards');
 function createMysqlApi(runtime,{now=()=>Date.now(),random=Math.random}={}){
   const executor={execute:(sql,params)=>runtime.currentExecutor().execute(sql,params)};
@@ -41,13 +42,14 @@ function createMysqlApi(runtime,{now=()=>Date.now(),random=Math.random}={}){
   const payments=createPaymentInbox(executor,{now,runTransaction,inTransaction:()=>Boolean(runtime.inTransaction?.()),referralPercent:require('../../config').REFERRAL_DONATION_PERCENT_DF});
   const reads=createLegacyReads(runtime);
   const catalogs=createCatalogs(runtime);
+  const profileViews=createProfileViews(runtime,reads,{now});
   const inventory=createInventoryAdjustment(runtime,{reads,runTransaction});
   const equipment=createPlayerEquipment(runtime,reads,catalogs);
   const bossState=createBossState(runtime,{now});
   const operational=createOperationalState(runtime,{now});
   const settleBossRewards=createBossRewards(runtime,inventory,{runTransaction,now});
   const promoRedemption=createPromoRedemption(runtime,inventory,{runTransaction,now,random});
-  return {...reads,...createDoubleRounds(runtime,{now}),placeDoubleBet:createDoubleBet(runtime,{runTransaction,now}),...bossState,...createBossCombat(runtime,bossState,equipment,{runTransaction,settleBossRewards,now}),settleBossRewards,distributePrizesToTopPlayers:createBossRewardDistribution({settle:settleBossRewards}),purchaseWeapon:createWeaponPurchase(runtime,equipment,{runTransaction,now}),purchaseAttackUpgrade:createAttackUpgrade(runtime,bossState,{runTransaction,now}),...inventory,...createPartnerPromos(runtime,{now}),...promoRedemption,...createAccessControl(runtime,reads,{now}),...operational,...createFinanceLogs(runtime,{now,cleanupOldMessageLogs:operational.cleanupOldMessageLogs}),...equipment,...createProfileViews(runtime,reads,{now}),...createPlayerStatistics(runtime,reads),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...catalogs,...createGameRecords(runtime),...createChatModes(runtime),...registration,...payments,decidePartnerRequest:createPartnerDecision(runtime,{runTransaction,now}),purchaseCandy:createCandyPurchase(runtime,{inventory,equipment,runTransaction}),purchaseContainers:createContainerPurchase(runtime,inventory,{runTransaction}),performCardFinance:createCardFinance(executor,{runTransaction,now,mainAdmin:process.env.MAIN_ADMIN||''}),purchaseSkin:createSkinPurchase(executor,{runTransaction}),transaction:work=>runtime.transaction(work)};
+  return {...reads,...createReferrerBank(runtime,profileViews,{runTransaction,now}),...createDoubleRounds(runtime,{now}),placeDoubleBet:createDoubleBet(runtime,{runTransaction,now}),...bossState,...createBossCombat(runtime,bossState,equipment,{runTransaction,settleBossRewards,now}),settleBossRewards,distributePrizesToTopPlayers:createBossRewardDistribution({settle:settleBossRewards}),purchaseWeapon:createWeaponPurchase(runtime,equipment,{runTransaction,now}),purchaseAttackUpgrade:createAttackUpgrade(runtime,bossState,{runTransaction,now}),...inventory,...createPartnerPromos(runtime,{now}),...promoRedemption,...createAccessControl(runtime,reads,{now}),...operational,...createFinanceLogs(runtime,{now,cleanupOldMessageLogs:operational.cleanupOldMessageLogs}),...equipment,...profileViews,...createPlayerStatistics(runtime,reads),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...catalogs,...createGameRecords(runtime),...createChatModes(runtime),...registration,...payments,decidePartnerRequest:createPartnerDecision(runtime,{runTransaction,now}),purchaseCandy:createCandyPurchase(runtime,{inventory,equipment,runTransaction}),purchaseContainers:createContainerPurchase(runtime,inventory,{runTransaction}),performCardFinance:createCardFinance(executor,{runTransaction,now,mainAdmin:process.env.MAIN_ADMIN||''}),purchaseSkin:createSkinPurchase(executor,{runTransaction}),transaction:work=>runtime.transaction(work)};
 }
 function getApiCoverage(api){
   return {implemented:contract.functions.filter(key=>typeof api[key]==='function'),missing:contract.functions.filter(key=>typeof api[key]!=='function'),missingConstants:contract.constants.filter(key=>!Object.hasOwn(api,key))};

@@ -4917,7 +4917,7 @@ bot.action('withdraw_referrer_bank', async (ctx) => {
               return ctx.answerCbQuery('❌ Банк реферовода пуст!', { show_alert: true });
           }
 
-          const result = (await withdrawReferrerBank(userId));
+          const result = (await withdrawReferrerBank(userId,'telegram:'+ctx.from.id+':'+ctx.update.update_id));
           if (result.success) {
               await ctx.answerCbQuery(`✅ Снято ${result.amount.toLocaleString('ru-RU')} PF из банка!`, { show_alert: true });
               

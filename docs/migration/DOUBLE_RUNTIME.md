@@ -14,6 +14,8 @@ placeDoubleBet атомарно сохраняет PF-дебет, double_bets_lo
 
 ## Следующий обязательный пакет: расчёт и восстановление
 
+Продолжение: зависимость реферального банка готова в src/services/referrerBank.js. Четыре прежних метода + creditReferrerBank; начисление/снятие под lock, точные проценты и floor, лимит из config, ledger/finance_log/receipt при снятии. Внутри settlement использовать creditReferrerBank({referrerId,winAmount,operationKey}) с ключом конкретного раунда/группы, а не совместимый addToReferrerBank с random key на вызов. Переполнение исходного лимита не вызывает отрицательный added; дробный остаток не округляется при снятии и требует отдельной сверки. Два UI-пути снятия уже передают Telegram update_id. Проверено 129 локальных тестов и 221 SQL-сценарий (35+186), 76 сравнений/полные профили; сам settlement пока не подключён.
+
 Это НЕ готовый полный Double runtime. Приём новой ставки защищён, но _resolveRound/_buildChatResult/_applyRoundStatistics/recordGameChoice ещё используют раздельные операции. Финальный фасад блокирует включение DB_BACKEND=mysql до завершения всего API.
 
 Выявленные исходные риски:

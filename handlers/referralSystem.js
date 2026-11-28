@@ -957,7 +957,7 @@ async function handleWithdrawReferrerBank(ctx) {
     const userId = ctx.from.id.toString();
     
     // Пытаемся снять средства
-    const result = (await withdrawReferrerBank(userId));
+    const result = (await withdrawReferrerBank(userId,'telegram:'+ctx.from.id+':'+ctx.update.update_id));
 
     if (result.success) {
       const formattedAmount = Math.floor(result.amount).toLocaleString('ru-RU');
