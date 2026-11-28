@@ -2579,7 +2579,7 @@ else if (isDiceChatEnabled) {
       if (amount < 1) {
         return ctx.reply('❕️ Минимальная ставка — 1 PF.');
       }
-      const result = await diceGame.handleBet(ctx.from.id, ctx.from.username, amount, chatId, bot);
+      const result = await diceGame.handleBet(ctx.from.id, ctx.from.username, amount, chatId, bot, {updateId:ctx.update.update_id});
       await ctx.reply(result.message);
     } catch (error) {
       logError(error);
@@ -3083,7 +3083,7 @@ bot.action(/^participate_(.+)$/, async (ctx) => {
         return ctx.answerCbQuery('❌ Максимальное количество участников достигнуто.');
       }
 
-      const result = await diceGame.handleBet(userId, usernameFromTelegram, round.roundAmount, chatId, bot);
+      const result = await diceGame.handleBet(userId, usernameFromTelegram, round.roundAmount, chatId, bot, {updateId:ctx.update.update_id,roundId});
       if (result.success) {
         const userLink = createUserLink(userId, usernameFromTelegram || 'Неизвестный');
         
@@ -3119,7 +3119,7 @@ bot.action(/^dice_accept_auto_(\d+)$/, async (ctx) => {
               return ctx.answerCbQuery('❌ Недостаточно средств для этой ставки.');
           }
           
-          const result = await diceGame.handleAutoAccept(chatId, userId, username, amount, bot, messageId);
+          const result = await diceGame.handleAutoAccept(chatId, userId, username, amount, bot, messageId, ctx.update.update_id);
           if (result.success) {
               await ctx.answerCbQuery(`✅ Вы создали комнату на ${amount} PF!`);
               const userLink = createUserLink(userId, username);
@@ -3169,7 +3169,7 @@ bot.action(/^repeat_round_(\d+)$/, async (ctx) => {
       }
 
       // Создаем новый раунд
-      const startResult = (await diceGame.startRound(chatId, bot, betAmount));
+      const startResult = (await diceGame.startRound(chatId, bot, betAmount, ctx.update.update_id));
       if (!startResult.success) {
         return ctx.answerCbQuery(startResult.message || 'Произошла ошибка при запуске нового раунда.');
       }
@@ -3188,7 +3188,7 @@ bot.action(/^repeat_round_(\d+)$/, async (ctx) => {
       }
 
       // Регистрируем ставку пользователя в новом раунде
-      const handleBetResult = await diceGame.handleBet(userId, usernameFromTelegram, betAmount, chatId, bot);
+      const handleBetResult = await diceGame.handleBet(userId, usernameFromTelegram, betAmount, chatId, bot, {updateId:ctx.update.update_id,roundId:newRound.roundId});
       if (!handleBetResult.success) {
         return ctx.answerCbQuery(`❌ ${handleBetResult.message}`);
       }
@@ -4281,7 +4281,7 @@ bot.action(/^start_dice_(\d+)$/, async (ctx) => {
           return ctx.answerCbQuery('Недостаточно средств для данной ставки.');
         }
 
-        const startResult = (await diceGame.startRound(chatId, bot, betAmount));
+        const startResult = (await diceGame.startRound(chatId, bot, betAmount, ctx.update.update_id));
         if (!startResult.success) {
           return ctx.answerCbQuery(startResult.message || 'Произошла ошибка при создании раунда.');
         }

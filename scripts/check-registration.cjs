@@ -240,6 +240,7 @@ async function runRegistrationChecks(env=process.env){
       await pool.execute('DELETE FROM dice_rounds_log WHERE round_id=?',[diceRound]);
     }
     const fundedDiceChat='-9307',fundedRound='fixture_funded_dice';
+    const refundDiceRound='fixture_refund_dice',botDiceRound='fixture_bot_dice';
     const dicePlayers=ids.slice(12,18);
     const diceBalance=async id=>BigInt((await one("SELECT balance FROM wallets WHERE player_id=? AND asset='PF' AND bucket='main'",[id])).balance);
     const placeDice=(playerId,options={})=>service.placeDiceBet({
@@ -302,13 +303,86 @@ async function runRegistrationChecks(env=process.env){
       const late=createMysqlApi(runtime,{now:()=>timestamp+70000});
       await assert.rejects(late.placeDiceBet({...retry,operationKey:'fixture_dice_late'}),{code:'DICE_BETS_CLOSED'});
       checks++;
+
+      const rolls=[0,0,0.99,0.99,0.5,0.5,0.1,0.25,0.9,0.6];
+      let rollIndex=0;
+      const settlement=createMysqlApi(runtime,{now:()=>timestamp+70000,random:()=>rolls[rollIndex++%rolls.length]});
+      await settlement.cleanupDiceLogs(0);
+      assert.equal(Number((await one('SELECT COUNT(*) AS n FROM dice_bets_log WHERE round_id=?',[fundedRound])).n),5);
+      const lateFailurePool={getConnection:async()=>{
+        const connection=await pool.getConnection();
+        return new Proxy(connection,{get(target,key){
+          if(key==='execute')return(sql,args)=>sql.startsWith('UPDATE dice_runtime_rounds SET result_json')
+            ?target.execute('SELECT missing_dice_settlement_fixture_column'):target.execute(sql,args);
+          const value=target[key];
+          return typeof value==='function'?value.bind(target):value;
+        }});
+      }};
+      const failure=createMysqlApi(createDatabaseRuntime(lateFailurePool),{now:()=>timestamp+70000,random:()=>rolls[rollIndex++%rolls.length]});
+      await assert.rejects(failure.resolveDiceRound(fundedRound),{code:'ER_BAD_FIELD_ERROR'});
+      const savedPlan=JSON.parse((await one('SELECT plan_json FROM dice_runtime_rounds WHERE round_id=?',[fundedRound])).plan_json);
+      assert.equal(await diceBalance(savedPlan.winner),900n);
+      assert.equal(Number((await one("SELECT COUNT(*) AS n FROM finance_log WHERE type='dice_payout' AND entity_id=?",[fundedRound])).n),0);
+      const outcomes=await Promise.all(Array.from({length:20},()=>settlement.resolveDiceRound(fundedRound)));
+      const [payout]=outcomes.filter(result=>!result.replayed);
+      assert.equal(outcomes.filter(result=>!result.replayed).length,1);
+      assert.equal(payout.prize,475);
+      assert.deepEqual(payout.results,savedPlan.results);
+      assert.equal(await diceBalance(payout.winner),1375n);
+      assert.ok(outcomes.every(result=>result.winner===payout.winner));
+      assert.ok((await service.listPendingDiceRounds()).some(round=>round.round_id===fundedRound));
+      await service.markDiceResultDelivered(fundedRound);
+      assert.ok(!(await service.listPendingDiceRounds()).some(round=>round.round_id===fundedRound));
+      await settlement.cleanupDiceLogs(0);
+      assert.equal(Number((await one('SELECT COUNT(*) AS n FROM dice_bets_log WHERE round_id=?',[fundedRound])).n),0);
+      checks++;
+
+      await service.openDiceRound({roundId:refundDiceRound,chatId:fundedDiceChat,amount:100});
+      const candidate=dicePlayers[0],beforeRefund=await diceBalance(candidate);
+      await placeDice(candidate,{roundId:refundDiceRound,operationKey:'fixture_dice_refund'});
+      const refund=createMysqlApi(runtime,{now:()=>timestamp+30000,random:()=>0.9});
+      const lostAck=Object.assign(new Error('Fixture commit acknowledgement lost'),{code:'FIXTURE_DICE_COMMIT_ACK'});
+      const lostAckPool={getConnection:async()=>{
+        const connection=await pool.getConnection();
+        let creditWritten=false;
+        return new Proxy(connection,{get(target,key){
+          if(key==='execute')return(sql,args)=>{
+            if(sql.startsWith('UPDATE dice_runtime_rounds SET result_json'))creditWritten=true;
+            return target.execute(sql,args);
+          };
+          if(key==='commit')return async()=>{
+            await target.commit();
+            if(creditWritten)throw lostAck;
+          };
+          const value=target[key];
+          return typeof value==='function'?value.bind(target):value;
+        }});
+      }};
+      const interruptedRefund=createMysqlApi(createDatabaseRuntime(lostAckPool),{now:()=>timestamp+30000,random:()=>0.9});
+      await assert.rejects(interruptedRefund.resolveDiceRound(refundDiceRound),{code:lostAck.code});
+      const recoveredRefund=await refund.resolveDiceRound(refundDiceRound);
+      assert.equal(recoveredRefund.state,'refunded');
+      assert.equal(recoveredRefund.replayed,true);
+      assert.equal(await diceBalance(candidate),beforeRefund);
+      assert.equal(Number((await one("SELECT COUNT(*) AS n FROM finance_log WHERE type='dice_refund' AND entity_id=?",[refundDiceRound])).n),1);
+      checks++;
+
+      await service.openDiceRound({roundId:botDiceRound,chatId:fundedDiceChat,amount:100});
+      await placeDice(candidate,{roundId:botDiceRound,operationKey:'fixture_dice_bot'});
+      const offer=createMysqlApi(runtime,{now:()=>timestamp+30000,random:()=>0.1});
+      assert.equal((await offer.resolveDiceRound(botDiceRound)).state,'waiting_bot');
+      assert.equal(await offer.acceptDiceBotChallenge({roundId:botDiceRound,chatId:fundedDiceChat,playerId:dicePlayers[1]}),null);
+      assert.equal((await offer.acceptDiceBotChallenge({roundId:botDiceRound,chatId:fundedDiceChat,playerId:candidate})).endTime,timestamp+40000);
+      const botOutcome=await createMysqlApi(runtime,{now:()=>timestamp+40000,random:()=>0.1}).resolveDiceRound(botDiceRound);
+      assert.equal(botOutcome.winner,'F_BOT');
+      assert.equal(await diceBalance(candidate),beforeRefund-100n);
+      checks++;
     }finally{
-      await pool.execute('DELETE FROM dice_bet_operations WHERE round_id=?',[fundedRound]);
-      await pool.execute('DELETE FROM dice_runtime_rounds WHERE round_id=?',[fundedRound]);
-      await pool.execute('DELETE FROM dice_bets WHERE round_id=?',[fundedRound]);
-      await pool.execute('DELETE FROM dice_bets_log WHERE round_id=?',[fundedRound]);
-      await pool.execute('DELETE FROM dice_rounds_log WHERE round_id=?',[fundedRound]);
-      await pool.execute('DELETE FROM dice_rounds WHERE round_id=?',[fundedRound]);
+      for(const roundId of [fundedRound,refundDiceRound,botDiceRound]){
+        for(const table of ['dice_bet_operations','dice_runtime_rounds','dice_bets','dice_bets_log','dice_rounds_log','dice_rounds']){
+          await pool.execute('DELETE FROM '+table+' WHERE round_id=?',[roundId]);
+        }
+      }
       await pool.execute('DELETE FROM chats WHERE chat_id=?',[fundedDiceChat]);
     }
     return {checks,concurrentRequests:20,isolatedDatabase:true};

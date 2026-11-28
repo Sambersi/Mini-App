@@ -125,11 +125,18 @@ async function logPromoActivation({ userId, promoName, prizeType = null, prizeAm
     });
   }
   async function resolveLogSearchIds(search){if(!search)return null;const value=String(search).trim();if(!value)return null;const ids=[value],numericId=parseInt(value,10)||-1;const found=await runtime.one('SELECT telegram_id FROM players WHERE numeric_id=?',[numericId]);if(found&&!ids.includes(found.telegram_id))ids.push(found.telegram_id);return ids;}
-  async function removeOlder(table,column,days){if(typeof days!=='number'||!Number.isFinite(days)||days<0)throw new TypeError('Invalid retention');return (await runtime.execute('DELETE FROM '+table+' WHERE '+column+'<?',[now()-days*86400000])).changes;}
+  function retentionCutoff(days){if(typeof days!=='number'||!Number.isFinite(days)||days<0)throw new TypeError('Invalid retention');return now()-days*86400000;}
+  async function removeOlder(table,column,days){return (await runtime.execute('DELETE FROM '+table+' WHERE '+column+'<?',[retentionCutoff(days)])).changes;}
   async function cleanupFinanceLog(days=365){return {success:true,deletedCount:await removeOlder('finance_log','ts',days)};}
   async function cleanupDoubleRounds(days=3){return removeOlder('double_rounds','start_ts',days);}
   async function cleanupDoubleBetsLog(days=30){return removeOlder('double_bets_log','ts',days);}
-  async function cleanupDiceLogs(days=90){await runtime.transaction(async()=>{await removeOlder('dice_bets_log','ts',days);await removeOlder('dice_rounds_log','start_ts',days);});}
+  async function cleanupDiceLogs(days=90){
+    const cutoff=retentionCutoff(days);
+    await runtime.transaction(async()=>{
+      await runtime.execute('DELETE FROM dice_bets_log WHERE ts<? AND NOT EXISTS (SELECT 1 FROM dice_runtime_rounds m WHERE m.round_id=dice_bets_log.round_id AND m.delivered_at IS NULL)',[cutoff]);
+      await runtime.execute('DELETE FROM dice_rounds_log WHERE start_ts<? AND NOT EXISTS (SELECT 1 FROM dice_runtime_rounds m WHERE m.round_id=dice_rounds_log.round_id AND m.delivered_at IS NULL)',[cutoff]);
+    });
+  }
   async function runLogsCleanup(){await cleanupOldMessageLogs(30);await cleanupFinanceLog(365);await cleanupDoubleRounds(90);await cleanupDoubleBetsLog(90);await cleanupDiceLogs(90);}
   return {logFinance,logAdminItem,logModeration,logPromoActivation,getAdminLogsFinance,getFinanceLogPage,resolveLogSearchIds,cleanupFinanceLog,cleanupDoubleRounds,cleanupDoubleBetsLog,cleanupDiceLogs,runLogsCleanup,FINANCE_LOG_CATEGORIES};
 }

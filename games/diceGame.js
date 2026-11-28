@@ -6,10 +6,13 @@ const {
     saveDiceRound, isDiceChat, saveDiceBet, getUserById, updateUserBalance,
     updateDiceResults, getDiceBetsByRoundId, getAllActiveDiceChats,
     logDiceRound, logDiceBet, finishDiceRoundLog, updateDiceBetResult, getLastDiceBetsInChat,
-    deactivateDiceMode
+    deactivateDiceMode, openDiceRound, placeDiceBet, resolveDiceRound,
+    acceptDiceBotChallenge, listPendingDiceRounds, markDiceResultDelivered
 } = require('../db');
 const { generateDiceResultsImage } = require('./generateDiceResultsImage');
 const { Markup } = require('telegraf');
+const usesDiceRuntime = typeof resolveDiceRound === 'function';
+const diceUpdateRoundId = (chatId,updateId) => `round_update_${chatId}_${updateId}`;
 
 class DiceGame {
     constructor() {
@@ -18,6 +21,7 @@ class DiceGame {
             this.roundTimers = {};
             this.cancelRoundTimers = {};
             this.isRoundCanceled = {};
+            this.resolvingRounds = new Set();
             this.warningTimers = {};
 
             // Поля для автоматических предложений и логирования
@@ -58,6 +62,7 @@ class DiceGame {
         (async () => {
             try {
                 const chats = await getAllActiveDiceChats();
+                if (usesDiceRuntime) await this.restoreDiceRounds(bot);
                 for (const chatId of chats) {
                     if (!this.nextInactivityTime[chatId]) {
                         this.scheduleNextInactivity(chatId);
@@ -71,6 +76,7 @@ class DiceGame {
         setInterval(async () => {
             try {
                 const activeChats = await getAllActiveDiceChats();
+                if (usesDiceRuntime) await this.restoreDiceRounds(bot);
                 for (const chatId of activeChats) {
                     const hasActiveRound = (this.chatRounds[chatId] || []).length > 0;
                     const hasPendingSuggestion = !!this.pendingSuggestions[chatId];
@@ -147,7 +153,7 @@ class DiceGame {
         }
     }
 
-    async handleAutoAccept(chatId, userId, username, amount, bot, messageId) {
+    async handleAutoAccept(chatId, userId, username, amount, bot, messageId, updateId) {
         const suggestion = this.pendingSuggestions[chatId];
         if (!suggestion) {
             return { success: false, message: 'Предложение уже истекло или было принято.' };
@@ -157,7 +163,7 @@ class DiceGame {
         try { await bot.telegram.deleteMessage(chatId, messageId); } catch (e) {}
         delete this.pendingSuggestions[chatId];
 
-        const result = await this.handleBet(userId, username, amount.toString(), chatId, bot);
+        const result = await this.handleBet(userId, username, amount.toString(), chatId, bot, {updateId,withBot:true});
         if (!result.success) return result;
 
         const activeRounds = this.chatRounds[chatId] || [];
@@ -176,7 +182,7 @@ class DiceGame {
         return result;
     }
 
-    async startRound(chatId, bot, firstBetAmount) {
+    async startRound(chatId, bot, firstBetAmount, updateId) {
         const activeRounds = this.chatRounds[chatId] || [];
         if (activeRounds.length >= 3) {
             return { success: false, message: '❕ В этом чате уже запущено максимальное количество раундов [3].', parse_mode: 'HTML' };
@@ -186,11 +192,21 @@ class DiceGame {
             return { success: false, message: `❕ Раунд с суммой ставки ${firstBetAmount} PF уже запущен.` };
         }
 
-        const startTime = Date.now();
-        const endTime = startTime + 30 * 1000;
-        const roundId = `round_${startTime}_${Math.random().toString(36).substr(2, 9)}`;
-        (await saveDiceRound(chatId, startTime, endTime, roundId));
-        (await logDiceRound(roundId, chatId, startTime, firstBetAmount));
+        let startTime = Date.now();
+        let endTime = startTime + 30 * 1000;
+        const roundId = usesDiceRuntime && Number.isSafeInteger(updateId)
+            ? diceUpdateRoundId(chatId,updateId)
+            : `round_${startTime}_${Math.random().toString(36).substr(2, 9)}`;
+        if (usesDiceRuntime) {
+            const saved = await openDiceRound({roundId,chatId,amount:firstBetAmount});
+            ({startTime,endTime}=saved);
+            const replayed=this.chatRounds[chatId]?.find(round=>round.roundId===roundId);
+            if(replayed)return {success:true,round:replayed};
+            if (saved.replayed && Date.now()>=endTime) return {success:false,message:'❕ Время регистрации ставок истекло.'};
+        } else {
+            await saveDiceRound(chatId,startTime,endTime,roundId);
+            await logDiceRound(roundId,chatId,startTime,firstBetAmount);
+        }
 
         const newRound = {
             roundId, startTime, endTime, participants: {}, maxParticipants: 5,
@@ -217,7 +233,7 @@ class DiceGame {
             await this.endRound(bot, chatId, roundId);
         }, 30 * 1000);
 
-        this.cancelRoundTimers[timerKey] = setTimeout(async () => {
+        if (!usesDiceRuntime) this.cancelRoundTimers[timerKey] = setTimeout(async () => {
             const activeRounds = this.chatRounds[chatId] || [];
             const round = activeRounds.find((r) => r.roundId === roundId);
             if (round && Object.keys(round.participants || {}).length === 0 && !this.isRoundCanceled[timerKey] && Date.now() >= (round?.endTime || 0)) {
@@ -240,7 +256,7 @@ class DiceGame {
         return { success: true, message: `<b>🎲 Новый раунд дайса начался!</b>`, round: newRound };
     }
 
-    handleBet = async (userId, usernameFromTelegram, amountInput, chatId, bot) => {
+    handleBet = async (userId, usernameFromTelegram, amountInput, chatId, bot, {updateId,roundId,withBot=false}={}) => {
         if (typeof amountInput !== 'string' || amountInput == null) amountInput = String(amountInput || '');
         let amount;
         try { amount = parseBetAmount(amountInput); } catch (error) { return { success: false, message: error.message }; }
@@ -249,16 +265,20 @@ class DiceGame {
         if (amount < MIN_BET) return { success: false, message: `💢 Минимальная ставка — ${MIN_BET} PF.` };
         if (amount > MAX_BET) return { success: false, message: `💢 Максимальная ставка — ${MAX_BET.toLocaleString('ru-RU')} PF.` };
 
+        if (usesDiceRuntime && !Number.isSafeInteger(updateId)) return {success:false,message:'❕ Попробуйте сделать ставку ещё раз.'};
         const user = await getUserById(userId);
         if (!user || user.balance < amount) return { success: false, message: '❕ Недостаточно средств для ставки.' };
 
         const username = user?.username || usernameFromTelegram || 'Неизвестный';
         const activeRounds = this.chatRounds[chatId] || [];
-        let matchingRound = activeRounds.find((round) => round.roundAmount === amount && Date.now() < round.endTime && round.state === 'ACCEPTING');
-        let isExistingRound = !!matchingRound;
+        let matchingRound = activeRounds.find((round) => (!usesDiceRuntime||!roundId||round.roundId===roundId) &&
+            round.roundAmount === amount && Date.now() < round.endTime && round.state === 'ACCEPTING');
+        let isExistingRound = Boolean(matchingRound) &&
+            (!usesDiceRuntime || Boolean(roundId) || matchingRound.roundId!==diceUpdateRoundId(chatId,updateId));
 
         if (!matchingRound) {
-            const startResult = (await this.startRound(chatId, bot, amount));
+            if (usesDiceRuntime && roundId) return {success:false,message:'❕ Время регистрации ставок истекло.'};
+            const startResult = await this.startRound(chatId,bot,amount,updateId);
             if (!startResult.success) return { success: false, message: startResult.message || '❕ Произошла ошибка при регистрации раунда.' };
             const updatedActiveRounds = this.chatRounds[chatId] || [];
             matchingRound = updatedActiveRounds.find((round) => round.roundAmount === amount);
@@ -273,11 +293,15 @@ class DiceGame {
         if (!currentRound.participants) currentRound.participants = {};
 
         try {
-            await updateUserBalance(userId, -amount);
+            const saved = usesDiceRuntime ? await placeDiceBet({
+                playerId:userId,chatId,roundId:currentRound.roundId,amount,
+                operationKey:`telegram:${updateId}`,extend:isExistingRound,withBot
+            }) : null;
+            if (!usesDiceRuntime) await updateUserBalance(userId, -amount);
             currentRound.participants[userId.toString()] = { username, amount };
             this.resetInactivity(chatId);
 
-            if (currentRound.roundId) {
+            if (!usesDiceRuntime && currentRound.roundId) {
                 await saveDiceBet(currentRound.roundId, userId.toString(), username, amount);
                 const betLogId = (await logDiceBet(currentRound.roundId, chatId, userId.toString(), username, amount));
                 currentRound.participants[userId.toString()].logId = betLogId;
@@ -285,7 +309,7 @@ class DiceGame {
 
             if (isExistingRound) {
                 const addedTime = 10 * 1000;
-                currentRound.endTime += addedTime;
+                currentRound.endTime = saved ? Math.max(currentRound.endTime,saved.endTime) : currentRound.endTime+addedTime;
                 const timerKey = `${chatId}_${currentRound.roundId}`;
                 clearTimeout(this.roundTimers[timerKey]);
                 clearTimeout(this.cancelRoundTimers[timerKey]);
@@ -307,13 +331,20 @@ class DiceGame {
                     }, remainingTime - 5000);
                 }
 
-                await bot.telegram.sendMessage(chatId, `⏳ <b>Время продлено!</b> Новый игрок присоединился. До итогов осталось ${Math.ceil(remainingTime / 1000)} сек.`, { parse_mode: 'HTML' });
+                if(!saved?.replayed){
+                    try{
+                        await bot.telegram.sendMessage(chatId, `⏳ <b>Время продлено!</b> Новый игрок присоединился. До итогов осталось ${Math.ceil(remainingTime / 1000)} сек.`, { parse_mode: 'HTML' });
+                    }catch(error){
+                        if(!usesDiceRuntime)throw error;
+                        console.error('[DiceGame] Extension notice:',error.code||error.name);
+                    }
+                }
             }
 
             return { success: true, message: `✔️ Ставка ${amount} PF принята.`, roundId: currentRound.roundId, amount: amount };
         } catch (error) {
             console.error(`[ERROR] Ошибка при сохранении ставки: ${error.message}`);
-            try { await updateUserBalance(userId, amount); } catch (e) {}
+            if (!usesDiceRuntime) try { await updateUserBalance(userId, amount); } catch (e) {}
             return { success: false, message: '❕ Произошла ошибка при обработке ставки.' };
         }
     };
@@ -326,18 +357,20 @@ class DiceGame {
         const realPlayers = Object.keys(round.participants).filter(id => id !== 'F_BOT');
         if (realPlayers[0] !== userId.toString()) return { success: false, message: 'Это предложение только для создателя комнаты.' };
 
+        const saved = usesDiceRuntime ? await acceptDiceBotChallenge({roundId,chatId,playerId:userId}) : null;
+        if (usesDiceRuntime && !saved) return {success:false,message:'Раунд не найден или предложение недействительно.'};
         round.participants['F_BOT'] = { username: 'F BOT', amount: round.roundAmount, isBot: true };
         round.state = 'EXTENDED_BY_BOT';
 
         const addedTime = 10 * 1000;
-        round.endTime = Date.now() + addedTime;
+        round.endTime = saved?.endTime ?? Date.now()+addedTime;
 
         const timerKey = `${chatId}_${roundId}`;
         clearTimeout(this.cancelRoundTimers[timerKey]);
 
         this.roundTimers[timerKey] = setTimeout(async () => {
             await this.endRound(bot, chatId, roundId);
-        }, addedTime);
+        }, Math.max(0,round.endTime-Date.now()));
 
         await bot.telegram.sendMessage(chatId, `🤖 <b>F BOT</b> принимает вызов! У других игроков есть 10 секунд, чтобы присоединиться.`, { parse_mode: 'HTML' });
 
@@ -345,6 +378,7 @@ class DiceGame {
     }
 
     endRound = async (bot, chatId, roundId) => {
+        if (usesDiceRuntime) return this.endPersistedRound(bot,chatId,roundId);
         const activeRounds = this.chatRounds[chatId] || [];
         const round = activeRounds.find((r) => r.roundId === roundId);
         const timerKey = `${chatId}_${roundId}`;
@@ -453,7 +487,13 @@ class DiceGame {
         const winnerId = realWinners.length > 0 ? realWinners[0] : null;
         (await finishDiceRoundLog(roundId, winnerId, totalBank, Object.keys(participants).length));
 
-        let finalMessage = `<b>🎲 Итоги раунда дайса</b> (${round.roundAmount.toLocaleString('ru-RU')} PF):\n`;
+        await this.sendRoundResult(bot,chatId,roundId,round.roundAmount,{participants,results,totalBank,winners,prizePerWinner,commissionRate});
+        this.resetRound(chatId, roundId);
+    };
+
+    async sendRoundResult(bot,chatId,roundId,roundAmount,{participants,results,totalBank,winners,prizePerWinner,commissionRate,credited}) {
+        const realWinners=winners.filter(id=>id!=='F_BOT');
+        let finalMessage = `<b>🎲 Итоги раунда дайса</b> (${roundAmount.toLocaleString('ru-RU')} PF):\n`;
         for (const userId in participants) {
             const { username } = participants[userId];
             const { totalPoints } = results[userId];
@@ -471,7 +511,10 @@ class DiceGame {
             finalMessage += `\n<b>Каждый выиграл:</b> ${prizePerWinner.toLocaleString('ru-RU')} PF\n💶 Комиссия: ${commissionRate}%\n`;
         }
 
-        const repeatButton = Markup.inlineKeyboard([Markup.button.callback(`🔄 Повторить (${round.roundAmount.toLocaleString('ru-RU')} PF)`, `repeat_round_${round.roundAmount}`)]);
+        if(credited!==undefined&&credited<prizePerWinner){
+            finalMessage+=`Начислено ${credited.toLocaleString('ru-RU')} PF с учётом лимита.\n`;
+        }
+        const repeatButton = Markup.inlineKeyboard([Markup.button.callback(`🔄 Повторить (${roundAmount.toLocaleString('ru-RU')} PF)`, `repeat_round_${roundAmount}`)]);
 
         try {
             const imageBuffer = await generateDiceResultsImage(chatId, roundId, participants, results, totalBank);
@@ -479,8 +522,76 @@ class DiceGame {
         } catch (error) {
             await bot.telegram.sendMessage(chatId, finalMessage.trim(), { parse_mode: 'HTML', ...repeatButton });
         }
-        this.resetRound(chatId, roundId);
-    };
+    }
+
+    scheduleDiceResolution(bot,chatId,roundId,endTime){
+        const key=`${chatId}_${roundId}`;
+        clearTimeout(this.roundTimers[key]);
+        this.roundTimers[key]=setTimeout(()=>this.endRound(bot,chatId,roundId),Math.max(0,endTime-Date.now()));
+    }
+
+    async restoreDiceRounds(bot){
+        for(const saved of await listPendingDiceRounds()){
+            const chatId=saved.chat_id,roundId=saved.round_id;
+            if(this.chatRounds[chatId]?.some(round=>round.roundId===roundId))continue;
+            const participants=Object.fromEntries((await getDiceBetsByRoundId(roundId)).map(bet=>[
+                bet.user_id,{username:bet.username,amount:Number(bet.amount)},
+            ]));
+            const active=this.chatRounds[chatId]??=[];
+            if(active.some(round=>round.roundId===roundId))continue;
+            const state=saved.result_json||saved.plan_json?'RESOLVING':saved.offer_until?'WAITING_FOR_BOT':
+                saved.bot_mode==='auto'?'HAS_BOT':saved.bot_mode==='challenge'?'EXTENDED_BY_BOT':'ACCEPTING';
+            if(saved.bot_mode)participants.F_BOT={username:'F BOT',amount:Number(saved.entry_amount),isBot:true};
+            const endTime=Number(saved.offer_until??saved.end_time);
+            active.push({roundId,state,endTime,participants,maxParticipants:5,roundAmount:Number(saved.entry_amount)});
+            this.scheduleDiceResolution(bot,chatId,roundId,saved.result_json||saved.plan_json||saved.offer_until?Date.now():endTime);
+        }
+    }
+
+    async endPersistedRound(bot,chatId,roundId){
+        if(this.resolvingRounds.has(roundId))return;
+        const round=this.chatRounds[chatId]?.find(item=>item.roundId===roundId);
+        if(!round)return;
+        this.resolvingRounds.add(roundId);
+        try{
+            const result=await resolveDiceRound(roundId);
+            if(result.state==='pending'||result.state==='waiting_bot'){
+                round.endTime=result.endTime;
+                this.scheduleDiceResolution(bot,chatId,roundId,result.endTime);
+                if(result.state==='waiting_bot'&&!round.botOfferSent){
+                    round.state='WAITING_FOR_BOT';
+                    const creatorId=Object.keys(round.participants).find(id=>id!=='F_BOT');
+                    if(creatorId){
+                        const keyboard=Markup.inlineKeyboard([Markup.button.callback('🤖 Сыграть с F BOT',`play_with_bot_${roundId}`)]);
+                        await bot.telegram.sendMessage(chatId,
+                            `🤖 <b>F BOT</b> предлагает ${createUserLink(creatorId,round.participants[creatorId].username)} сыграть на ${round.roundAmount.toLocaleString('ru-RU')} PF.`,
+                            {parse_mode:'HTML',...keyboard});
+                        round.botOfferSent=true;
+                    }
+                }
+                return;
+            }
+            round.state='RESOLVING';
+            try{
+                if(result.state==='refunded'){
+                    if(result.totalBank)await bot.telegram.sendMessage(chatId,'❕ Раунд отменен из-за недостатка участников. Ставки возвращены.');
+                }else{
+                    await this.sendRoundResult(bot,chatId,roundId,result.roundAmount,
+                        {...result,winners:[result.winner],prizePerWinner:result.prize});
+                }
+            }catch(error){
+                if(![400,403].includes(error.response?.error_code))throw error;
+                console.error('[DiceGame] Result delivery:',error.code||error.name);
+            }
+            await markDiceResultDelivered(roundId);
+            this.resetRound(chatId,roundId);
+        }catch(error){
+            console.error('[DiceGame] Resolve:',error.code||error.name);
+            this.scheduleDiceResolution(bot,chatId,roundId,Date.now()+5000);
+        }finally{
+            this.resolvingRounds.delete(roundId);
+        }
+    }
 
     resetRound(chatId, roundId) {
         const activeRounds = this.chatRounds[chatId] || [];
