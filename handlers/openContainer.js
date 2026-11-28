@@ -14,6 +14,7 @@ const {
   getUserAvailableSkins,
   getCardTemplateById,
   getUserStatuses,
+  openContainersAtomic,
   beginTransaction,
   rollbackTransaction,
   updateContainerCount,
@@ -215,14 +216,11 @@ async function openContainerHandler(ctx, containerNumber, quantity = 1) {
 
     // Проверяем наличие достаточного количества контейнеров
     const currentContainerCount = user[`container_type_${containerNumber}`] || 0;
-    if (currentContainerCount < quantity) {
+    if (!openContainersAtomic && currentContainerCount < quantity) {
       return ctx.reply(`⚠️ <b>Ошибка:</b> У вас недостаточно ${['CLASSIC', 'PREMIUM', 'GOLD'][containerNumber - 1]} контейнеров.`, { parse_mode: 'HTML' });
     }
 
-    // Начинаем транзакцию
-    (await beginTransaction());
-
-    try {
+    const applyRewards = async remaining => {
       let totalPF = 0;
       let totalDF = 0;
       let totalNpfShares = 0;
@@ -321,20 +319,24 @@ async function openContainerHandler(ctx, containerNumber, quantity = 1) {
         await updateUserBalance(userId, totalPF);
       }
       if (totalDF > 0) {
-        await updateUserDFBalance(userId, totalDF);
+        const result = await updateUserDFBalance(userId, totalDF);
+        if(openContainersAtomic && !result.success)throw Error(result.message);
       }
       if (totalNpfShares > 0) {
-        await updateUserNpfShares(userId, totalNpfShares);
+        const result = await updateUserNpfShares(userId, totalNpfShares);
+        if(openContainersAtomic && !result.success)throw Error(result.message);
       }
 
       // Применяем статусы
       for (const status of statusRewards) {
-        await awardStatusToUser(userId, status);
+        const result = await awardStatusToUser(userId, status);
+        if(openContainersAtomic && !result.success)throw Error(result.message);
       }
 
       // Применяем скины
       for (const skinId of skinRewards) {
-        await addSkinToUser(userId, skinId);
+        const result = await addSkinToUser(userId, skinId);
+        if(openContainersAtomic && !result.success && !result.alreadyOwned)throw Error(result.message);
       }
 
       // Применяем префиксы
@@ -343,33 +345,39 @@ async function openContainerHandler(ctx, containerNumber, quantity = 1) {
       }
 
       // Уменьшаем количество контейнеров
-      await decreaseContainerCount(userId, containerNumber, quantity);
+      if(!openContainersAtomic)await decreaseContainerCount(userId, containerNumber, quantity);
 
       // Формируем финальное сообщение
-      const finalMessage = `
+      return `
 📦 Вы успешно открыли ${quantity} ${['CLASSIC', 'PREMIUM', 'GOLD'][containerNumber - 1]} контейнер(ов)!
 ───────────────────
 ${rewardMessages.join('')}───────────────────
-• Осталось ${['CLASSIC', 'PREMIUM', 'GOLD'][containerNumber - 1]}-контейнеров: ${currentContainerCount - quantity}.
+• Осталось ${['CLASSIC', 'PREMIUM', 'GOLD'][containerNumber - 1]}-контейнеров: ${remaining}.
 `.trim();
 
-      // Создаем клавиатуру для повторного открытия
-      const keyboard = Markup.inlineKeyboard([
+    };
+
+    let finalMessage;
+    if(openContainersAtomic){
+      finalMessage=await openContainersAtomic({
+        playerId:userId,type:containerNumber,quantity,operationKey:`telegram:${ctx.update.update_id}`,
+      },applyRewards);
+    }else{
+      await beginTransaction();
+      try{
+        finalMessage=await applyRewards(currentContainerCount-quantity);
+        await commitTransaction();
+      }catch(error){
+        await rollbackTransaction();
+        throw error;
+      }
+    }
+    const keyboard = Markup.inlineKeyboard([
         Markup.button.callback(`Открыть ещё ${['CLASSIC', 'PREMIUM', 'GOLD'][containerNumber - 1]} контейнеры`, `open_container_${containerNumber}`)
       ]);
 
       // Отправляем результат
-      await ctx.replyWithHTML(finalMessage, keyboard);
-
-      // Фиксируем транзакцию
-      (await commitTransaction());
-
-    } catch (error) {
-      // Откатываем транзакцию в случае ошибки
-      (await rollbackTransaction());
-      console.error('[openContainerHandler] Ошибка транзакции:', error);
-      throw error;
-    }
+    await ctx.replyWithHTML(finalMessage,keyboard);
 
   } catch (error) {
     console.error('[openContainerHandler] Ошибка:', error);

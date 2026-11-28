@@ -27,6 +27,18 @@ function createReferrerBank(runtime,reads,{runTransaction,now=()=>Date.now()}){
     await connection.execute('UPDATE player_referral_state SET referrer_bank=0 WHERE player_id=?',[id]);await saveWallet(connection,wallet,balance+amount,amount,key+':credit','referrer_bank_withdraw');
     await connection.execute('INSERT INTO finance_log(ts,type,actor_user_id,amount,currency,ref,action,success) VALUES (?,?,?,?,?,?,?,1)',[now(),'referrer_bank_withdraw',id,String(amount),'PF','referrer_bank','referrer_bank_withdraw']);return {success:true,amount:compatibleNumber(String(amount))};
   });}
-  return {getReferrerBankPercent,getReferrerBank:async id=>compatibleNumber((await runtime.one('SELECT referrer_bank FROM player_referral_state WHERE player_id=?',[String(id)]))?.referrer_bank||0),creditReferrerBank,addToReferrerBank:async(id,win)=>{if(!id||Number(win)<=0)return {added:0,burned:0,newBank:0};return creditReferrerBank({referrerId:id,winAmount:win,operationKey:'legacy:'+randomUUID()});},withdrawReferrerBank};
+  async function setReferrerBank(id,value,operationKey){
+    const balance=scaled(value);
+    if(balance<0n)fail('REFERRER_BANK_INVALID');
+    id=String(id);
+    return operation('admin_set',id,operationKey,{balance:decimal(balance)},async(connection,before,key)=>{
+      await connection.execute('UPDATE player_referral_state SET referrer_bank=? WHERE player_id=?',[decimal(balance),id]);
+      await connection.execute(
+        "INSERT INTO finance_log(ts,type,actor_user_id,target_user_id,amount,currency,ref,action,success,operation_key,entity_type,entity_id) VALUES (?,'admin_set','system:player_management',?,?,'PF','referrer_bank','referrer_bank_set',1,?,'player',?)",
+        [now(),id,decimal(balance-before),key,id]);
+      return {success:true};
+    });
+  }
+  return {getReferrerBankPercent,getReferrerBank:async id=>compatibleNumber((await runtime.one('SELECT referrer_bank FROM player_referral_state WHERE player_id=?',[String(id)]))?.referrer_bank||0),creditReferrerBank,addToReferrerBank:async(id,win)=>{if(!id||Number(win)<=0)return {added:0,burned:0,newBank:0};return creditReferrerBank({referrerId:id,winAmount:win,operationKey:'legacy:'+randomUUID()});},withdrawReferrerBank,setReferrerBank};
 }
 module.exports={createReferrerBank,getReferrerBankPercent,scaled,decimal};

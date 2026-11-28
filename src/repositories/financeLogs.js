@@ -125,6 +125,22 @@ async function logPromoActivation({ userId, promoName, prizeType = null, prizeAm
     });
   }
   async function resolveLogSearchIds(search){if(!search)return null;const value=String(search).trim();if(!value)return null;const ids=[value],numericId=parseInt(value,10)||-1;const found=await runtime.one('SELECT telegram_id FROM players WHERE numeric_id=?',[numericId]);if(found&&!ids.includes(found.telegram_id))ids.push(found.telegram_id);return ids;}
+  async function backfillPromoActivationLogs(){
+    try{
+      return await runtime.transaction(async()=>{
+        await runtime.one('SELECT id FROM runtime_control WHERE id=1 FOR UPDATE');
+        const {changes}=await runtime.execute(
+          "INSERT INTO finance_log (ts,type,actor_user_id,amount,currency,ref,action,success,operation_key,entity_type,entity_id) "+
+          "SELECT a.activated_at*1000,'promo',a.user_id,p.prize_amount,CASE p.prize_type WHEN 'balance' THEN 'PF' WHEN 'df_balance' THEN 'DF' WHEN 'npf_shares' THEN 'NPF' ELSE UPPER(COALESCE(p.prize_type,'')) END,p.name,"+
+          "CONCAT(COALESCE(u.display_name,CONCAT('ID ',a.user_id)),' активировал(а) промокод «',p.name,'» → начислено ',COALESCE(p.prize_amount,0),' ',COALESCE(p.prize_type,'')),1,"+
+          "CONCAT('promo_backfill:',a.activation_id),'promo',CAST(p.id AS CHAR) "+
+          "FROM (SELECT MIN(id) AS activation_id,promo_id,user_id,MIN(activated_at) AS activated_at FROM promo_activations GROUP BY promo_id,user_id) a "+
+          'JOIN promos p ON p.id=a.promo_id LEFT JOIN players u ON u.telegram_id=a.user_id '+
+          "WHERE NOT EXISTS (SELECT 1 FROM finance_log f WHERE f.type='promo' AND f.success=1 AND f.ref=p.name AND f.actor_user_id=a.user_id)");
+        return {success:true,added:changes};
+      });
+    }catch(error){return {success:false,error:error.code||'PROMO_LOG_BACKFILL_FAILED'};}
+  }
   function retentionCutoff(days){if(typeof days!=='number'||!Number.isFinite(days)||days<0)throw new TypeError('Invalid retention');return now()-days*86400000;}
   async function removeOlder(table,column,days){return (await runtime.execute('DELETE FROM '+table+' WHERE '+column+'<?',[retentionCutoff(days)])).changes;}
   async function cleanupFinanceLog(days=365){return {success:true,deletedCount:await removeOlder('finance_log','ts',days)};}
@@ -138,6 +154,6 @@ async function logPromoActivation({ userId, promoName, prizeType = null, prizeAm
     });
   }
   async function runLogsCleanup(){await cleanupOldMessageLogs(30);await cleanupFinanceLog(365);await cleanupDoubleRounds(90);await cleanupDoubleBetsLog(90);await cleanupDiceLogs(90);}
-  return {logFinance,logAdminItem,logModeration,logPromoActivation,getAdminLogsFinance,getFinanceLogPage,resolveLogSearchIds,cleanupFinanceLog,cleanupDoubleRounds,cleanupDoubleBetsLog,cleanupDiceLogs,runLogsCleanup,FINANCE_LOG_CATEGORIES};
+  return {logFinance,logAdminItem,logModeration,logPromoActivation,getAdminLogsFinance,getFinanceLogPage,resolveLogSearchIds,backfillPromoActivationLogs,cleanupFinanceLog,cleanupDoubleRounds,cleanupDoubleBetsLog,cleanupDiceLogs,runLogsCleanup,FINANCE_LOG_CATEGORIES};
 }
 module.exports={createFinanceLogs,FINANCE_LOG_CATEGORIES};

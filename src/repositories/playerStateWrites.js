@@ -28,6 +28,31 @@ function createPlayerStateWrites(runtime){
     return {changes};
   });
   const api={
+    async updateUserFieldByNumericId(id,field,value){
+      const numeric=numericIdentifier(id);
+      if(numeric===null)return {changes:0};
+      return runtime.transaction(async()=>{
+        if(field==='numeric_id')await runtime.one('SELECT id FROM player_id_allocator WHERE id=1 FOR UPDATE');
+        const row=await runtime.one('SELECT telegram_id FROM players WHERE numeric_id=? FOR UPDATE',[numeric]);
+        return row?api.updateUserData(row.telegram_id,{[field]:value}):{changes:0};
+      });
+    },
+    async updateNumericId(oldValue,newValue){
+      const oldId=numericIdentifier(oldValue),newId=numericIdentifier(newValue);
+      if(oldId===null||newId===null)return {success:false,message:'Некорректный numeric_id.'};
+      try{
+        return await runtime.transaction(async()=>{
+          await runtime.one('SELECT id FROM player_id_allocator WHERE id=1 FOR UPDATE');
+          const player=await runtime.one('SELECT telegram_id FROM players WHERE numeric_id=? FOR UPDATE',[oldId]);
+          if(!player)return {success:false,message:'Пользователь с указанным старым numeric_id не найден.'};
+          if(await runtime.one('SELECT telegram_id FROM players WHERE numeric_id=? FOR UPDATE',[newId])){
+            return {success:false,message:'Новый numeric_id уже занят.'};
+          }
+          await runtime.execute('UPDATE players SET numeric_id=? WHERE telegram_id=?',[newId,player.telegram_id]);
+          return {success:true};
+        });
+      }catch{return {success:false,message:'Произошла ошибка при обновлении numeric_id.'};}
+    },
     async updateUserData(id,updates){
       const plan=planStateUpdate(updates);
       if(!plan.size)return {changes:0};

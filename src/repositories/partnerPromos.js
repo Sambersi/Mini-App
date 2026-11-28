@@ -1,9 +1,26 @@
 'use strict';
 const {compatibleNumber}=require('./legacyReads');
+function transliterate(text) {
+  const map = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+  };
+  return text.toLowerCase().split('').map(char => map[char] || char).join('')
+    .replace(/[^a-z0-9_-]/g, '').toUpperCase();
+}
+
 function createPartnerPromos(runtime,{now=()=>Date.now()}={}){
   const numeric=new Set(['id','prize_amount','admin_message_id','created_at','activations_left','min_status_id','expires_at','activated_at']);
   const adapt=row=>{if(row)for(const key of numeric)if(Object.hasOwn(row,key))row[key]=compatibleNumber(row[key]);return row;};
   const many=async(sql,args=[])=>(await runtime.many(sql,args)).map(adapt);
+  const reserveAlias=(alias,name)=>runtime.transaction(async()=>{
+    await runtime.execute('INSERT INTO promo_link_aliases(alias,promo_name,created_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE alias=VALUES(alias)',[alias,name,Math.floor(now()/1000)]);
+    const owner=await runtime.one('SELECT promo_name FROM promo_link_aliases WHERE alias=? FOR UPDATE',[alias]);
+    return owner.promo_name===name;
+  });
   const api={
     async createPartnerRequest(partner,name,type,amount,audience,template){return (await runtime.execute('INSERT INTO partner_requests(partner_id,name,prize_type,prize_amount,audience_type,template,created_at) VALUES (?,?,?,?,?,?,?)',[String(partner),name,type,amount,audience,template||'normal',Math.floor(now()/1000)])).lastInsertRowid;},
     async createPartnerCurrencyRequest(partner,name,currency,amount){return (await runtime.execute('INSERT INTO partner_requests(partner_id,name,prize_type,prize_amount,audience_type,template,request_type,created_at) VALUES (?,?,?,?,?,?,?,?)',[String(partner),name,currency,amount,'all','normal','currency',Math.floor(now()/1000)])).lastInsertRowid;},
@@ -34,7 +51,21 @@ function createPartnerPromos(runtime,{now=()=>Date.now()}={}){
       await runtime.one('SELECT id FROM promos WHERE id=? FOR UPDATE',[id]);
       if(!await api.hasUserActivatedPromo(id,player))await runtime.execute('INSERT INTO promo_activations(promo_id,user_id,activated_at) VALUES (?,?,?)',[id,String(player),Math.floor(now()/1000)]);
     });},
-    async savePromoAlias(alias,name){await runtime.execute('INSERT INTO promo_link_aliases(alias,promo_name,created_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE promo_name=VALUES(promo_name),created_at=VALUES(created_at)',[alias,name,Math.floor(now()/1000)]);return {success:true,alias};},
+    transliterate,
+    async savePromoAlias(alias,name){
+      await runtime.execute('INSERT INTO promo_link_aliases(alias,promo_name,created_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE promo_name=VALUES(promo_name),created_at=VALUES(created_at)',[alias,name,Math.floor(now()/1000)]);
+      return {success:true,alias};
+    },
+    async generatePromoAlias(name){
+      const base=transliterate(name);
+      if(!base)return null;
+      for(let index=1;index<=100;index++){
+        const candidate=index===1?base:`${base}_${index}`;
+        if(await reserveAlias(candidate,name))return candidate;
+      }
+      const fallback=`${base}_${now()}`;
+      return await reserveAlias(fallback,name)?fallback:null;
+    },
     async getPromoNameByAlias(alias){return (await runtime.one('SELECT promo_name FROM promo_link_aliases WHERE alias=?',[alias.toUpperCase()]))?.promo_name||null;},
     async deletePromoAlias(name){await runtime.execute('DELETE FROM promo_link_aliases WHERE promo_name=?',[name]);},
     async cleanupExpiredPromos(){let count=0;for(const promo of await api.getExpiredPromos())if((await api.deletePromoById(promo.id)).success)count++;return count;},

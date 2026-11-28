@@ -5,11 +5,13 @@ const {signedAmount}=require('./balanceAdjustment');
 const {compatibleNumber}=require('../repositories/legacyReads');
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 function createInventoryAdjustment(runtime,{reads,runTransaction=work=>runtime.transaction(()=>work(runtime.currentExecutor()))}={}){
-  async function adjust({playerId,item,delta,operationKey,limit=null}){
+  async function adjust({playerId,item,delta,quantity,operationKey,limit=null}){
     if(typeof operationKey!=='string'||!/^[A-Za-z0-9:_-]{1,150}$/.test(operationKey))fail('OPERATION_KEY_INVALID');
     if(!itemFields.includes(item))fail('INVENTORY_ITEM_INVALID');
-    delta=signedAmount(delta);playerId=String(playerId);
-    const hash=createHash('sha256').update(JSON.stringify({playerId,item,delta:String(delta),limit:limit===null?null:String(limit)})).digest('hex');
+    const setting=quantity!==undefined;
+    const amount=signedAmount(setting?quantity:delta);
+    playerId=String(playerId);
+    const hash=createHash('sha256').update(JSON.stringify({playerId,item,[setting?'quantity':'delta']:String(amount),limit:limit===null?null:String(limit)})).digest('hex');
     return runTransaction(async connection=>{
       await connection.execute('INSERT INTO inventory_operations(operation_key,request_hash) VALUES (?,?) ON DUPLICATE KEY UPDATE operation_key=VALUES(operation_key)',[operationKey,hash]);
       const [[previous]]=await connection.execute('SELECT request_hash,result_json FROM inventory_operations WHERE operation_key=? FOR UPDATE',[operationKey]);
@@ -17,7 +19,8 @@ function createInventoryAdjustment(runtime,{reads,runTransaction=work=>runtime.t
       if(previous.result_json)return JSON.parse(previous.result_json);
       const [[player]]=await connection.execute('SELECT telegram_id FROM players WHERE telegram_id=? FOR UPDATE',[playerId]);if(!player)fail('PLAYER_MISSING');
       const [[row]]=await connection.execute('SELECT quantity FROM inventory_balances WHERE player_id=? AND item_code=? FOR UPDATE',[playerId,item]);if(!row)fail('INVENTORY_MISSING');
-      const before=BigInt(row.quantity),after=before+delta;
+      const before=BigInt(row.quantity),after=setting?amount:before+amount;
+      const delta=after-before;
       if(after<0n)throw Object.assign(new Error('Insufficient inventory'),{code:'INVENTORY_INSUFFICIENT',available:String(before)});
       if(after>9223372036854775807n)fail('INVENTORY_OVERFLOW');
       if(limit!==null&&delta>0n&&after>BigInt(limit))fail('INVENTORY_LIMIT');

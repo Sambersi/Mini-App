@@ -10,7 +10,27 @@ function createCatalogs(runtime){
     getPrefixById:id=>one('SELECT * FROM prefixes WHERE id=?',[id]),
     getAllSpecialPrefixes:()=>many('SELECT * FROM special_prefixes'),
     getSpecialPrefixById:id=>one('SELECT * FROM special_prefixes WHERE id=?',[id]),
+    async createSpecialPrefix(prefix,createdBy){
+      try{
+        const result=await runtime.execute('INSERT INTO special_prefixes(prefix,created_by) VALUES (?,?)',[prefix,String(createdBy)]);
+        return {success:true,message:`✅ Специальный префикс "${prefix}" успешно создан с ID ${result.lastInsertRowid}.`};
+      }catch(error){
+        return {success:false,message:error.code==='ER_DUP_ENTRY'?'❌ Префикс уже существует.':'❌ Произошла ошибка при создании префикса.'};
+      }
+    },
+    async deleteSpecialPrefix(id){
+      try{
+        return await runtime.transaction(async()=>{
+          if(!await runtime.one('SELECT id FROM special_prefixes WHERE id=? FOR UPDATE',[id]))return {success:false,message:'Префикс не найден.'};
+          await runtime.execute('UPDATE player_prefix_ownership SET special_prefix_id=NULL WHERE special_prefix_id=?',[id]);
+          await runtime.execute('DELETE FROM special_prefixes WHERE id=?',[id]);
+          return {success:true,message:'Префикс успешно удален.'};
+        });
+      }catch{return {success:false,message:'Ошибка при удалении префикса.'};}
+    },
     getSkinIdByName:async name=>(await one('SELECT id FROM skins WHERE name=?',[name]))?.id||null,
+    getSkinRarity:async name=>(await one('SELECT rarity FROM skins WHERE file_name=?',[name]))?.rarity||'ORDINARY',
+    getUserSkinsByNumericId:id=>many('SELECT s.id,s.name,s.rarity,s.file_name,us.serial_number FROM user_skins us JOIN skins s ON s.id=us.skin_id JOIN players p ON p.telegram_id=us.user_id WHERE p.numeric_id=?',[id]),
     getCardTemplateById:id=>one('SELECT file_name FROM skins WHERE id=?',[id]),
     getAllWeapons:()=>many('SELECT id,name,base_damage,price,price_type,width,height,x_position,y_position,durability FROM weapons'),
     getWeaponById:id=>one('SELECT * FROM weapons WHERE id=?',[id]),

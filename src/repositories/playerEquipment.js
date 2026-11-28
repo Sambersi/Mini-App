@@ -1,6 +1,7 @@
 'use strict';
 const {numericIdentifier}=require('./players');
 const {compatibleNumber}=require('./legacyReads');
+const {serialNumber}=require('../services/skinPurchase');
 const fields={prefix_ids:{table:'player_prefix_ownership',kind:'regular',catalog:'prefixes',column:'regular_prefix_id'},special_prefix_ids:{table:'player_prefix_ownership',kind:'special',catalog:'special_prefixes',column:'special_prefix_id'},owned_weapons:{table:'player_weapon_ownership',catalog:'weapons',column:'weapon_id'}};
 function createPlayerEquipment(runtime,reads,catalogs){
   async function mutate(id,field,value,remove=false){return runtime.transaction(async()=>{
@@ -16,6 +17,37 @@ function createPlayerEquipment(runtime,reads,catalogs){
     await runtime.execute('INSERT INTO '+spec.table+'(player_id,'+(spec.kind?'kind,':'')+'ordinal,'+spec.column+',value_json) VALUES ('+[...args,ordinal,target?.id??null,JSON.stringify(value)].map(()=>'?').join(',')+')',[...args,ordinal,target?.id??null,JSON.stringify(value)]);return true;
   });}
   const api={
+    async addSkinToUser(id,skinId){
+      try{
+        return await runtime.transaction(async()=>{
+          const playerId=String(id);
+          if(!await runtime.one('SELECT telegram_id FROM players WHERE telegram_id=? FOR UPDATE',[playerId]))return {success:false,message:'Пользователь не найден.'};
+          const skin=await runtime.one('SELECT total_serials FROM skins WHERE id=? FOR UPDATE',[skinId]);
+          if(!skin)return {success:false,message:'Скин не найден.'};
+          if(await runtime.one('SELECT id FROM user_skins WHERE user_id=? AND skin_id=? LIMIT 1 FOR UPDATE',[playerId,skinId]))return {success:false,message:'Скин уже принадлежит пользователю',alreadyOwned:true};
+          const sequence=BigInt(skin.total_serials??0)+1n;
+          const serial=serialNumber(skinId,sequence);
+          await runtime.execute('INSERT INTO user_skins(user_id,skin_id,serial_number) VALUES (?,?,?)',[playerId,skinId,serial]);
+          await runtime.execute('UPDATE skins SET total_serials=? WHERE id=?',[String(sequence),skinId]);
+          return {success:true,message:'Скин успешно добавлен.',serial};
+        });
+      }catch{return {success:false,message:'Произошла ошибка при добавлении скина.'};}
+    },
+    async giveSkinToUser(identifier,skinId){
+      const player=await reads.getUserByAnyId(identifier);
+      return player?api.addSkinToUser(player.id,skinId):{success:false,message:'Пользователь не найден.'};
+    },
+    async takeSkinFromUser(identifier,skinId){
+      const player=await reads.getUserByAnyId(identifier);
+      if(!player)return {success:false,message:'Пользователь не найден.'};
+      try{
+        const changes=await runtime.transaction(async()=>{
+          await runtime.one('SELECT telegram_id FROM players WHERE telegram_id=? FOR UPDATE',[player.id]);
+          return (await runtime.execute('DELETE FROM user_skins WHERE user_id=? AND skin_id=?',[player.id,skinId])).changes;
+        });
+        return changes?{success:true,message:'Скин успешно забран.'}:{success:false,message:'У пользователя нет такого скина.'};
+      }catch{return {success:false,message:'Произошла ошибка при забирании скина.'};}
+    },
     addPrefixToUser:(id,value)=>mutate(id,'prefix_ids',value),removePrefixFromUser:(id,value)=>mutate(id,'prefix_ids',value,true),
     async assignSpecialPrefixToUser(numeric,value){const user=await reads.getUserByNumericId(numeric);if(!user)return {success:false,message:'Пользователь не найден.'};return await mutate(user.id,'special_prefix_ids',value)?{success:true,message:'Префикс успешно выдан.'}:{success:false,message:'У пользователя уже есть этот префикс.'};},
     async removeSpecialPrefixFromUser(numeric,value){const user=await reads.getUserByNumericId(numeric);if(!user)return {success:false,message:'Пользователь не найден.'};return await mutate(user.id,'special_prefix_ids',value,true)?{success:true,message:'Префикс успешно забран.'}:{success:false,message:'У пользователя нет этого префикса.'};},

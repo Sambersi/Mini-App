@@ -744,7 +744,7 @@ async function takeHandler(ctx) {
     }
 
     // Вызываем функцию из базы данных
-    const result = (await takeItemFromUser(userId, itemType, amount));
+    const result = (await takeItemFromUser(userId, itemType, amount, `telegram:${ctx.update.update_id}:admin_take_item`));
 
     // Если операция не удалась, отправляем ошибку
     if (!result.success) {
@@ -820,7 +820,7 @@ async function giveHandler(ctx) {
     }
 
     // Вызываем функцию из базы данных
-    const result = (await giveItemToUser(userId, itemType, amount));
+    const result = (await giveItemToUser(userId, itemType, amount, `telegram:${ctx.update.update_id}:admin_give_item`));
 
     // Если операция не удалась, отправляем ошибку
     if (!result.success) {
@@ -1023,7 +1023,7 @@ async function resetHandler(ctx) {
       }
       
       // Выполняем обнуление аккаунта
-      const resetResult = (await resetAccount(user.id));
+      const resetResult = (await resetAccount(user.id, `telegram:${ctx.update.update_id}`));
       if (!resetResult.success) {
           return ctx.reply('✖️ Произошла ошибка при обнулении аккаунта.');
       }
@@ -1958,7 +1958,7 @@ async function setBalanceHandler(ctx) {
       }
 
       // Вызываем функцию для установки баланса
-      const result = (await setPlayerBalanceByNumericId(numericId, newBalance));
+      const result = (await setPlayerBalanceByNumericId(numericId, newBalance, `telegram:${ctx.update.update_id}:admin_set_pf`));
 
       if (!result.success) {
           return ctx.reply(`❌ ${result.message}`);

@@ -20,6 +20,23 @@ function createProfileViews(runtime,reads,{now=()=>Date.now()}={}){
   const leaderboard=async(field,expression,joins,limit=10)=>many('SELECT '+identity+','+expression+' AS '+field+' FROM players p'+preferences+joins+' WHERE p.display_name IS NOT NULL ORDER BY '+expression+' DESC,'+order+' LIMIT '+limit,[],{booleans:['disable_hyperlink'],zero:[field]});
   const api={
     async getReferralsByReferrerId(id){return many('SELECT p.telegram_id AS id,p.display_name AS username,p.registered AS is_registered,p.registration_ts AS registration_date FROM players p JOIN '+referrals+' r ON r.player_id=p.telegram_id WHERE r.referrer_id=? AND (p.registered=1 OR p.registration_ts<?) ORDER BY '+order,[String(id),CUTOFF]);},
+    async subtractReferrals(id,count){
+      if(!Number.isSafeInteger(count)||count<0)return {success:false,message:'Некорректное количество рефералов.'};
+      if(!count)return {success:true};
+      try{
+        return await runtime.transaction(async()=>{
+          id=String(id);
+          await runtime.one('SELECT telegram_id FROM players WHERE telegram_id=? FOR UPDATE',[id]);
+          const eligible=await api.getReferralsByReferrerId(id);
+          if(eligible.length<count)return {success:false,message:'Недостаточно рефералов для вычитания.'};
+          for(const {id:playerId} of eligible.slice(-count)){
+            await runtime.execute('DELETE FROM player_referrals WHERE player_id=? AND referrer_id=?',[playerId,id]);
+            await runtime.execute('DELETE FROM player_referral_intents WHERE player_id=? AND referral_code=?',[playerId,id]);
+          }
+          return {success:true};
+        });
+      }catch{return {success:false,message:'Произошла ошибка при обновлении данных.'};}
+    },
     async getSeasonalReferralsByReferrerId(id){return many('SELECT p.telegram_id AS id,p.display_name AS username,p.registered AS is_registered,p.registration_ts AS registration_date FROM players p JOIN '+referrals+' r ON r.player_id=p.telegram_id WHERE r.referrer_id=? AND p.registered=1 AND p.registration_ts>=? ORDER BY '+order,[String(id),CUTOFF]);},
     async getReferralCount(id){return compatibleNumber((await runtime.one('SELECT COUNT(*) AS n FROM '+referrals+' r WHERE r.referrer_id=?',[String(id)])).n);},
     async getReferralCountPm(id){return api.getReferralCount(id);},

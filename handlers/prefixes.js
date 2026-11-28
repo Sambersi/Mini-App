@@ -82,8 +82,7 @@ async function assignPrefix(ctx, parts) {
       return ctx.reply(`❌ У пользователя уже есть префикс "${prefix.prefix}".`);
     }
 
-    userPrefixes.push(prefixId);
-    (await db.updateUserFieldByNumericId(targetUserId, 'prefix_ids', JSON.stringify(userPrefixes)));
+    await db.addPrefixToUser(user.id,prefixId);
 
     await ctx.replyWithHTML(
       `✅ Префикс "<b>${prefix.prefix}</b>" успешно выдан пользователю с id ${targetUserId}.`
@@ -126,8 +125,7 @@ async function removePrefix(ctx, parts) {
       return ctx.reply(`❌ У пользователя нет префикса "${prefix.prefix}".`);
     }
 
-    const updatedPrefixes = userPrefixes.filter(id => id !== prefixId);
-    (await db.updateUserFieldByNumericId(targetUserId, 'prefix_ids', JSON.stringify(updatedPrefixes)));
+    await db.removePrefixFromUser(user.id,prefixId);
 
     // Если удаляемый префикс был активным, обнуляем active_prefix_id
     if (user.active_prefix_id === prefixId) {

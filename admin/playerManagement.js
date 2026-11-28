@@ -320,7 +320,7 @@ async function handlePlayerManagementMessage(ctx) {
     }
 
     const oldValue = player[editField];
-    const result = (await setUserFieldPm(targetUserId, editField, newValue));
+    const result = (await setUserFieldPm(targetUserId, editField, newValue, `telegram:${ctx.update.update_id}:player_field`));
 
     if (result.success) {
       session.state = PM_STATE.IDLE;
@@ -757,7 +757,7 @@ async function toggleBooleanField(ctx, catKey, fieldKey) {
   const oldValue = !!player[fieldKey];
   const newValue = oldValue ? 0 : 1;
 
-  const result = (await setUserFieldPm(session.targetUserId, fieldKey, newValue));
+  const result = (await setUserFieldPm(session.targetUserId, fieldKey, newValue, `telegram:${ctx.update.update_id}:player_field`));
   if (result.success) {
     await safeAnswer(ctx, `✅ ${fieldCfg.label}: ${boolLabel(oldValue)} → ${boolLabel(!!newValue)}`);
     await showEditCategory(ctx, catKey);
@@ -817,7 +817,7 @@ async function doResetCategory(ctx, catKey) {
   let changed = 0;
   for (const [fieldKey, fieldCfg] of Object.entries(cat.fields)) {
     const def = fieldCfg.def != null ? fieldCfg.def : 0;
-    const result = (await setUserFieldPm(session.targetUserId, fieldKey, def));
+    const result = (await setUserFieldPm(session.targetUserId, fieldKey, def, `telegram:${ctx.update.update_id}:player_field`));
     if (result.success) changed++;
   }
 
@@ -1497,7 +1497,7 @@ async function doReset(ctx) {
   const player = (await getUserById(session.targetUserId));
   if (!player) return safeAnswer(ctx, '❌ Игрок не найден.');
 
-  const result = (await resetAccount(player.id));
+  const result = (await resetAccount(player.id, `telegram:${ctx.update.update_id}`));
   if (result.success) {
     await safeEditOrReply(
       ctx,

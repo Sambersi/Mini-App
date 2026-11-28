@@ -221,7 +221,7 @@ async function addBalanceHandler(ctx) {
       return ctx.reply('Пользователь с указанным ID или никнеймом не найден.');
     }
 
-    const result = await updateUserBalanceByNumericId(user.numeric_id, amount);
+    const result = await updateUserBalanceByNumericId(user.numeric_id, amount, 'PF', `telegram:${ctx.update.update_id}:admin_add_pf`);
     if (!result.success) {
       // Логируем неудачу в БД
       (await logAdminItem({
@@ -342,7 +342,7 @@ async function removeBalanceHandler(ctx) {
       return ctx.reply('Недостаточно средств на балансе пользователя.');
     }
 
-    const result = await updateUserBalanceByNumericId(user.numeric_id, -amount);
+    const result = await updateUserBalanceByNumericId(user.numeric_id, -amount, 'PF', `telegram:${ctx.update.update_id}:admin_take_pf`);
     if (!result.success) {
       // Логируем неудачу в БД
       (await logAdminItem({

@@ -123,6 +123,19 @@ async function runDoubleSettlementChecks({pool,runtime,now}){
     await assert.rejects(api.openDoubleRound({previousHash:winner.round.hash,round:candidates.at(-1)}),{code:'DOUBLE_ROUND_OPEN'});
     assert.equal((await api.getDoubleRoundState()).hash,winner.round.hash);
     checks++;
+    const details=await api.getDoubleRoundDetails(rounds[0]);
+    assert.equal(details.success,true);
+    assert.equal(details.participants[0].bank,100);
+    assert.equal(details.participants[0].won,200);
+    assert.equal(details.chats[0].bets,1);
+    assert.equal((await api.getAdminDoubleRoundsView({hash:rounds[0]})).rows[0].round_id,rounds[0]);
+    const groupPage=await api.getAdminDoubleBetsView({hash:rounds[0]});
+    assert.equal(groupPage.total,1);
+    assert.equal(groupPage.rows[0].bets[0].payout_status,'paid');
+    const eventPage=await api.getAdminLogsDouble({searchIds:[id],limit:1});
+    assert.equal(eventPage.rows.length,1);
+    assert.ok(eventPage.total>1);
+    checks++;
     return checks;
   }catch(error){
     failure=error;

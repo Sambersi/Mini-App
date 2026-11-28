@@ -17,14 +17,16 @@ function calculateAdjustment(before,delta,limit=null){
   if(before+applied>MAX)fail('WALLET_OVERFLOW');
   return {newBalance:String(before+applied),applied:String(applied),limited:applied!==delta};
 }
-function createBalanceAdjustment(pool){return async input=>{
+function createBalanceAdjustment(pool,{runTransaction=work=>withDeadlockRetry(()=>withTransaction(pool,work))}={}){return async input=>{
   if(!input||typeof input.operationKey!=='string'||!/^[A-Za-z0-9:_-]{1,150}$/.test(input.operationKey))fail('OPERATION_KEY_INVALID');
   if(typeof input.playerId!=='string'||!/^[\x21-\x7e]{1,32}$/.test(input.playerId)||!['PF','DF'].includes(input.asset)||!['main','card'].includes(input.bucket)||(input.asset==='DF'&&input.bucket!=='main'))fail('WALLET_INVALID');
   const mode=input.limitMode||'none';
   if(!['none','main-level','card-level'].includes(mode)||(input.asset==='DF'&&mode!=='none')||(mode==='main-level'&&input.bucket!=='main')||(mode==='card-level'&&input.bucket!=='card'))fail('WALLET_LIMIT_INVALID');
-  const delta=signedAmount(input.delta),key=input.operationKey;
-  const hash=createHash('sha256').update(JSON.stringify({kind:'adjust',playerId:input.playerId,asset:input.asset,bucket:input.bucket,delta:String(delta),mode})).digest('hex');
-  return withDeadlockRetry(()=>withTransaction(pool,async connection=>{
+  const absolute=input.balance!==undefined;
+  const value=signedAmount(absolute?input.balance:input.delta),key=input.operationKey;
+  if(absolute&&value<0n)fail('AMOUNT_INVALID');
+  const hash=createHash('sha256').update(JSON.stringify({kind:absolute?'set':'adjust',playerId:input.playerId,asset:input.asset,bucket:input.bucket,delta:String(value),mode})).digest('hex');
+  return runTransaction(async connection=>{
     await connection.execute('INSERT INTO wallet_operations(operation_key,request_hash) VALUES (?,?) ON DUPLICATE KEY UPDATE operation_key=VALUES(operation_key)',[key,hash]);
     const [[previous]]=await connection.execute('SELECT request_hash,result_json FROM wallet_operations WHERE operation_key=? FOR UPDATE',[key]);
     if(previous.request_hash!==hash)fail('OPERATION_KEY_CONFLICT');
@@ -39,10 +41,11 @@ function createBalanceAdjustment(pool){return async input=>{
     }
     const wallet={playerId:input.playerId,asset:input.asset,bucket:input.bucket};
     const before=await lockWallet(connection,wallet);
+    const delta=absolute?value-before:value;
     const result=calculateAdjustment(before,delta,limit);
     await saveWallet(connection,wallet,BigInt(result.newBalance),BigInt(result.applied),'adjust:'+key,'adjustment');
     await connection.execute('UPDATE wallet_operations SET result_json=? WHERE operation_key=?',[JSON.stringify(result),key]);
     return result;
-  }));
+  });
 };}
 module.exports={signedAmount,calculateAdjustment,createBalanceAdjustment};
