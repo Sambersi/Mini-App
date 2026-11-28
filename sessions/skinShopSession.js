@@ -1,3 +1,11 @@
+if(process.env.DB_BACKEND==='mysql'){
+  const facade=require('../db');
+  const fields=['getSkinShopSession','saveSkinShopSession','destroySkinShopSession'];
+  if(fields.some(field=>typeof facade[field]!=='function')){
+    throw Object.assign(new Error('MariaDB session adapter unavailable'),{code:'MYSQL_SESSION_ADAPTER_MISSING'});
+  }
+  module.exports=Object.fromEntries(fields.map(field=>[field,facade[field]]));
+}else{
 //skinShopSession.js
 
 const sqlite3 = require('better-sqlite3');
@@ -49,3 +57,4 @@ module.exports = {
   saveSkinShopSession,
   destroySkinShopSession,
 };
+}

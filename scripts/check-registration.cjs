@@ -479,6 +479,32 @@ async function runRegistrationChecks(env=process.env){
     assert.equal(reset.is_registered,0);
     assert.equal(JSON.parse(reset.donations_history).at(-1).amount,5);
     checks++;
+    const reportId=await service.createReportRecord(settingsId,'Fixture','Fixture runtime report');
+    assert.ok((await service.getUnansweredReportRecords()).some(report=>report.id===reportId));
+    const answers=await Promise.all(Array.from({length:20},()=>service.answerReportRecord(reportId,'Fixture answer',referrer,'Fixture')));
+    assert.equal(answers.filter(Boolean).length,1);
+    assert.equal((await service.rateReportRecord(reportId,dicePlayers[0],'like')).accepted,false);
+    const adminBefore=await profile(referrer);
+    const ratings=await Promise.all(Array.from({length:20},()=>service.rateReportRecord(reportId,settingsId,'like')));
+    assert.equal(ratings.filter(result=>result.accepted).length,1);
+    const adminAfter=await profile(referrer);
+    assert.equal(adminAfter.df_balance,adminBefore.df_balance+1);
+    assert.equal(adminAfter.likes_received,adminBefore.likes_received+1);
+    assert.equal((await service.getReportRecord(reportId)).user_feedback,'like');
+    await service.setReportBlocked(settingsId,true);
+    assert.equal((await profile(settingsId)).report_blocked,1);
+    await service.setReportBlocked(settingsId,false);
+    await service.deleteReportRecord(reportId);
+    await service.saveRegistrationSession(settingsId,{step:'fixture'});
+    assert.deepEqual(await service.getRegistrationSession(settingsId),{step:'fixture'});
+    await service.destroyRegistrationSession(settingsId);
+    await service.saveSkinShopSession(settingsId,{view:'fixture'});
+    assert.deepEqual(await service.getSkinShopSession(settingsId),{view:'fixture'});
+    await service.destroySkinShopSession(settingsId);
+    const physicsPlayer=(await service.getPhysicsPlayers()).find(player=>player.id===settingsId);
+    assert.equal(physicsPlayer.numeric_id,666);
+    assert.equal(physicsPlayer.balance,0);
+    checks++;
     return {checks,concurrentRequests:20,isolatedDatabase:true};
   }finally{
     try{if(seeded){

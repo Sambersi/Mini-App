@@ -19,6 +19,9 @@ function createProfileViews(runtime,reads,{now=()=>Date.now()}={}){
   const many=async(sql,args=[],options)=> (await runtime.many(sql,args)).map(row=>adapt(row,options));
   const leaderboard=async(field,expression,joins,limit=10)=>many('SELECT '+identity+','+expression+' AS '+field+' FROM players p'+preferences+joins+' WHERE p.display_name IS NOT NULL ORDER BY '+expression+' DESC,'+order+' LIMIT '+limit,[],{booleans:['disable_hyperlink'],zero:[field]});
   const api={
+    async getPhysicsPlayers(){
+      return many("SELECT p.telegram_id AS id,p.numeric_id,p.display_name AS username,w.balance FROM players p LEFT JOIN wallets w ON w.player_id=p.telegram_id AND w.asset='PF' AND w.bucket='main' ORDER BY w.balance DESC,p.legacy_rowid,p.telegram_id LIMIT 2000");
+    },
     async getReferralsByReferrerId(id){return many('SELECT p.telegram_id AS id,p.display_name AS username,p.registered AS is_registered,p.registration_ts AS registration_date FROM players p JOIN '+referrals+' r ON r.player_id=p.telegram_id WHERE r.referrer_id=? AND (p.registered=1 OR p.registration_ts<?) ORDER BY '+order,[String(id),CUTOFF]);},
     async subtractReferrals(id,count){
       if(!Number.isSafeInteger(count)||count<0)return {success:false,message:'Некорректное количество рефералов.'};

@@ -18,8 +18,6 @@ const {
   isUserBanned,
   getBlacklistEntry,
   decreaseContainerCount,
-  incrementLikesReceived,
-  incrementDislikesReceived,
   isUserMuted,
   getDonationHistory, 
   addDonationToHistory,
@@ -3007,47 +3005,20 @@ bot.action(/^report_feedback_(\d+)_(like|dislike)$/, async (ctx) => {
       const feedbackType = ctx.match[2]; // Тип обратной связи: like или dislike
       
       // Проверяем, существует ли репорт
-      const stmt = db.prepare('SELECT * FROM reports WHERE id = ? AND status = ?');
-      const report = stmt.get(reportId, 'answered');
-      if (!report) {
+      const {accepted,adminId,alreadyRated}=await db.rateReportRecord(reportId,ctx.from.id,feedbackType);
+      if(!accepted) {
+        if(alreadyRated)return ctx.answerCbQuery('❕ Вы уже оценили этот репорт.');
         return ctx.answerCbQuery('❕ Репорт не найден или уже был оценён.');
       }
-      
-      // Проверяем, оценивал ли пользователь этот репорт ранее
-      if (report.user_feedback) {
-        return ctx.answerCbQuery('❕ Вы уже оценили этот репорт.');
-      }
-      
-      // Обновляем обратную связь пользователя
-      const updateStmt = db.prepare(`
-        UPDATE reports
-        SET user_feedback = ?
-        WHERE id = ?
-      `);
-      updateStmt.run(feedbackType, reportId);
-      
-      // Получаем данные администратора
-      const adminId = report.admin_id;
-      const adminUser = (await getUserById(adminId));
-      if (adminUser) {
-        // Обновляем статистику администратора
-        if (feedbackType === 'like') {
-          (await incrementLikesReceived(adminId)); // Увеличиваем количество лайков
-          (await updateUserDFBalance(adminId, 1)); // Начисляем 1 DF за лайк
-        } else if (feedbackType === 'dislike') {
-          (await incrementDislikesReceived(adminId)); // Увеличиваем количество дизлайков
-        }
-        
-        // Отправляем уведомление администратору
-// СТАЛО:
-const feedbackMessage = feedbackType === 'like' 
-  ? `👍 Ваш ответ на репорт №${reportId} был оценён положительно.\n💰На ваш баланс начислено: 1 DF.` 
-  : `👎 Ваш ответ на репорт №${reportId} был оценён отрицательно.\n🫡Старайтесь лучше`;
+      if(adminId){
+        const feedbackMessage = feedbackType === 'like'
+          ? `👍 Ваш ответ на репорт №${reportId} был оценён положительно.\n💰На ваш баланс начислено: 1 DF.`
+          : `👎 Ваш ответ на репорт №${reportId} был оценён отрицательно.\n🫡Старайтесь лучше`;
         await ctx.telegram.sendMessage(adminId, feedbackMessage, { parse_mode: 'HTML' });
       }
       
       // Ответ пользователю
-      const feedbackResponse = feedbackType === 'like' 
+      const feedbackResponse = feedbackType === 'like' && adminId
         ? '✅ <b>Спасибо за вашу оценку! Администратору начислено 1 DF.</b>' 
         : '✅ Спасибо за вашу оценку!';
       await ctx.answerCbQuery(feedbackResponse, { parse_mode: 'HTML' });

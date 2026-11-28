@@ -14,6 +14,7 @@ const {
   getTickets,
   takeTickets,
   getUserById,
+  getPhysicsPlayers,
   awardPrizeToUser,
   getFinanceLogPage,
   resolveLogSearchIds,
@@ -59,12 +60,13 @@ app.use('/api/admin/logs',adminOnly(async id=>{
 }));
 
 // === 4. API маршруты ===
-app.get('/api/user/:id', ownPlayer('id'), (req, res) => {
+app.get('/api/user/:id', ownPlayer('id'), async (req, res) => {
   const userId = req.params.id.toString();
   try {
-    const user = db.prepare('SELECT id, numeric_id, username, balance, df_balance, npf_shares FROM users WHERE id = ?').get(userId);
+    const user = await getUserById(userId);
     if (user) {
-      res.json(user);
+      const {id,numeric_id,username,balance,df_balance,npf_shares}=user;
+      res.json({id,numeric_id,username,balance,df_balance,npf_shares});
     } else {
       res.status(404).json({ error: 'User not found' });
     }
@@ -303,11 +305,9 @@ app.get('/api/admin/logs/double/round/:roundId', async (req, res) => {
   }
 });
 
-app.get('/api/physics/users', (req, res) => {
+app.get('/api/physics/users', async (req, res) => {
   try {
-    const stmt = db.prepare(`SELECT id, numeric_id, username, balance FROM users ORDER BY balance DESC LIMIT 2000`);
-    const users = stmt.all();
-    res.json(users);
+    res.json(await getPhysicsPlayers());
   } catch (err) {
     console.error('[BACKEND] Ошибка физики:', err);
     res.status(500).json({ error: 'Database error' });

@@ -1,3 +1,11 @@
+if(process.env.DB_BACKEND==='mysql'){
+  const facade=require('../db');
+  const fields=['getRegistrationSession','saveRegistrationSession','destroyRegistrationSession','resetRegistrationSession','cleanupExpiredSessions'];
+  if(fields.some(field=>typeof facade[field]!=='function')){
+    throw Object.assign(new Error('MariaDB session adapter unavailable'),{code:'MYSQL_SESSION_ADAPTER_MISSING'});
+  }
+  module.exports=Object.fromEntries(fields.map(field=>[field,facade[field]]));
+}else{
 //registrationSession.js
 const sqlite3 = require('better-sqlite3');
 const path = require('path');
@@ -104,3 +112,4 @@ module.exports = {
   resetRegistrationSession,
   cleanupExpiredSessions,
 };
+}

@@ -322,9 +322,9 @@ async function handleReferralRegistration(ctx, referralCode) {
     });
 
     // Сохраняем реферальный код в сессии регистрации
-    const session = getRegistrationSession(userId) || {};
+    const session = await getRegistrationSession(userId) || {};
     session.referralCode = referralCode; // Сохраняем реферальный код в сессии
-    saveRegistrationSession(userId, session);
+    await saveRegistrationSession(userId, session);
 
     ctx.reply(
       'Вы успешно начали процесс регистрации через реферальную ссылку. ' +

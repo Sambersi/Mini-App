@@ -82,13 +82,7 @@ async function createReport(ctx, db) {
     const username = user.username || `User${user.numeric_id}`;
     const userLink = `<a href="tg://user?id=${userId}">${escapeHtml(username)}</a>`;
 
-    const stmt = db.prepare(`
-      INSERT INTO reports (user_id, username, report_text, status, likes, dislikes, user_feedback, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const info = stmt.run(userId, username, truncatedText, 'not_answered', 0, 0, null, Date.now() / 1000);
-
-    const reportNumber = info.lastInsertRowid;
+    const reportNumber=await db.createReportRecord(userId,username,truncatedText);
     const adminMessage = `
 📮 <b>Новый репорт №${reportNumber}:</b>
 👤 <b>Пользователь:</b> ${userLink} (NumID: ${user.numeric_id})
@@ -119,15 +113,7 @@ async function getReports(ctx, db) {
     }
 
     // Получаем список неотвеченных репортов
-    const stmt = db.prepare(`
-      SELECT r.*, u.numeric_id as user_numeric_id
-      FROM reports r
-      LEFT JOIN users u ON r.user_id = u.id
-      WHERE r.status = ?
-      ORDER BY r.id DESC
-      LIMIT 15
-    `);
-    const reports = stmt.all('not_answered');
+    const reports=await db.getUnansweredReportRecords();
 
     if (!reports || reports.length === 0) {
       return ctx.reply('<b>❕ Список неотвеченных репортов пуст.</b>', { parse_mode: 'HTML' });
@@ -215,24 +201,17 @@ async function answerReport(ctx, db, parts) {
       return ctx.reply('❕ <b>Некорректный номер репорта или текст ответа.</b>', { parse_mode: 'HTML' });
     }
 
-    const stmt = db.prepare('SELECT * FROM reports WHERE id = ? AND status = ?');
-    const report = stmt.get(reportId, 'not_answered');
+    const admin = await getUserById(ctx.from.id.toString());
+    const adminUsername = admin?.username || 'Анонимный админ';
+    const report=await db.answerReportRecord(reportId,responseText,ctx.from.id,adminUsername);
 
     if (!report) {
       return ctx.reply('❕ <b>Репорт с указанным номером не найден или уже был отвечен.</b>', { parse_mode: 'HTML' });
     }
 
-    const admin = await getUserById(ctx.from.id.toString());
-    const adminUsername = admin?.username || 'Анонимный админ';
     const adminLink = `<a href="tg://user?id=${ctx.from.id}">${escapeHtml(adminUsername)}</a>`;
     const escapedResponseText = escapeHtml(responseText); // Экранируем текст ответа
 
-    const updateStmt = db.prepare(`
-      UPDATE reports
-      SET status = 'answered', admin_response = ?, admin_id = ?, admin_username = ?
-      WHERE id = ?
-    `);
-    updateStmt.run(responseText, ctx.from.id.toString(), adminUsername, reportId);
 
     const playerUserId = report.user_id;
     const replyMessage = `
@@ -282,16 +261,14 @@ async function deleteReportById(ctx, db, reportId) {
     }
 
     // Проверяем, существует ли репорт в базе данных
-    const stmt = db.prepare('SELECT * FROM reports WHERE id = ?');
-    const report = stmt.get(reportId);
+    const report=await db.getReportRecord(reportId);
 
     if (!report) {
       return ctx.reply(`❌ Репорт с ID ${reportId} не найден.`);
     }
 
     // Удаляем репорт
-    const deleteStmt = db.prepare('DELETE FROM reports WHERE id = ?');
-    const info = deleteStmt.run(reportId);
+    const info=await db.deleteReportRecord(reportId);
 
     if (info.changes > 0) {
       return ctx.reply(`✅ Репорт с ID ${reportId} успешно удален.`);
@@ -313,8 +290,7 @@ async function clearAllReports(ctx, db) {
       return ctx.reply('❌ Эту команду могут использовать только Тех. Администраторы.');
     }
 
-    const stmt = db.prepare('DELETE FROM reports');
-    const info = stmt.run();
+    const info=await db.clearReportRecords();
     
     return ctx.reply(`✅ Список репортов полностью очищен. Удалено записей: ${info.changes}.`);
   } catch (error) {
@@ -340,8 +316,7 @@ async function blockUserReports(ctx, db, numericId) {
       return ctx.reply(`❌ Репорты для пользователя ${user.username} уже заблокированы.`);
     }
 
-    const updateStmt = db.prepare('UPDATE users SET report_blocked = 1 WHERE id = ?');
-    updateStmt.run(user.id);
+    await db.setReportBlocked(user.id,true);
 
     return ctx.reply(`✅ Возможность отправлять репорты заблокирована для пользователя ${user.username} (NumID: ${numericId}).`);
   } catch (error) {
@@ -367,8 +342,7 @@ async function unblockUserReports(ctx, db, numericId) {
       return ctx.reply(`✅ Репорты для пользователя ${user.username} уже разблокированы.`);
     }
 
-    const updateStmt = db.prepare('UPDATE users SET report_blocked = 0 WHERE id = ?');
-    updateStmt.run(user.id);
+    await db.setReportBlocked(user.id,false);
 
     return ctx.reply(`✅ Возможность отправлять репорты разблокирована для пользователя ${user.username} (NumID: ${numericId}).`);
   } catch (error) {

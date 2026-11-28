@@ -6728,7 +6728,51 @@ function getUserPrefixesDetailedPm(userId) {
 }
 
 // Экспортируем функции
+function createReportRecord(userId,username,text) {
+  return db.prepare("INSERT INTO reports(user_id,username,report_text,status,likes,dislikes,created_at) VALUES (?,?,?,'not_answered',0,0,?)")
+    .run(String(userId),username,text,Date.now()/1000).lastInsertRowid;
+}
+function getUnansweredReportRecords() {
+  return db.prepare("SELECT r.*,u.numeric_id AS user_numeric_id FROM reports r LEFT JOIN users u ON u.id=r.user_id WHERE r.status='not_answered' ORDER BY r.id DESC LIMIT 15").all();
+}
+function getLatestReportRecords() {
+  return db.prepare('SELECT * FROM reports ORDER BY created_at DESC,id DESC LIMIT 20').all();
+}
+function getReportRecord(id) {return db.prepare('SELECT * FROM reports WHERE id=?').get(id);}
+function answerReportRecord(id,text,adminId,adminName) {
+  return transaction(()=>{
+    const report=db.prepare("SELECT * FROM reports WHERE id=? AND status='not_answered'").get(id);
+    if(!report)return null;
+    db.prepare("UPDATE reports SET status='answered',admin_response=?,admin_id=?,admin_username=? WHERE id=?")
+      .run(text,String(adminId),adminName,id);
+    return report;
+  });
+}
+function deleteReportRecord(id) {return db.prepare('DELETE FROM reports WHERE id=?').run(id);}
+function clearReportRecords() {return db.prepare('DELETE FROM reports').run();}
+function setReportBlocked(id,blocked) {db.prepare('UPDATE users SET report_blocked=? WHERE id=?').run(blocked?1:0,String(id));}
+function getPhysicsPlayers() {
+  return db.prepare('SELECT id,numeric_id,username,balance FROM users ORDER BY balance DESC LIMIT 2000').all();
+}
+function rateReportRecord(id,userId,feedback) {
+  if(!['like','dislike'].includes(feedback))return {accepted:false};
+  return transaction(()=>{
+    const report=db.prepare("SELECT user_id,admin_id,user_feedback FROM reports WHERE id=? AND status='answered'").get(id);
+    if(!report||String(report.user_id)!==String(userId))return {accepted:false};
+    if(report.user_feedback)return {accepted:false,alreadyRated:true};
+    const admin=report.admin_id&&db.prepare('SELECT id FROM users WHERE id=?').get(report.admin_id);
+    if(admin){
+      if(feedback==='like')db.prepare('UPDATE users SET likes_received=likes_received+1,df_balance=COALESCE(df_balance,0)+1 WHERE id=?').run(admin.id);
+      else db.prepare('UPDATE users SET dislikes_received=dislikes_received+1 WHERE id=?').run(admin.id);
+    }
+    db.prepare('UPDATE reports SET user_feedback=? WHERE id=?').run(feedback,id);
+    return {accepted:true,adminId:admin?.id||null};
+  });
+}
+
 module.exports = {
+  createReportRecord,getUnansweredReportRecords,getLatestReportRecords,getReportRecord,getPhysicsPlayers,
+  answerReportRecord,deleteReportRecord,clearReportRecords,setReportBlocked,rateReportRecord,
   getUserById,
   getUserByNumericId,
   createUserOrUpdate,
