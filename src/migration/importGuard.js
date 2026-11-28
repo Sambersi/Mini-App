@@ -8,5 +8,7 @@ async function assertInactiveProjection(connection,runId){
   if(BigInt(inventory.n)>0n)throw Object.assign(new Error('Projection contains inventory operations'),{code:'MIGRATION_RUNTIME_WRITES_EXIST'});
   const [[promos]]=await connection.execute('SELECT COUNT(*) AS n FROM promo_redemptions');
   if(BigInt(promos.n)>0n)throw Object.assign(new Error('Projection contains promo redemptions'),{code:'MIGRATION_RUNTIME_WRITES_EXIST'});
+  const [[decisions]]=await connection.execute('SELECT COUNT(*) AS n FROM partner_request_decisions');
+  if(BigInt(decisions.n)>0n)throw Object.assign(new Error('Projection contains partner decisions'),{code:'MIGRATION_RUNTIME_WRITES_EXIST'});
 }
 module.exports={assertInactiveProjection};

@@ -1,3 +1,5 @@
+const {createPartnerDecisionHandler}=require('./src/telegram/partnerDecision');
+const {decidePartnerRequest}=require('./db');
 const { Markup } = require('telegraf');
 const { 
   getUserStatuses, 
@@ -25,7 +27,7 @@ try {
 }
 
 const PARTNER_ADMIN_CHAT_ID = '-1004397248092';
-const ALLOWED_ADMIN_STATUS_IDS = [2, 9, 8]; // 2=Тех администратор, 9=Главный админ, 8=Руководитель партнёрки
+const {allowedPartnerRoleIds:ALLOWED_ADMIN_STATUS_IDS}=require('./src/services/partnerDecision'); // 2=Тех администратор, 9=Главный админ, 8=Руководитель партнёрки
 
 const partnerSessions = new Map();
 const adminEditSessions = new Map();
@@ -176,10 +178,10 @@ async function hasPartnerAdminRights(userId) {
     try {
         const ids = (await getUserStatusIds(userId));
         const hasRights = ids.some(id => ALLOWED_ADMIN_STATUS_IDS.includes(id));
-        console.log(`[PARTNER AUTH] User: ${userId} | StatusIDs: ${JSON.stringify(ids)} | AllowedIDs: ${JSON.stringify(ALLOWED_ADMIN_STATUS_IDS)} | Result: ${hasRights}`);
+        console.log('[PARTNER AUTH] '+(hasRights?'ALLOWED':'DENIED'));
         return hasRights;
     } catch (e) {
-        console.error('[PARTNER AUTH] Error checking rights:', e);
+        console.error('[PARTNER AUTH] CHECK_FAILED');
         return false;
     }
 }
@@ -767,11 +769,11 @@ async function openAdminRequestById(ctx, idStr) {
 async function handleAdminRequestCallback(ctx) {
     const userId = ctx.from.id.toString();
     const data = ctx.callbackQuery.data;
-    console.log(`[PARTNER ADMIN] Нажата кнопка: ${data} пользователем: ${userId}`);
+    console.log('[PARTNER ADMIN] Callback received');
 
     const hasRights = await hasPartnerAdminRights(userId);
     if (!hasRights) {
-        console.warn(`[PARTNER ADMIN] ОТКАЗ в доступе пользователю ${userId}. Кнопка: ${data}`);
+        console.warn('[PARTNER ADMIN] Access denied');
         await ctx.answerCbQuery('❌ Недостаточно прав.', { show_alert: true });
         return;
     }
@@ -790,7 +792,7 @@ async function handleAdminRequestCallback(ctx) {
         const mId = data.match(/^adminid_(accept|reject|edit)_(\d+)$/);
         if (mId) {
             action = mId[1];
-            request = (await getPartnerRequestById(parseInt(mId[2], 10)));
+            request = (await getPartnerRequestById(mId[2]));
         } else {
             // Старый формат кнопок (сообщения, уже висящие в чате)
             const mOld = data.match(/^admin_(req|curr)_(accept|reject|edit)_([^_]+)_(.+)$/);
@@ -1011,69 +1013,11 @@ async function updateAdminMessageFinal(ctx, request, suffix) {
     }
 }
 
-async function approveRequest(ctx, request, adminId, customData = null) {
-    const data = customData || request;
-    try {
-        const result = (await createPartnerPromo(
-            data.name, -1, data.prize_type, data.prize_amount,
-            'partner_system', 0, null, request.partner_id, data.audience_type || 'all', data.template || 'normal'
-        ));
-        if (!result.success) throw new Error(result.message || 'Ошибка создания промо');
+const approveRequest=createPartnerDecisionHandler({decide:decidePartnerRequest,decision:'approve',updateMessage:updateAdminMessageFinal,edit:safeEditOrReply,link:createUserLink});
 
-        (await updatePartnerRequestStatus(request.id, 'approved'));
+const approveCurrencyRequest=createPartnerDecisionHandler({decide:decidePartnerRequest,decision:'approve',updateMessage:updateAdminMessageFinal,edit:safeEditOrReply,link:createUserLink});
 
-        const adminLink = createUserLink(adminId, ctx.from.username || 'Админ');
-        await updateAdminMessageFinal(ctx, request, `✅ <b>ОДОБРЕНО</b> администратором ${adminLink}`);
-        await safeEditOrReply(ctx, `✅ Запрос #${request.id} одобрен. Промокод <code>${data.name}</code> создан.`, { parse_mode: 'HTML' });
-
-        const prizeName = PRIZE_TYPES.find(p => p.id === data.prize_type)?.name || data.prize_type;
-        const audText = (data.audience_type || 'all') === 'all' ? 'Для всех' : 'Только рефералы';
-        await ctx.telegram.sendMessage(request.partner_id,
-            `🎉 <b>Запрос одобрен!</b>\n\nПромокод <code>${data.name}</code> (${(data.prize_amount || 0).toLocaleString('ru-RU')} ${prizeName}, ${audText}) создан.`,
-            { parse_mode: 'HTML' });
-    } catch (e) {
-        console.error('[PARTNER] Ошибка одобрения:', e);
-        await ctx.reply('❌ Ошибка создания промокода: ' + (e.message || ''));
-    }
-}
-
-async function approveCurrencyRequest(ctx, request, adminId, customData = null) {
-    const data = customData || request;
-    try {
-        const { updateUserBalance, updateUserDFBalance } = require('./db');
-        const amount = data.prize_amount || 0;
-        if (data.prize_type === 'balance') {
-            (await updateUserBalance(request.partner_id, amount));
-        } else {
-            (await updateUserDFBalance(request.partner_id, amount));
-        }
-
-        (await updatePartnerRequestStatus(request.id, 'approved'));
-
-        const currencyName = data.prize_type === 'balance' ? 'PF' : 'DF';
-        const adminLink = createUserLink(adminId, ctx.from.username || 'Админ');
-        await updateAdminMessageFinal(ctx, request, `✅ <b>ОДОБРЕНО</b> администратором ${adminLink}\n💰 Начислено: ${amount.toLocaleString('ru-RU')} ${currencyName}`);
-        await safeEditOrReply(ctx, `✅ Запрос #${request.id} одобрен. Начислено: ${amount.toLocaleString('ru-RU')} ${currencyName}.`, { parse_mode: 'HTML' });
-
-        await ctx.telegram.sendMessage(request.partner_id,
-            `🎉 <b>Запрос на валюту одобрен!</b>\n\n💰 Начислено: ${amount.toLocaleString('ru-RU')} ${currencyName}`,
-            { parse_mode: 'HTML' });
-    } catch (e) {
-        console.error('[PARTNER] Ошибка одобрения валюты:', e);
-        await ctx.reply('❌ Ошибка начисления валюты.');
-    }
-}
-
-async function rejectRequest(ctx, request, adminId) {
-    (await updatePartnerRequestStatus(request.id, 'rejected'));
-    const adminLink = createUserLink(adminId, ctx.from.username || 'Админ');
-    await updateAdminMessageFinal(ctx, request, `❌ <b>ОТКЛОНЕНО</b> администратором ${adminLink}`);
-    await safeEditOrReply(ctx, `❌ Запрос #${request.id} отклонен.`, { parse_mode: 'HTML' });
-
-    await ctx.telegram.sendMessage(request.partner_id,
-        `❌ <b>Запрос отклонен.</b>\n\nЗапрос <code>${request.name}</code> отклонен администратором.`,
-        { parse_mode: 'HTML' });
-}
+const rejectRequest=createPartnerDecisionHandler({decide:decidePartnerRequest,decision:'reject',updateMessage:updateAdminMessageFinal,edit:safeEditOrReply,link:createUserLink});
 
 module.exports = {
     isPartner,
