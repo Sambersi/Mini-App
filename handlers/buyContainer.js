@@ -1,142 +1,18 @@
+const {products}=require('../src/services/containerPurchase');
+const {createContainerCheckout}=require('../src/telegram/containerCheckout');
 // Импортируем необходимые модули
 const {
     getUserById,
-    updateUserBalance,
-    updateUserDFBalance,
-    updateContainerCount,
-    beginTransaction,
-    commitTransaction,
-    rollbackTransaction
+    purchaseContainers,
 } = require('../db');
 
 const { Markup } = require('telegraf'); // Импортируем Markup для создания кнопок
 
 // Цены на контейнеры
-const containerPrices = {
-    1: { currency: 'PF', price: 10000 }, // CLASSIC Контейнер
-    2: { currency: 'PF', price: 50000 }, // PREMIUM Контейнер
-    3: { currency: 'DF', price: 200 }, // GOLD Контейнер (только за DF)
-};
+
 
 // Обработчик команды "контейнер купить"
-async function buyContainerHandler(ctx) {
-    try {
-        const userId = ctx.from.id.toString();
-        let transactionStarted = false;
-
-        const user = await getUserById(userId);
-        if (!user) {
-            return ctx.reply('⚠️ <b>Ошибка:</b>\nВы ещё не зарегистрированы.', { parse_mode: 'HTML' });
-        }
-
-        const text = ctx.message.text.trim().toLowerCase();
-        const parts = text.split(/\s+/);
-
-        // Валидация формата команды
-        if (parts.length !== 4 || parts[1] !== 'купить') {
-            return ctx.reply(
-                '❕ <b>Использование:</b> контейнер купить [номер] [количество]',
-                { parse_mode: 'HTML' }
-            );
-        }
-
-        const containerNumber = parseInt(parts[2], 10);
-        const quantity = parseInt(parts[3], 10);
-
-        // Валидация входных данных
-        if (![1, 2, 3].includes(containerNumber)) {
-            return ctx.reply(
-                '⚠️ <b>Ошибка:</b>\nНеверный номер контейнера. Доступные варианты: 1 (CLASSIC), 2 (PREMIUM), 3 (GOLD).',
-                { parse_mode: 'HTML' }
-            );
-        }
-        if (isNaN(quantity) || quantity <= 0) {
-            return ctx.reply(
-                '⚠️ <b>Ошибка:</b>\nНеверное количество. Укажите положительное число.',
-                { parse_mode: 'HTML' }
-            );
-        }
-
-        const containerInfo = containerPrices[containerNumber];
-        const totalCost = containerInfo.price * quantity;
-
-        // Начинаем транзакцию
-        (await beginTransaction());
-        transactionStarted = true;
-
-        try {
-            let currentBalance;
-            let updateBalanceFunction;
-
-            if (containerInfo.currency === 'PF') {
-                currentBalance = user.balance;
-                updateBalanceFunction = updateUserBalance;
-            } else if (containerInfo.currency === 'DF') {
-                currentBalance = user.df_balance;
-                updateBalanceFunction = updateUserDFBalance;
-            }
-
-            // Проверяем баланс пользователя
-            if (currentBalance < totalCost) {
-                (await rollbackTransaction());
-                // Формируем сообщение с информацией о недостатке средств и текущем балансе
-                const balanceMessage = `
-⚠️ <b>Ошибка:</b>
-Недостаточно ${containerInfo.currency}. Требуется ${totalCost.toLocaleString('ru-RU')} ${containerInfo.currency}.
-
-💰 Ваш текущий баланс: ${currentBalance.toLocaleString('ru-RU')} ${containerInfo.currency}
-`.trim();
-                return ctx.reply(balanceMessage, { parse_mode: 'HTML' });
-            }
-
-            // Списываем средства
-            await updateBalanceFunction(userId, -totalCost);
-
-            // Проверяем лимиты и добавляем контейнеры
-            const result = (await updateContainerCount(userId, containerNumber, quantity));
-            if (!result.success) {
-                (await rollbackTransaction());
-                
-                // Формируем сообщение о лимитах
-                const limitsMessage = `
-⚠️ <b>Ваши лимиты контейнеров:</b>
-• CLASSIC: ${result.limits[1]} шт
-• PREMIUM: ${result.limits[2]} шт
-• GOLD: ${result.limits[3]} шт
-`.trim();
-
-                return ctx.reply(`${result.message}\n\n${limitsMessage}`, { parse_mode: 'HTML' });
-            }
-
-            // Фиксируем транзакцию
-            (await commitTransaction());
-            transactionStarted = false;
-
-        } catch (error) {
-            if (transactionStarted) {
-                (await rollbackTransaction());
-            }
-            console.error('[buyContainerHandler] Ошибка транзакции:', error);
-            throw error;
-        }
-
-        // Формируем сообщение об успешной покупке
-        const containerName = ['CLASSIC', 'PREMIUM', 'GOLD'][containerNumber - 1];
-        const successMessage = `
-✔️ Вы успешно купили ${quantity} <b>${containerName}</b> контейнер${quantity > 1 ? 'а' : ''} 
-за ${totalCost.toLocaleString('ru-RU')} <b>${containerInfo.currency}</b>.
-`.trim();
-
-        return ctx.reply(successMessage, { parse_mode: 'HTML' });
-
-    } catch (error) {
-        console.error('[buyContainerHandler] Ошибка:', error);
-        return ctx.reply(
-            '⚠️ <b>Ошибка:</b>\nПроизошла ошибка. Попробуйте позже.',
-            { parse_mode: 'HTML' }
-        );
-    }
-}
+const buyContainerHandler=createContainerCheckout(purchaseContainers);
 
 async function sendContainerInfoMessage(ctx) {
     const message = `
@@ -162,11 +38,7 @@ async function containersHandler(ctx) {
         }
 
         // Информация о контейнерах
-        const containersInfo = [
-            { emoji: '🧱', name: 'CLASSIC', currency: 'PF', price: 10000 },
-            { emoji: '💎', name: 'PREMIUM', currency: 'PF', price: 50000 },
-            { emoji: '⭐️', name: 'GOLD', currency: 'DF', price: 200 },
-        ];
+        const containersInfo = Object.entries(products).map(([type,product])=>({emoji:['\uD83E\uDDF1','\uD83D\uDC8E','\u2B50'][Number(type)-1],...product}));
 
         // Формируем текст с информацией о доступных контейнерах
         let infoText = `
