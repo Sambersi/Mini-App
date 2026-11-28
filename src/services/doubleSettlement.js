@@ -10,6 +10,7 @@ function createDoubleSettlement(runtime,{runTransaction,inventory,bank,views,dou
   async function bets(roundId){return runtime.many("SELECT b.*,o.operation_key FROM double_bets_log b LEFT JOIN double_bet_operations o ON o.bet_id=b.id WHERE b.round_id=? AND b.status='accepted' ORDER BY b.id",[roundId]);}
   async function prepareDoubleSettlement(roundId){return runTransaction(async()=>{
     const state=await runtime.one('SELECT * FROM double_round_state WHERE id=1 FOR UPDATE');await runtime.one('SELECT round_id FROM double_rounds WHERE round_id=? FOR UPDATE',[roundId]);const origin=await runtime.one('SELECT * FROM double_runtime_rounds WHERE round_id=? FOR UPDATE',[roundId]);if(!origin)fail('DOUBLE_LEGACY_ROUND');if(origin.payout_json)return JSON.parse(origin.payout_json);if(origin.plan_json)return JSON.parse(origin.plan_json);
+    if(origin.refund_json)fail('DOUBLE_ROUND_REFUNDED');
     if(!state||state.hash!==roundId)fail('DOUBLE_ROUND_CHANGED');if(now()<Number(state.end_time))fail('DOUBLE_NOT_ENDED');if(!['x2','x3','x5','GAME'].includes(state.result))fail('DOUBLE_RESULT_INVALID');
     const expected=createHash('md5').update(state.result.replace('x','')+'|'+state.salt).digest('hex');if(expected!==roundId)fail('DOUBLE_HASH_MISMATCH');
     const rows=await bets(roundId);if(rows.some(row=>!row.operation_key||row.payout_status!=='pending'))fail('DOUBLE_UNVERIFIED_BET');
@@ -33,6 +34,55 @@ function createDoubleSettlement(runtime,{runTransaction,inventory,bank,views,dou
     const result={...plan,credits,replayed:false};await runtime.execute('UPDATE double_runtime_rounds SET payout_json=? WHERE round_id=?',[JSON.stringify(result),roundId]);await doubleStatistics.applyDoubleRoundStatistics(roundId);
     const total=plan.outcomes.reduce((n,row)=>n+BigInt(row.amount),0n);await runtime.execute("UPDATE double_rounds SET end_ts=?,result_multiplier=?,salt=?,total_bank=?,bets_count=?,chats_count=?,participants_count=?,status='finished' WHERE round_id=?",[now(),plan.result,plan.salt,String(total),plan.outcomes.length,new Set(plan.outcomes.map(row=>row.chatId)).size,new Set(plan.outcomes.map(row=>row.playerId)).size,roundId]);await runtime.execute("UPDATE double_round_state SET state='FINISHED' WHERE id=1 AND hash=?",[roundId]);return result;
   });}
-  return {prepareDoubleSettlement,settleDoubleRound};
+  async function refundDoubleRound(roundId){
+    return runTransaction(async connection=>{
+      const state=await runtime.one('SELECT hash,state FROM double_round_state WHERE id=1 FOR UPDATE');
+      const round=await runtime.one('SELECT status FROM double_rounds WHERE round_id=? FOR UPDATE',[roundId]);
+      const origin=await runtime.one('SELECT * FROM double_runtime_rounds WHERE round_id=? FOR UPDATE',[roundId]);
+      if(!origin)fail('DOUBLE_LEGACY_ROUND');
+      if(origin.refund_json)return {...JSON.parse(origin.refund_json),replayed:true};
+      if(origin.plan_json||origin.payout_json)fail('DOUBLE_SETTLEMENT_STARTED');
+      if(state?.hash!==roundId||round?.status!=='active'||
+        !['ACCEPTING','BLOCKED','GAME_CHOICE','RESOLVING'].includes(state.state))fail('DOUBLE_ROUND_CHANGED');
+
+      const rows=await bets(roundId);
+      for(const row of rows){
+        if(!row.operation_key||row.payout_status!=='pending')fail('DOUBLE_UNVERIFIED_BET');
+        const debit=await runtime.one(
+          "SELECT amount FROM wallet_entries WHERE operation_key=? AND player_id=? AND asset='PF' AND bucket='main' AND entry_type='double_bet'",
+          [row.operation_key+':debit',row.user_id]);
+        const stake=amount(row.amount);
+        if(stake===0n||!debit||BigInt(debit.amount)!==-stake)fail('DOUBLE_UNVERIFIED_BET');
+      }
+      const names=new Map();
+      for(const id of [...new Set(rows.map(row=>row.user_id))].sort()){
+        const player=await runtime.one('SELECT display_name FROM players WHERE telegram_id=? FOR UPDATE',[id]);
+        if(!player)fail('PLAYER_MISSING');
+        names.set(id,player.display_name);
+      }
+
+      let total=0n;
+      for(const row of rows){
+        const credit=amount(row.amount);
+        const wallet={playerId:row.user_id,asset:'PF',bucket:'main'};
+        const before=await lockWallet(connection,wallet);
+        if(before+credit>9223372036854775807n)fail('WALLET_OVERFLOW');
+        const key='double_refund:'+row.id;
+        await saveWallet(connection,wallet,before+credit,credit,key,'double_refund');
+        const details={betId:String(row.id),debitOperationKey:row.operation_key};
+        await runtime.execute(
+          'INSERT INTO finance_log(ts,type,actor_user_id,target_user_id,amount,currency,ref,chat_id,action,payload,success,operation_key,entity_type,entity_id,actor_name_snapshot,target_name_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?)',
+          [now(),'double_refund','system:double',row.user_id,String(credit),'PF',roundId,row.chat_id,'double_refund',JSON.stringify(details),key,'double_round',roundId,'Double',names.get(row.user_id)]);
+        await runtime.execute("UPDATE double_bets_log SET payout_status='refunded',status='rejected' WHERE id=?",[row.id]);
+        total+=credit;
+      }
+      const result={roundId,bets:rows.length,players:names.size,amount:String(total)};
+      await runtime.execute('UPDATE double_runtime_rounds SET refund_json=? WHERE round_id=?',[JSON.stringify(result),roundId]);
+      await runtime.execute("UPDATE double_rounds SET status='refunded',end_ts=? WHERE round_id=?",[now(),roundId]);
+      await runtime.execute("UPDATE double_round_state SET state='FINISHED' WHERE id=1");
+      return {...result,replayed:false};
+    });
+  }
+  return {prepareDoubleSettlement,settleDoubleRound,refundDoubleRound};
 }
 module.exports={createDoubleSettlement};

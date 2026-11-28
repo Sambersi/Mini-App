@@ -2,10 +2,13 @@
 "use strict";
 const crypto = require('crypto');
 const {createDoubleBetGateway}=require('../src/telegram/doubleBet');
+const {buildDoubleResults}=require('../src/telegram/doubleResults');
 const fs = require('fs');
 const pathModule = require('path');
 const {
   placeDoubleBet,
+  openDoubleRound,
+  settleDoubleRound,
   getUserById,
   updateUserBalance,
   saveBetDetails,
@@ -19,6 +22,8 @@ const {
   markRoundBetsFailed,
   getDoubleRoundState,
   setDoubleRoundState,
+  updateOpenDoubleRoundState,
+  recordDoubleGameChoice,
   getDoubleNotification,
   markDoubleNotificationSent,
   refundBetsForRound,
@@ -30,6 +35,7 @@ const {
   getReferrerId,     
   addToReferrerBank 
 } = require('../db');
+const usesSettlement = typeof settleDoubleRound === 'function';
 
 // === КОНСТАНТЫ ===
 const ROUND_DURATION_MS = 60 * 1000;
@@ -85,6 +91,7 @@ class DoubleGame {
       this._queue = Promise.resolve(); // единая очередь отправки сообщений
       this._tickTimer = null;
       this._resolving = false;         // мьютекс завершения раунда
+      this._resolveRetryAt = 0;
       this._notifScheduled = { gameNotify: false, gameChoice: false, fiveSec: false };
       DoubleGame.instance = this;
     }
@@ -141,17 +148,18 @@ class DoubleGame {
     if (this._tickTimer) clearInterval(this._tickTimer);
 
     const saved = (await getDoubleRoundState());
-    if (saved && saved.hash && saved.state && saved.state !== 'FINISHED') {
+    if (saved && saved.hash && saved.state && (saved.state !== 'FINISHED' || usesSettlement)) {
       console.log(`[DoubleGame] Восстановление состояния: ${saved.state}, hash=${saved.hash}`);
       this.round = saved;
       this.state = saved.state;
       this.gameChoices = saved.gameChoices || {};
       this.globalChoices = saved.globalChoices || {};
       this._notifScheduled = { gameNotify: false, gameChoice: false, fiveSec: false };
-      if (Date.now() >= this.round.endTime) {
+      if (Date.now() >= this.round.endTime ||
+          (usesSettlement && ['FINISHED', ROUND_STATE.RESOLVING].includes(saved.state))) {
         console.log('[DoubleGame] Раунд истёк при восстановлении → завершение.');
         this.state = ROUND_STATE.RESOLVING;
-        (await this._persist());
+        if (!usesSettlement) await this._persist();
         setTimeout(() => this._resolveRound(bot), 300);
       }
     } else {
@@ -168,23 +176,30 @@ class DoubleGame {
     const hash = this.generateHash(multiplier, salt);
     const endTime = Date.now() + ROUND_DURATION_MS;
 
-    this.round = {
+    const round = {
       hash, result: multiplier, salt, endTime,
       cellContents: multiplier === 'GAME' ? this.generateCellContents() : null,
       finalMultipliers: null,
       gameButtonActive: false,
       processedChats: [],
     };
-    this.state = ROUND_STATE.ACCEPTING;
-    this.gameChoices = {};
-    this.globalChoices = {};
+    const opened = usesSettlement
+      ? await openDoubleRound({previousHash:this.round?.hash??null,round})
+      : {created:true,round};
+    this.round = opened.round;
+    this.state = opened.round.state || ROUND_STATE.ACCEPTING;
+    if (usesSettlement && this.state === 'FINISHED') this.state = ROUND_STATE.RESOLVING;
+    this.gameChoices = opened.round.gameChoices || {};
+    this.globalChoices = opened.round.globalChoices || {};
     this.activeGameBets = {};
     this.globalUserChoices = {};
-    this._resolving = false;
     this._notifScheduled = { gameNotify: false, gameChoice: false, fiveSec: false };
 
-    try { (await createDoubleRound(hash, Date.now())); } catch (e) { console.error('[DoubleGame] createDoubleRound:', e.message); }
-    (await this._persist());
+    if (!usesSettlement) {
+      try { (await createDoubleRound(hash, Date.now())); } catch (e) { console.error('[DoubleGame] createDoubleRound:', e.message); }
+      (await this._persist());
+    }
+    if (!opened.created) return;
     console.log(`[DoubleGame] Новый раунд: ${multiplier}, hash=${hash}`);
     this._sendLogMessage(bot, `🎲 Новый глобальный раунд:\n▪️ Множитель: ${multiplier}\n▪️ Хеш: ${hash}\n▪️ Соль: ${salt}`);
   }
@@ -192,13 +207,17 @@ class DoubleGame {
   // === ЕДИНЫЙ ТИК ===
   async _tick(bot) {
     try {
-      if (!this.round || this.state === ROUND_STATE.RESOLVING) return;
+      if (!this.round) return;
+      if (this.state === ROUND_STATE.RESOLVING) {
+        if (usesSettlement && Date.now() >= this._resolveRetryAt) await this._resolveRound(bot);
+        return;
+      }
       const remaining = this.round.endTime - Date.now();
       const isGame = this.round.result === 'GAME';
 
       if (remaining <= 0) {
         this.state = ROUND_STATE.RESOLVING;
-        (await this._persist());
+        if (!usesSettlement) await this._persist();
         this._resolveRound(bot);
         return;
       }
@@ -344,6 +363,15 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
     const key = `${chatId}_${userId}`;
     const gKey = `global_choice_${userId}`;
     if (this.globalChoices[gKey]) choice = this.globalChoices[gKey];
+    if (usesSettlement) {
+      if (!this.isGameChoiceAllowed(userId, chatId)) return false;
+      const roundId = this.round.hash;
+      const saved = await recordDoubleGameChoice({roundId,userId,chatId,choice});
+      if (!saved || this.round?.hash !== roundId) return false;
+      Object.assign(this.gameChoices, saved.gameChoices);
+      Object.assign(this.globalChoices, saved.globalChoices);
+      return true;
+    }
     if (this.isGameChoiceAllowed(userId, chatId)) {
       this.gameChoices[key] = choice;
       this.globalChoices[gKey] = choice;
@@ -362,6 +390,10 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
       // 1. Дожидаемся доотправки уведомлений — итоги придут строго после них
       await this._queue;
       if (!this.round) return;
+      if (usesSettlement) {
+        await this._resolvePersistedRound(bot);
+        return;
+      }
 
       // 2. Финальные множители GAME
       if (this.round.result === 'GAME' && !this.round.finalMultipliers) {
@@ -412,6 +444,11 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
       this.round = null;
       (await this._createNewRound(bot));
     } catch (error) {
+      if (usesSettlement) {
+        this._resolveRetryAt = Date.now() + 5000;
+        console.error('[DoubleGame] settlement:', error.code || error.name);
+        return;
+      }
       console.error('[DoubleGame] resolve critical:', error.message);
       try { const n = (await refundBetsForRound(roundHash)); if (n > 0) console.log(`[DoubleGame] Возвращено ставок: ${n}`); } catch (e) {}
       this.round = null;
@@ -420,6 +457,38 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
       this._resolving = false;
     }
   };
+
+  async _resolvePersistedRound(bot) {
+    const round = this.round;
+    let resolution;
+    try {
+      resolution = await settleDoubleRound(round.hash);
+    } catch (error) {
+      if (error.code !== 'DOUBLE_ROUND_REFUNDED' &&
+          !(error.code === 'DOUBLE_LEGACY_ROUND' && round.state === 'FINISHED')) throw error;
+    }
+    if (resolution) {
+      for (const delivery of buildDoubleResults(resolution)) {
+        const key = `results_${round.hash}_${delivery.chatId}`;
+        if (await getDoubleNotification(key)) continue;
+        const image = imgPath(delivery.image);
+        try {
+          if (fs.existsSync(image)) {
+            await bot.telegram.sendPhoto(delivery.chatId, {source:fs.createReadStream(image)}, {caption:delivery.text,parse_mode:'HTML'});
+          } else {
+            await bot.telegram.sendMessage(delivery.chatId, delivery.text, {parse_mode:'HTML'});
+          }
+        } catch (error) {
+          const telegramCode = error.response?.error_code;
+          if (telegramCode !== 400 && telegramCode !== 403) throw error;
+          console.error('[DoubleGame] result delivery:', error.code || error.name);
+          continue;
+        }
+        await markDoubleNotificationSent(key, round.hash);
+      }
+    }
+    await this._createNewRound(bot);
+  }
 
   // Расчёт ОДНОГО чата: выплаты в БД + готовое сообщение. Исходы пишутся в строки ставок (и в память).
   async _buildChatResult(chatId, allBets, result, finalMultipliers, hash, salt) {
@@ -568,13 +637,17 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
   async _persist() {
     if (!this.round) return;
     try {
-      (await setDoubleRoundState({
+      const save = usesSettlement ? updateOpenDoubleRoundState : setDoubleRoundState;
+      await save({
         ...this.round,
         state: this.state,
         gameChoices: this.gameChoices,
         globalChoices: this.globalChoices,
-      }));
-    } catch (e) { console.error('[DoubleGame] persist:', e.message); }
+      });
+    } catch (e) {
+      if (usesSettlement) throw e;
+      console.error('[DoubleGame] persist:', e.message);
+    }
   }
 
   _sendLogMessage(bot, message) {

@@ -2988,8 +2988,6 @@ bot.action(/^game_choice_(-?\d+)_([a-z]+)$/, async (ctx) => {
     if (!(await doubleGame.recordGameChoice(userId, chatId, choice))) {
       return ctx.answerCbQuery('❕ Выбор уже сделан или кнопки неактивны.');
     }
-    try { updateGameChoicesForRoundUser(doubleGame.round.hash, userId, chatId, choice); } catch (e) {}
-
     const userFromDb = await getUserById(userId);
     const userLink = createUserLink(userId, userFromDb?.username || 'Неизвестный');
     await ctx.answerCbQuery(`❕ Вы выбрали: ${choice === 'left' ? 'Левая' : 'Правая'}`);
