@@ -4,6 +4,7 @@ const {lockWallet,saveWallet}=require('../repositories/wallets');
 const {itemFields}=require('../db/playerFields');
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 function createBossRewards(runtime,inventory,{runTransaction,now=()=>Date.now()}){return async({bossId})=>runTransaction(async connection=>{
+  await connection.execute('SELECT id FROM boss_runtime_mutex WHERE id=1 FOR UPDATE');
   const [[boss]]=await connection.execute('SELECT * FROM bosses WHERE id=? FOR UPDATE',[bossId]);if(!boss)fail('BOSS_MISSING');
   const [[receipt]]=await connection.execute('SELECT result_json FROM boss_reward_batches WHERE boss_id=?',[bossId]);if(receipt)return {...JSON.parse(receipt.result_json),replayed:true};
   const [[historical]]=await connection.execute('SELECT was_defeated FROM boss_import_states WHERE boss_id=?',[bossId]);if(Number(historical?.was_defeated))fail('BOSS_LEGACY_REWARDS_UNVERIFIED');
