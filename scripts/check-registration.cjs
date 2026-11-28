@@ -239,6 +239,78 @@ async function runRegistrationChecks(env=process.env){
       await pool.execute('DELETE FROM dice_bets_log WHERE round_id=?',[diceRound]);
       await pool.execute('DELETE FROM dice_rounds_log WHERE round_id=?',[diceRound]);
     }
+    const fundedDiceChat='-9307',fundedRound='fixture_funded_dice';
+    const dicePlayers=ids.slice(12,18);
+    const diceBalance=async id=>BigInt((await one("SELECT balance FROM wallets WHERE player_id=? AND asset='PF' AND bucket='main'",[id])).balance);
+    const placeDice=(playerId,options={})=>service.placeDiceBet({
+      roundId:fundedRound,chatId:fundedDiceChat,playerId,amount:100,operationKey:'fixture_dice_'+playerId,...options,
+    });
+    try{
+      await service.activateDiceMode(fundedDiceChat);
+      for(const id of dicePlayers)await pool.execute("UPDATE wallets SET balance=1000 WHERE player_id=? AND asset='PF' AND bucket='main'",[id]);
+      const opens=await Promise.all(Array.from({length:20},()=>service.openDiceRound({roundId:fundedRound,chatId:fundedDiceChat,amount:100})));
+      assert.equal(opens.filter(round=>!round.replayed).length,1);
+      assert.ok(opens.every(round=>round.endTime===timestamp+30000));
+      await assert.rejects(service.openDiceRound({roundId:'fixture_dice_same_amount',chatId:fundedDiceChat,amount:100}),{code:'DICE_ROUND_AMOUNT_EXISTS'});
+      checks++;
+
+      await assert.rejects(placeDice(dicePlayers[0],{amount:200}),{code:'DICE_AMOUNT_MISMATCH'});
+      await pool.execute("UPDATE wallets SET balance=0 WHERE player_id=? AND asset='PF' AND bucket='main'",[dicePlayers[2]]);
+      await assert.rejects(placeDice(dicePlayers[2]),{code:'INSUFFICIENT_FUNDS'});
+      assert.equal(await diceBalance(dicePlayers[2]),0n);
+      await pool.execute("UPDATE wallets SET balance=1000 WHERE player_id=? AND asset='PF' AND bucket='main'",[dicePlayers[2]]);
+      await service.addToBlacklist(dicePlayers[3],'Fixture');
+      await assert.rejects(placeDice(dicePlayers[3]),{code:'PLAYER_BANNED'});
+      assert.equal(await diceBalance(dicePlayers[3]),1000n);
+      await service.removeFromBlacklist(dicePlayers[3]);
+      const repeats=await Promise.all(Array.from({length:20},()=>placeDice(dicePlayers[0])));
+      assert.equal(repeats.filter(result=>!result.replayed).length,1);
+      assert.ok(repeats.every(result=>result.betId===repeats[0].betId&&result.logId===repeats[0].logId));
+      assert.equal(await diceBalance(dicePlayers[0]),900n);
+      await assert.rejects(placeDice(dicePlayers[0],{operationKey:'fixture_dice_duplicate'}),{code:'DICE_ALREADY_JOINED'});
+      await assert.rejects(placeDice(dicePlayers[0],{extend:true}),{code:'OPERATION_KEY_CONFLICT'});
+      checks++;
+
+      const brokenDicePool={getConnection:async()=>{
+        const connection=await pool.getConnection();
+        return new Proxy(connection,{get(target,key){
+          if(key==='execute')return(sql,args)=>{
+            if(sql.startsWith('UPDATE wallet_operations SET result_json'))return target.execute('SELECT missing_dice_fixture_column');
+            return target.execute(sql,args);
+          };
+          const value=target[key];
+          return typeof value==='function'?value.bind(target):value;
+        }});
+      }};
+      const brokenDice=createMysqlApi(createDatabaseRuntime(brokenDicePool),{now:()=>timestamp});
+      const retry={roundId:fundedRound,chatId:fundedDiceChat,playerId:dicePlayers[1],amount:100,operationKey:'fixture_dice_retry',extend:true};
+      await assert.rejects(brokenDice.placeDiceBet(retry),{code:'ER_BAD_FIELD_ERROR'});
+      assert.equal(await diceBalance(retry.playerId),1000n);
+      assert.equal(Number((await one('SELECT end_time FROM dice_rounds WHERE round_id=?',[fundedRound])).end_time),timestamp+30000);
+      for(const table of ['dice_bets','dice_bets_log','dice_bet_operations']){
+        assert.equal(Number((await one('SELECT COUNT(*) AS n FROM '+table+' WHERE round_id=?',[fundedRound])).n),1);
+      }
+      assert.equal(Number((await one("SELECT COUNT(*) AS n FROM finance_log WHERE type='dice_bet' AND entity_id=?",[fundedRound])).n),1);
+      assert.equal((await service.placeDiceBet(retry)).endTime,timestamp+40000);
+      checks++;
+
+      const slots=await Promise.allSettled(dicePlayers.slice(2).map(id=>placeDice(id,{extend:true})));
+      assert.equal(slots.filter(result=>result.status==='fulfilled').length,3);
+      assert.equal(slots.find(result=>result.status==='rejected').reason.code,'DICE_ROUND_FULL');
+      assert.equal(Number((await one('SELECT end_time FROM dice_rounds WHERE round_id=?',[fundedRound])).end_time),timestamp+70000);
+      for(const [index,id] of dicePlayers.slice(2).entries())assert.equal(await diceBalance(id),slots[index].status==='fulfilled'?900n:1000n);
+      const late=createMysqlApi(runtime,{now:()=>timestamp+70000});
+      await assert.rejects(late.placeDiceBet({...retry,operationKey:'fixture_dice_late'}),{code:'DICE_BETS_CLOSED'});
+      checks++;
+    }finally{
+      await pool.execute('DELETE FROM dice_bet_operations WHERE round_id=?',[fundedRound]);
+      await pool.execute('DELETE FROM dice_runtime_rounds WHERE round_id=?',[fundedRound]);
+      await pool.execute('DELETE FROM dice_bets WHERE round_id=?',[fundedRound]);
+      await pool.execute('DELETE FROM dice_bets_log WHERE round_id=?',[fundedRound]);
+      await pool.execute('DELETE FROM dice_rounds_log WHERE round_id=?',[fundedRound]);
+      await pool.execute('DELETE FROM dice_rounds WHERE round_id=?',[fundedRound]);
+      await pool.execute('DELETE FROM chats WHERE chat_id=?',[fundedDiceChat]);
+    }
     return {checks,concurrentRequests:20,isolatedDatabase:true};
   }finally{
     try{if(seeded){
