@@ -115,11 +115,31 @@ async function runRegistrationChecks(env=process.env){
     await service.updateWinStreak(referrer,false);stats=await one('SELECT current_win_streak,best_win_streak FROM player_statistics WHERE player_id=?',[referrer]);assert.equal(Number(stats.current_win_streak),0);assert.equal(Number(stats.best_win_streak),2);checks++;
     await Promise.all(Array.from({length:20},()=>service.incrementMultiplierCount(referrer,'x2')));assert.equal((await service.getMultiplierStats(referrer)).x2,20);checks++;
     await service.updateMaxWinIfGreater(referrer,10);await service.updateMaxWinIfGreater(referrer,5);assert.equal(Number((await one('SELECT max_win_amount FROM player_statistics WHERE player_id=?',[referrer])).max_win_amount),10);checks++;
+    await service.addToBlacklist('900099999','fixture',null);assert.equal(await service.isUserBanned('900099999'),true);await service.removeFromBlacklist('900099999');assert.equal(await service.isUserBanned('900099999'),false);checks++;
+    await service.addToBlacklist(referrer,'expired',timestamp/1000-1);assert.equal(await service.isUserBanned(referrer),false);await service.removeFromBlacklist(referrer);checks++;
+    await service.addMute(referrer,'-900000001','fixture',timestamp/1000+1);assert.ok(await service.isUserMuted(referrer,'-900000001'));await service.removeMute(referrer,'-900000001');checks++;
+    await service.addMute(referrer,'-900000001','expired',timestamp/1000-1);assert.equal(await service.isUserMuted(referrer,'-900000001'),false);assert.equal((await service.getUserMutesPm(referrer)).length,0);checks++;
+    assert.equal((await service.createStatus('FixtureRole',5)).success,true);assert.equal((await service.createStatus('FixtureRole',5)).success,false);checks++;
+    const fixtureRole=await service.getStatusByName('FixtureRole');
+    await Promise.all(Array.from({length:20},()=>service.updateUserStatus(referrer,fixtureRole.id)));assert.equal((await service.getUserStatusIds(referrer)).filter(id=>String(id)===String(fixtureRole.id)).length,1);checks++;
+    assert.equal((await service.getUsersByStatuses(['FixtureRole'])).length,1);assert.equal((await service.getUsersByStatus('FixtureRole')).length,1);checks++;
+    assert.equal((await service.removeUserStatus(referrer,fixtureRole.id)).success,true);assert.equal((await service.removeUserStatus(referrer,fixtureRole.id)).success,false);checks++;
+    await service.recordAdminAction(referrer,'fixture','900000032');assert.equal(await service.getLastAdminActionTime(referrer),timestamp/1000);assert.equal((await service.getAdminActionsInRange(referrer)).length,1);checks++;
+    await service.recordAdminKickAction(referrer,'900000032');assert.equal(await service.getLastAdminKickActionTime(referrer),timestamp/1000);assert.equal((await service.getAdminKickActionsInRange(referrer)).length,1);checks++;
+    await service.logMessage(referrer,'private',referrer,null,'x'.repeat(1100),true);const messages=await service.getUserMessageLog(referrer);assert.equal(messages.length,1);assert.equal(messages[0].message_text.length,1024);assert.equal(messages[0].is_command,1);checks++;
+    await service.saveAttackState(referrer,JSON.stringify({answer:2}),1);await service.updateAttackMessageId(referrer,2);const attack=await service.getAttackState(referrer);assert.equal(attack.message_id,2);assert.equal(JSON.parse(attack.correct_button_index).answer,2);await service.deleteAttackState(referrer);assert.equal(await service.getAttackState(referrer),undefined);checks++;
+    const auction={prize:'Fixture',minBet:10,minStep:1,highestBid:20,highestBidder:{userId:referrer},participants:[referrer],bids:[{userId:referrer,telegramId:referrer,amount:20}],isFinished:false};
+    await service.saveAuctionState(auction);let savedAuction=await service.getAuctionState();assert.equal(savedAuction.isFinished,false);assert.equal(savedAuction.highestBid,20);assert.deepEqual(savedAuction.bids,auction.bids);await service.saveAuctionState({...auction,isFinished:true});assert.equal((await service.getAuctionState()).isFinished,true);checks++;
+    assert.equal(await service.hasUnansweredReports(referrer),false);checks++;
+    assert.equal((await service.cleanupExpiredAdminActions()).deletedCount,0);assert.equal((await service.cleanupExpiredAdminKickActions()).deletedCount,0);assert.equal((await service.cleanupOldMessageLogs()).deletedCount,0);checks++;
     return {checks,concurrentRequests:20,isolatedDatabase:true};
   }finally{
     try{if(seeded){
       for(const table of ['payment_inbox','telegram_payments','player_donation_events','finance_log','registration_completions','inventory_entries','wallet_entries','player_referral_intents','player_referrals','player_roles',...Object.keys(groups),'inventory_balances','wallets','player_cards'])await pool.query('DELETE FROM '+table);
       await pool.execute('DELETE FROM role_catalog WHERE id=999992');
+      await pool.execute('DELETE FROM role_catalog WHERE name=?',['FixtureRole']);
+      await pool.query('DELETE FROM player_bans');await pool.query('DELETE FROM mutes');
+      for(const table of ['auction','user_attack_states','message_log','daily_admin_actions','daily_admin_kick_actions'])await pool.query('DELETE FROM '+table);
       await pool.query('DELETE FROM registration_sessions');await pool.query('DELETE FROM players');
       await pool.query('UPDATE runtime_control SET projection_run_id=NULL WHERE id=1');
     }}finally{await pool.end();}
