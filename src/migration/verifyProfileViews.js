@@ -48,6 +48,11 @@ async function verifyProfileViews(db,api,{now=Date.now()}={}){
   await check('getActivePlayersCount','SELECT COUNT(DISTINCT user_id) AS c FROM message_log WHERE ts>=?',{params:[now-300000],transform:rows=>rows[0].c});
   await check('getMaxNumericId','SELECT MAX(numeric_id) AS n FROM users',{transform:rows=>rows[0].n||0});
   const ids=db.prepare('SELECT id FROM users ORDER BY rowid LIMIT 3').all().map(row=>String(row.id));
+  await check('getDoubleRoundState','SELECT * FROM double_round_state WHERE id=1',{transform:rows=>{const r=rows[0];return r?{state:r.state,hash:r.hash,result:r.result,salt:r.salt,endTime:r.end_time,cellContents:r.cell_contents?JSON.parse(r.cell_contents):null,finalMultipliers:r.final_multipliers?JSON.parse(r.final_multipliers):null,gameButtonActive:Boolean(Number(r.game_button_active)),processedChats:JSON.parse(r.processed_chats||'[]'),gameChoices:JSON.parse(r.game_choices||'{}'),globalChoices:JSON.parse(r.global_choices||'{}'),notifications:JSON.parse(r.notifications||'{}')}:null;}});
+  const doubleHash=db.prepare('SELECT round_id FROM double_rounds ORDER BY start_ts DESC,round_id LIMIT 1').get()?.round_id||'missing_fixture_round';
+  await check('getDoubleRoundByHash','SELECT * FROM double_rounds WHERE round_id=?',{args:[doubleHash],transform:rows=>{const r=rows[0];if(r&&typeof r.total_bank==='number'&&!Number.isFinite(r.total_bank))r.total_bank=String(r.total_bank);return r;}});
+  const betHash=db.prepare('SELECT round_id FROM double_bets_log ORDER BY id LIMIT 1').get()?.round_id||doubleHash;
+  await check('getDoubleBetsByRound','SELECT * FROM double_bets_log WHERE round_id=? ORDER BY ts,id',{args:[betHash]});
   const financeColumns='f.id,f.ts,f.type,f.actor_user_id,f.target_user_id,f.amount,f.currency,f.ref,f.reason,f.action,f.payload,f.success,f.chat_id,f.chat_title,f.chat_type,a.username AS actor_name,a.numeric_id AS actor_num,t.username AS target_name,t.numeric_id AS target_num';
   const financeFrom=" FROM finance_log f LEFT JOIN users a ON CAST(a.id AS TEXT)=CAST(f.actor_user_id AS TEXT) LEFT JOIN users t ON CAST(t.id AS TEXT)=CAST(f.target_user_id AS TEXT) WHERE ((f.action IS NOT NULL AND f.action!='') OR f.amount IS NOT NULL OR f.target_user_id IS NOT NULL OR f.actor_user_id IS NOT NULL)";
   const financeResult=rows=>({rows,total:rows.length,page:1,pages:1});

@@ -120,7 +120,7 @@ async function doubleHandler(ctx) {
     lastBetTimes[cooldownKey] = currentTime;
 
     // ИЗМЕНЕНО: убран прямой вызов saveBet — запись происходит внутри handleBet через logDoubleBet
-    const betResult = await doubleGame.handleBet(userId, username, multiplier, finalAmount, chatId, ctx.chat.title);
+    const betResult = await doubleGame.handleBet(userId, username, multiplier, finalAmount, chatId, ctx.chat.title, ctx.update.update_id);
 
     if (betResult.success) {
       return ctx.reply(`✔️ ${userLink}, ваша ставка ${finalAmount.toLocaleString('ru-RU')} PF на ${multiplier} принята.`, { parse_mode: 'HTML' });

@@ -1,9 +1,11 @@
 // games/doubleGame.js — финальная цельная версия
 "use strict";
 const crypto = require('crypto');
+const {createDoubleBetGateway}=require('../src/telegram/doubleBet');
 const fs = require('fs');
 const pathModule = require('path');
 const {
+  placeDoubleBet,
   getUserById,
   updateUserBalance,
   saveBetDetails,
@@ -328,43 +330,7 @@ ${list.join('\n') || 'Никто не сделал ставку на GAME'}
   }
 
   // === СТАВКИ ===
-  handleBet = async (userId, username, multiplier, amount, chatId, chatTitle = null) => {
-    try {
-      if (!this.round) return { success: false, message: '❕ Раунд еще не начался.' };
-      if (this.state !== ROUND_STATE.ACCEPTING) return { success: false, message: '⏳ Ставки больше не принимаются. Формируются итоги игры.' };
-      const remaining = this.round.endTime - Date.now();
-      const blockTime = this.round.result === 'GAME' ? BLOCK_GAME_MS : BLOCK_ORDINARY_MS;
-      if (remaining <= blockTime) return { success: false, message: '⏳ Ставки больше не принимаются. Формируются итоги игры.' };
-      if (amount < 1) return { success: false, message: '❕ Минимальная ставка — 1 PF.' };
-
-      if (multiplier === 'GAME') {
-        if (this.activeGameBets[userId]) return { success: false, message: '❌ У вас уже есть активная ставка GAME.' };
-        this.activeGameBets[userId] = true;
-      }
-      const user = (await getUserById(userId));
-      if (!user || user.balance < amount) {
-        if (multiplier === 'GAME') delete this.activeGameBets[userId];
-        return { success: false, message: '❌ Недостаточно средств для ставки.' };
-      }
-      try {
-        (await updateUserBalance(userId, -amount));
-        (await logDoubleBet({ ts: Date.now(), roundId: this.round.hash, userId, username, chatId, chatTitle, multiplier, amount, status: 'accepted', isWin: null, winAmount: null }));
-      } catch (txErr) {
-        console.error('[DoubleGame] handleBet txErr:', txErr.message);
-        try { (await updateUserBalance(userId, amount)); } catch (refErr) { console.error('[DoubleGame] REFUND FAIL:', refErr.message); }
-        if (multiplier === 'GAME') delete this.activeGameBets[userId];
-        return { success: false, message: 'Произошла ошибка при обработке ставки.' };
-      }
-      // Максимальная ставка — по каждой одиночной ставке
-      try { (await updateMaxBetIfGreater(userId, amount)); } catch (e) {}
-      if (multiplier === 'GAME') delete this.activeGameBets[userId];
-      return { success: true };
-    } catch (error) {
-      if (multiplier === 'GAME') delete this.activeGameBets[userId];
-      console.error('[DoubleGame] handleBet:', error.message);
-      return { success: false, message: 'Произошла ошибка при обработке ставки.' };
-    }
-  };
+  handleBet = createDoubleBetGateway({getRound:()=>this.round,place:placeDoubleBet});
 
   // === ВЫБОР ЯЧЕЙКИ ===
   isGameChoiceAllowed(userId, chatId) {

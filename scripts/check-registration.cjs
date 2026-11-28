@@ -212,6 +212,7 @@ async function runRegistrationChecks(env=process.env){
     checks+=await require('./check-weapon-purchase.cjs').runWeaponPurchaseChecks({pool,service,playerId:'900000100',now:timestamp});
     checks+=await require('./check-boss-rewards.cjs').runBossRewardChecks({pool,service,playerId:'900000100',now:timestamp});
     checks+=await require('./check-boss-combat.cjs').runBossCombatChecks({pool,runtime,now:timestamp});
+    checks+=await require('./check-double-bets.cjs').runDoubleBetChecks({pool,runtime,now:timestamp});
     return {checks,concurrentRequests:20,isolatedDatabase:true};
   }finally{
     try{if(seeded){

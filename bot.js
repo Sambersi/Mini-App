@@ -4252,7 +4252,7 @@ bot.action(/^bet_(x\d+|GAME)_(\d+)$/, async (ctx) => {
       }
 
       // Обрабатываем ставку через DoubleGame
-      const betResult = await doubleGame.handleBet(userId, username, multiplier, amount, ctx.chat.id);
+      const betResult = await doubleGame.handleBet(userId, username, multiplier, amount, ctx.chat.id, ctx.chat.title, ctx.update.update_id);
       if (betResult.success) {
         // Отправляем уведомление через answerCbQuery
         ctx.answerCbQuery(`✔️ Ставка ${amount} PF на ${multiplier} принята.`);
