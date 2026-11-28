@@ -10,6 +10,7 @@ const {createPlayerRegistration}=require('../services/playerRegistration');
 const {withDeadlockRetry}=require('./transaction');
 const {createProfileViews}=require('../repositories/profileViews');
 const {createPaymentInbox}=require('../services/paymentInbox');
+const {createSkinPurchase}=require('../services/skinPurchase');
 function createMysqlApi(runtime,{now=()=>Date.now()}={}){
   const executor={execute:(sql,params)=>runtime.currentExecutor().execute(sql,params)};
   const runTransaction=work=>{
@@ -19,7 +20,7 @@ function createMysqlApi(runtime,{now=()=>Date.now()}={}){
   const registration=createPlayerRegistration(executor,{now,runTransaction});
   const payments=createPaymentInbox(executor,{now,runTransaction,inTransaction:()=>Boolean(runtime.inTransaction?.()),referralPercent:require('../../config').REFERRAL_DONATION_PERCENT_DF});
   const reads=createLegacyReads(runtime);
-  return {...reads,...createProfileViews(runtime,reads,{now}),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...createCatalogs(runtime),...createGameRecords(runtime),...createChatModes(runtime),...registration,...payments,transaction:work=>runtime.transaction(work)};
+  return {...reads,...createProfileViews(runtime,reads,{now}),...createPlayerSettings(runtime),...createPlayerStateWrites(runtime),...createCatalogs(runtime),...createGameRecords(runtime),...createChatModes(runtime),...registration,...payments,purchaseSkin:createSkinPurchase(executor,{runTransaction}),transaction:work=>runtime.transaction(work)};
 }
 function getApiCoverage(api){
   return {implemented:contract.functions.filter(key=>typeof api[key]==='function'),missing:contract.functions.filter(key=>typeof api[key]!=='function'),missingConstants:contract.constants.filter(key=>!Object.hasOwn(api,key))};

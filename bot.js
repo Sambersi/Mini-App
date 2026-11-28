@@ -3318,7 +3318,7 @@ bot.action(/^(prev|next)_skin_(\d+)$/, async (ctx) => {
 });
 
 // Обработчик покупки скина
-bot.action(/^buy_skin_(\d+)$/, async (ctx) => {
+bot.action(/^buy_skin_(\d+|q[a-f0-9]{24})$/, async (ctx) => {
   if (await checkUserStatus(ctx)) {
     await handleCallbackWithErrorHandling(ctx, async () => {
       await handleBuySkin(ctx);

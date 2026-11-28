@@ -1,13 +1,12 @@
+const {addSkinQuote}=require('../src/services/skinQuote');
+const {createSkinCheckout}=require('../src/telegram/skinCheckout');
 //shopHandler.js
 const { Markup } = require('telegraf');
 const path = require('path');
 const { 
+  purchaseSkin,
   getAllSkins, 
-  addSkinToUser, 
   getUserAvailableSkins, 
-  getUserBalance, 
-  deductCurrencyFromUser,
-  updateSkinStock,
   getSkinStock
 } = require('../db');
 const { getSkinShopSession, saveSkinShopSession, destroySkinShopSession } = require('../sessions/skinShopSession');
@@ -82,12 +81,15 @@ function createShopKeyboard(currentPage, totalPages) {
 }
 
 // Клавиатура для покупки скина
-function createBuySkinKeyboard(currentIndex, totalSkins, isOwned) {
+async function createBuySkinKeyboard(currentIndex, totalSkins, isOwned, skin, userId) {
+  let token;
+  if(!isOwned){const session=await getSkinShopSession(userId);token=addSkinQuote(session,skin);await saveSkinShopSession(userId,session);}
+
   const actionButtons = [];
   if (isOwned) {
     actionButtons.push(Markup.button.callback('✅ Уже куплен', 'already_owned'));
   } else {
-    actionButtons.push(Markup.button.callback('🛒 Купить скин', `buy_skin_${currentIndex}`));
+    actionButtons.push(Markup.button.callback('🛒 Купить скин', `buy_skin_${token}`));
   }
   actionButtons.push(Markup.button.callback('🛒 В магазин', 'to_shop'));
   const navigationButtons = [];
@@ -182,7 +184,7 @@ async function handleSelectSkinToBuy(ctx) {
     const isOwned = availableSkins.includes(skin.id);
 
     const message = (await formatBuySkinMessage(skin, session.skinShop.currentSkinIndex, skins.length, isOwned));
-    const keyboard = createBuySkinKeyboard(session.skinShop.currentSkinIndex, skins.length, isOwned);
+    const keyboard = await createBuySkinKeyboard(session.skinShop.currentSkinIndex, skins.length, isOwned, skin, userId);
 
     const imagePath = path.join(__dirname, '../images', skin.file_name);
     await ctx.replyWithPhoto(
@@ -242,7 +244,7 @@ async function handleSkinNavigation(ctx) {
     const isOwned = availableSkins.includes(skin.id);
 
     const message = (await formatBuySkinMessage(skin, newIndex, skins.length, isOwned));
-    const keyboard = createBuySkinKeyboard(newIndex, skins.length, isOwned);
+    const keyboard = await createBuySkinKeyboard(newIndex, skins.length, isOwned, skin, userId);
 
     const imagePath = path.join(__dirname, '../images', skin.file_name);
 
@@ -274,101 +276,7 @@ async function handleSkinNavigation(ctx) {
   }
 }
 
-async function handleBuySkin(ctx) {
-  try {
-      const currentSkinIndexStr = ctx.match[1];
-      const userId = ctx.from.id.toString();
-      let session = (await getSkinShopSession(userId));
-
-      // Проверяем, что сессия принадлежит текущему пользователю
-      if (!session?.skinShop || session.skinShop.initiator !== userId) {
-          return ctx.answerCbQuery('Это меню создано другим пользователем или устарело.', { show_alert: true });
-      }
-
-      // Проверяем корректность индекса
-      const currentIndex = parseInt(currentSkinIndexStr, 10);
-      if (isNaN(currentIndex)) {
-          console.error('❌ Ошибка: Индекс не является числом.');
-          ctx.answerCbQuery('Произошла ошибка при покупке.');
-          return ctx.reply('Произошла ошибка при покупке.');
-      }
-
-      // Получаем список доступных скинов
-      const skins = await getAllSkins(true);
-      if (!skins || skins.length === 0) {
-          ctx.answerCbQuery('В данный момент нет доступных скинов.');
-          return ctx.reply('В данный момент нет доступных скинов.');
-      }
-
-      // Получаем данные о выбранном скине
-      const skin = skins[currentIndex];
-      if (!skin) {
-          console.error('❌ Ошибка: Скин не найден.');
-          ctx.answerCbQuery('Скин не найден.');
-          return ctx.reply('Скин не найден.');
-      }
-
-      // Проверка баланса пользователя
-      const userBalance = (await getUserBalance(userId, skin.currency_type));
-      if (userBalance < skin.price) {
-          const message = `✖️ Недостаточно средств для покупки скина.\n\n💰 Требуется для покупки - ${formatNumberWithDots(skin.price)} ${skin.currency_type}.`;
-          ctx.answerCbQuery(message);
-          return ctx.reply(message); // Дублируем текстовым сообщением
-      }
-
-      // Проверка наличия скина в наличии
-      const stockInfo = (await getSkinStock(skin.id));
-      if (stockInfo.stock <= 0) {
-          ctx.answerCbQuery('❕ Скины этого типа закончились.');
-          return ctx.reply('❕ Скины этого типа закончились.');
-      }
-
-      // Списание средств
-      const success = (await deductCurrencyFromUser(userId, skin.currency_type, skin.price));
-      if (!success) {
-          ctx.answerCbQuery('Не удалось списать средства.');
-          return ctx.reply('Не удалось списать средства.');
-      }
-
-      // Добавление скина пользователю
-      const addResult = await addSkinToUser(userId, skin.id);
-      if (addResult.success) {
-          // Обновляем количество доступных скинов
-          (await updateSkinStock(skin.id, stockInfo.stock - 1));
-
-          // Формируем обновленное сообщение и клавиатуру
-          const updatedMessage = (await formatBuySkinMessage(skin, currentIndex, skins.length, true)); // isOwned = true
-          const updatedKeyboard = createBuySkinKeyboard(currentIndex, skins.length, true); // isOwned = true
-
-          // Редактируем медиа-сообщение
-          const imagePath = path.join(__dirname, '../images', skin.file_name);
-          await ctx.editMessageMedia(
-              {
-                  type: 'photo',
-                  media: { source: imagePath },
-                  caption: updatedMessage,
-                  parse_mode: 'HTML',
-              },
-              { ...updatedKeyboard }
-          );
-
-          // Отправляем уведомление о покупке
-          const purchaseMessage = `
-☑️ Скин "<b>${skin.name}</b>" успешно куплен за <b>${formatNumberWithDots(skin.price)} ${skin.currency_type}</b>!
-🔖 Серийный номер: <code>${addResult.serial}</code>
-          `;
-
-          return ctx.reply(purchaseMessage, { parse_mode: 'HTML' }); // Дублируем текстовым сообщением
-      } else {
-          ctx.answerCbQuery('Не удалось добавить скин.');
-          return ctx.reply('Не удалось добавить скин.');
-      }
-  } catch (error) {
-      console.error('❌ Ошибка при покупке скина:', error);
-      ctx.answerCbQuery('Произошла ошибка при покупке скина.', { show_alert: true });
-      return ctx.reply('Произошла ошибка при покупке скина.');
-  }
-}
+const handleBuySkin=createSkinCheckout({getSession:getSkinShopSession,purchase:purchaseSkin});
 
 // Обработчик закрытия магазина
 async function handleCloseShop(ctx) {

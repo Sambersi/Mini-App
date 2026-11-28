@@ -137,7 +137,8 @@ async function runWalletChecks(env = process.env) {
     assert.equal((await payments({...payment,chargeId:'fixture_partner'})).referrerBonus,'15');checks++;
     for(const skinId of [900001,900002])await pool.execute('INSERT INTO skins(id,name,file_name,price,currency_type,rarity,stock,total_serials) VALUES (?,?,?,10,?,?,1,0)',[skinId,'Fixture','fixture.png','DF','fixture']);
     const buySkin=createSkinPurchase(pool);
-    const purchase={operationKey:'fixture_buy_skin',playerId:payer,skinId:900001};
+    const purchase={operationKey:'fixture_buy_skin',playerId:payer,skinId:900001,expectedPrice:'10',expectedCurrency:'DF'};
+    await assert.rejects(buySkin({...purchase,expectedPrice:'11'}),{code:'SKIN_QUOTE_CHANGED'});checks++;
     const purchased=await buySkin(purchase);assert.equal(purchased.serial,'900001-00000001');checks++;
     assert.deepEqual(await buySkin(purchase),purchased);
     const [[stockAfter]]=await pool.execute('SELECT stock,total_serials FROM skins WHERE id=?',[900001]);

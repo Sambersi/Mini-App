@@ -5,12 +5,14 @@ const {integer}=require('./walletMovement');
 const {lockWallet,saveWallet}=require('../repositories/wallets');
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 function serialNumber(skinId,serial){return String(skinId).padStart(4,'0')+'-'+String(serial).padStart(8,'0');}
-function createSkinPurchase(pool){return async({operationKey,playerId,skinId})=>{
+function createSkinPurchase(pool,{runTransaction=work=>withDeadlockRetry(()=>withTransaction(pool,work))}={}){return async({operationKey,playerId,skinId,expectedPrice,expectedCurrency})=>{
   if(typeof operationKey!=='string'||!/^[A-Za-z0-9:_-]{1,150}$/.test(operationKey))fail('OPERATION_KEY_INVALID');
   if(typeof playerId!=='string'||!/^[\x21-\x7e]{1,32}$/.test(playerId))fail('PLAYER_INVALID');
   const id=String(integer(skinId));if(id==='0')fail('SKIN_INVALID');
-  const hash=createHash('sha256').update(JSON.stringify({kind:'skin-purchase',playerId,skinId:id})).digest('hex');
-  return withDeadlockRetry(()=>withTransaction(pool,async connection=>{
+  const quote=expectedPrice===undefined?null:{price:String(integer(expectedPrice)),currency:expectedCurrency};
+  if(quote&&!['PF','DF'].includes(quote.currency))fail('SKIN_CURRENCY_INVALID');
+  const hash=createHash('sha256').update(JSON.stringify({kind:'skin-purchase',playerId,skinId:id,...(quote?{quote}:{})})).digest('hex');
+  return runTransaction(async connection=>{
     await connection.execute('INSERT INTO wallet_operations(operation_key,request_hash) VALUES (?,?) ON DUPLICATE KEY UPDATE operation_key=VALUES(operation_key)',[operationKey,hash]);
     const [[operation]]=await connection.execute('SELECT request_hash,result_json FROM wallet_operations WHERE operation_key=? FOR UPDATE',[operationKey]);
     if(operation.request_hash!==hash)fail('OPERATION_KEY_CONFLICT');
@@ -24,6 +26,7 @@ function createSkinPurchase(pool){return async({operationKey,playerId,skinId})=>
     if(BigInt(skin.stock??0)<=0n)fail('SKIN_OUT_OF_STOCK');
     if(!['PF','DF'].includes(skin.currency_type))fail('SKIN_CURRENCY_INVALID');
     const price=integer(String(skin.price).replace(/\.0+$/,''));
+    if(quote&&(quote.price!==String(price)||quote.currency!==skin.currency_type))fail('SKIN_QUOTE_CHANGED');
     const wallet={playerId,asset:skin.currency_type,bucket:'main'};
     const before=await lockWallet(connection,wallet);
     if(before<price)fail('INSUFFICIENT_FUNDS');
@@ -34,6 +37,6 @@ function createSkinPurchase(pool){return async({operationKey,playerId,skinId})=>
     const result={success:true,serial,price:String(price),currency:skin.currency_type,newBalance:String(before-price)};
     await connection.execute('UPDATE wallet_operations SET result_json=? WHERE operation_key=?',[JSON.stringify(result),operationKey]);
     return result;
-  }));
+  });
 };}
 module.exports={createSkinPurchase,serialNumber};
